@@ -1,0 +1,45 @@
+package com.gateway.app.api;
+
+import com.gateway.kernel.errors.DomainException;
+import com.gateway.kernel.errors.NotFoundException;
+import java.net.URI;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+/**
+ * Turns the kernel's exceptions into {@link ProblemDetail}. {@link NotFoundException} is handled
+ * before {@link DomainException} even though it extends it: order matters here because Spring picks
+ * the most specific matching handler, but being explicit beats relying on that resolution.
+ */
+@RestControllerAdvice
+public class ErrorHandler {
+
+  @ExceptionHandler(NotFoundException.class)
+  public ProblemDetail notFound(NotFoundException e) {
+    return problem(HttpStatus.NOT_FOUND, e.code(), e.getMessage());
+  }
+
+  @ExceptionHandler(DomainException.class)
+  public ProblemDetail domainError(DomainException e) {
+    return problem(HttpStatus.UNPROCESSABLE_ENTITY, e.code(), e.getMessage());
+  }
+
+  @ExceptionHandler(IllegalArgumentException.class)
+  public ProblemDetail invalidRequest(IllegalArgumentException e) {
+    return problem(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e.getMessage());
+  }
+
+  /** Thrown by {@code MerchantContext.current()} when there is no authenticated merchant on the request. */
+  @ExceptionHandler(IllegalStateException.class)
+  public ProblemDetail unauthenticated(IllegalStateException e) {
+    return problem(HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED", e.getMessage());
+  }
+
+  private static ProblemDetail problem(HttpStatus status, String code, String detail) {
+    ProblemDetail pd = ProblemDetail.forStatusAndDetail(status, detail);
+    pd.setType(URI.create("urn:gateway:" + code));
+    return pd;
+  }
+}
