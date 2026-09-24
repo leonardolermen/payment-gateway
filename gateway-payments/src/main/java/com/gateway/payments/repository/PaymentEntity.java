@@ -29,11 +29,13 @@ class PaymentEntity {
   @Column(name = "paid_at") Instant paidAt;
   @Column(name = "paid_amount") Long paidAmount;
   @Column(name = "refunded_amount", nullable = false) long refundedAmount;
-  // @Version is unused for the optimistic-lock check itself — save() does that with an explicit
-  // WHERE version = expected bulk update (see PaymentRepositoryImpl) so the expected value is the
-  // one the aggregate was loaded at, not whatever this JPQL-managed field would auto-increment to.
-  // It stays on the entity so the schema validator confirms it maps the migration's NOT NULL column.
-  @Version @Column(name = "version", nullable = false) long version;
+  // Plain column, not @Version: the optimistic lock is the explicit WHERE version = expected bulk
+  // update in PaymentJpaRepository.updateIfVersionMatches, using the version the aggregate was
+  // loaded at. A Hibernate-managed @Version here would fight that — within one transaction, a
+  // second findById after a save would come back with a persistence-context-cached (stale) entity
+  // whose @Version the bulk UPDATE's clearAutomatically didn't exist to invalidate, so this field
+  // must never carry that annotation.
+  @Column(name = "version", nullable = false) long version;
   @Column(name = "created_at", nullable = false) Instant createdAt;
   @Column(name = "updated_at", nullable = false) Instant updatedAt;
   protected PaymentEntity() {}

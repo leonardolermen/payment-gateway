@@ -34,10 +34,11 @@ final class PixDetailsJson {
     return new PixDetails(field(json, "txid"), field(json, "pixCopiaECola"), field(json, "location"), field(json, "endToEndId"));
   }
 
-  // Postgres normalizes jsonb on the way back out (e.g. a space after ':', key order changed by
-  // uq_payments_provider_txid's own reasoning does not apply here, but the whitespace does) — this
-  // read side tolerates that reformatting; \\s* is what a naive exact-string regex missed and read
-  // back "null" for every field the round trip test alone (in-memory, no Postgres) never caught.
+  // Postgres reformats jsonb on the way back out — in particular it adds a space after ':' — so an
+  // exact "key":"value" regex with no \s* read every field back as null once the value had gone
+  // through a real jsonb column (an in-memory round trip alone did not catch this). Key order is
+  // fixed by write() above, so the JSON text is otherwise stable; the unique index on txid reads
+  // details->>'txid' directly and does not depend on key order at all.
   private static String field(String json, String key) {
     Matcher m = Pattern.compile("\"" + key + "\":\\s*(null|\"((?:\\\\.|[^\"\\\\])*)\")").matcher(json);
     if (!m.find()) {

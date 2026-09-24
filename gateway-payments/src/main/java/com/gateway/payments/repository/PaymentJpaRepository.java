@@ -19,19 +19,27 @@ interface PaymentJpaRepository extends JpaRepository<PaymentEntity, String> {
   java.util.List<PaymentEntity> findPendingOlderThan(@Param("before") Instant before, Limit limit);
 
   @Query("SELECT p FROM PaymentEntity p WHERE p.status IN :statuses AND p.createdAt > :after ORDER BY p.createdAt ASC")
-  java.util.List<PaymentEntity> findByStatusInAndCreatedAtAfter(@Param("statuses") Collection<String> statuses, @Param("after") Instant after);
+  java.util.List<PaymentEntity> findByStatusInAndCreatedAtAfter(
+      @Param("statuses") Collection<String> statuses, @Param("after") Instant after, Limit limit);
 
   @Query("SELECT p FROM PaymentEntity p WHERE p.merchantId = :merchantId AND (:cursorId IS NULL OR p.id < :cursorId) ORDER BY p.id DESC")
   java.util.List<PaymentEntity> findByMerchant(@Param("merchantId") String merchantId, @Param("cursorId") String cursorId, Limit limit);
 
   /**
    * The optimistic-lock write itself: {@code WHERE version = :expectedVersion}, {@code expected}
-   * being the version the aggregate was loaded at (not whatever this row's {@code @Version} field
-   * auto-manages via the persistence context — see {@code PaymentEntity}'s comment). 0 rows
-   * affected means someone else saved first; the caller turns that into
-   * {@code ObjectOptimisticLockingFailureException}.
+   * being the version the aggregate was loaded at (see {@code PaymentEntity}'s comment on why that
+   * column is not {@code @Version}-managed). 0 rows affected means someone else saved first; the
+   * caller turns that into {@code ObjectOptimisticLockingFailureException}.
+   *
+   * <p>{@code clearAutomatically = true} matters within a single transaction: a bulk JPQL
+   * {@code UPDATE} bypasses the persistence context, so without it a later {@code findById} in the
+   * same transaction would return the stale cached entity from before this write, with the old
+   * {@code version} — the next {@code save} would then compute a stale {@code expectedVersion} and
+   * fail with a false optimistic-lock error even though nobody else touched the row.
+   * {@code flushAutomatically = true} makes sure any pending changes are flushed before this bulk
+   * update runs, so it never overwrites something not yet written.
    */
-  @Modifying
+  @Modifying(clearAutomatically = true, flushAutomatically = true)
   @Transactional(propagation = Propagation.MANDATORY)
   @Query(
       """

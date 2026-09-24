@@ -26,23 +26,25 @@ public class JobRepositoryImpl implements JobRepository {
   /** {@code uq_jobs_type_ref} backs this: one job per (type, ref), same {@code ON CONFLICT DO NOTHING} reasoning as {@code IdempotencyRepositoryImpl}. */
   @Override
   @Transactional
-  public void enqueue(Job j) {
-    em.createNativeQuery(
-            """
-            INSERT INTO payments.jobs (id, type, ref_id, next_run_at, attempts, status, claimed_at, last_error, created_at)
-            VALUES (:id, :type, :refId, :nextRunAt, :attempts, :status, :claimedAt, :lastError, :createdAt)
-            ON CONFLICT (type, ref_id) DO NOTHING
-            """)
-        .setParameter("id", j.id())
-        .setParameter("type", j.type().name())
-        .setParameter("refId", j.refId())
-        .setParameter("nextRunAt", j.nextRunAt())
-        .setParameter("attempts", j.attempts())
-        .setParameter("status", j.status())
-        .setParameter("claimedAt", j.claimedAt())
-        .setParameter("lastError", j.lastError())
-        .setParameter("createdAt", j.createdAt())
-        .executeUpdate();
+  public boolean enqueue(Job j) {
+    int inserted =
+        em.createNativeQuery(
+                """
+                INSERT INTO payments.jobs (id, type, ref_id, next_run_at, attempts, status, claimed_at, last_error, created_at)
+                VALUES (:id, :type, :refId, :nextRunAt, :attempts, :status, :claimedAt, :lastError, :createdAt)
+                ON CONFLICT (type, ref_id) DO NOTHING
+                """)
+            .setParameter("id", j.id())
+            .setParameter("type", j.type().name())
+            .setParameter("refId", j.refId())
+            .setParameter("nextRunAt", j.nextRunAt())
+            .setParameter("attempts", j.attempts())
+            .setParameter("status", j.status())
+            .setParameter("claimedAt", j.claimedAt())
+            .setParameter("lastError", j.lastError())
+            .setParameter("createdAt", j.createdAt())
+            .executeUpdate();
+    return inserted > 0;
   }
 
   /**
@@ -61,6 +63,12 @@ public class JobRepositoryImpl implements JobRepository {
     return due.stream().map(JobRepositoryImpl::toDomain).toList();
   }
 
+  /**
+   * No fencing token: a worker whose lease expired mid-run and gets reclaimed by another worker can
+   * still land this write after the reclaimer's. This plan accepts that because every job handler
+   * (expire, process-webhook, poll-refund, reconcile) is idempotent — replaying or double-applying
+   * one changes nothing — so a late, superseded write is a no-op rather than corruption.
+   */
   @Override
   @Transactional
   public void save(Job j) {

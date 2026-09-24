@@ -113,6 +113,36 @@ class PaymentRepositoryIntegrationTest {
         .isInstanceOf(ObjectOptimisticLockingFailureException.class);
   }
 
+  /**
+   * Two saves of the SAME payment inside one transaction (two webhook events landing back to back,
+   * say) must not trip a false optimistic-lock failure. Before {@code clearAutomatically = true} on
+   * {@code updateIfVersionMatches}, the bulk JPQL update bypassed the persistence context, so the
+   * second {@code findById} in this transaction would return the stale cached entity from before
+   * the first save — with the pre-update version — and the second save would then compute a stale
+   * {@code expectedVersion} and fail even though nothing else touched the row.
+   */
+  @Test
+  void twoSavesOfTheSamePaymentInOneTransactionDoNotFalselyConflict() {
+    Payment p = fresh();
+    persistNew(p);
+
+    tx().executeWithoutResult(
+        status -> {
+          Payment loaded1 = repository.findById(p.id()).orElseThrow();
+          PaymentEvent pending = loaded1.markPending(new PixDetails(p.id(), "a", "b", null), Instant.now());
+          repository.save(loaded1, List.of(pending));
+
+          Payment loaded2 = repository.findById(p.id()).orElseThrow();
+          PaymentEvent completed = loaded2.markCompleted("E1", Money.brl(15990), Instant.now(), EventSource.PROVIDER_WEBHOOK);
+          repository.save(loaded2, List.of(completed));
+        });
+
+    Payment reloaded = repository.findById(p.id()).orElseThrow();
+    assertThat(reloaded.version()).isEqualTo(3);
+    assertThat(reloaded.status()).isEqualTo(PaymentStatus.COMPLETED);
+    assertThat(repository.events(p.id())).hasSize(3);
+  }
+
   /** Persists a payment that has already transitioned once, past its own creation: both events go in the same insert. */
   void persistWithOneTransition(Payment p, PaymentEvent transitionEvent) {
     tx().executeWithoutResult(status -> repository.save(p, List.of(p.createdEvent(), transitionEvent)));
@@ -143,9 +173,22 @@ class PaymentRepositoryIntegrationTest {
   void findByStatusInFiltersByStatusAndCreationTime() {
     Payment p = fresh();
     persistNew(p);
-    assertThat(repository.findByStatusIn(Set.of(PaymentStatus.CREATED), Instant.parse("2026-09-24T11:00:00Z"))).extracting(Payment::id).contains(p.id());
-    assertThat(repository.findByStatusIn(Set.of(PaymentStatus.COMPLETED), Instant.parse("2026-09-24T11:00:00Z"))).isEmpty();
-    assertThat(repository.findByStatusIn(Set.of(PaymentStatus.CREATED), Instant.parse("2026-09-24T13:00:00Z"))).isEmpty();
+    assertThat(repository.findByStatusIn(Set.of(PaymentStatus.CREATED), Instant.parse("2026-09-24T11:00:00Z"), 100))
+        .extracting(Payment::id)
+        .contains(p.id());
+    assertThat(repository.findByStatusIn(Set.of(PaymentStatus.COMPLETED), Instant.parse("2026-09-24T11:00:00Z"), 100)).isEmpty();
+    assertThat(repository.findByStatusIn(Set.of(PaymentStatus.CREATED), Instant.parse("2026-09-24T13:00:00Z"), 100)).isEmpty();
+  }
+
+  @Test
+  void findByStatusInRespectsTheLimit() {
+    Payment a = fresh();
+    persistNew(a);
+    Payment b = fresh();
+    persistNew(b);
+
+    List<Payment> capped = repository.findByStatusIn(Set.of(PaymentStatus.CREATED), Instant.parse("2020-01-01T00:00:00Z"), 1);
+    assertThat(capped).hasSize(1);
   }
 
   @Test

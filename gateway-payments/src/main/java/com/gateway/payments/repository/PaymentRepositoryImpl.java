@@ -7,6 +7,8 @@ import com.gateway.payments.domain.EventSource;
 import com.gateway.payments.domain.Payment;
 import com.gateway.payments.domain.PaymentEvent;
 import com.gateway.payments.domain.PaymentStatus;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -25,6 +27,8 @@ public class PaymentRepositoryImpl implements PaymentRepository {
 
   private final PaymentJpaRepository jpa;
   private final PaymentEventJpaRepository eventsJpa;
+
+  @PersistenceContext private EntityManager em;
 
   public PaymentRepositoryImpl(PaymentJpaRepository jpa, PaymentEventJpaRepository eventsJpa) {
     this.jpa = jpa;
@@ -66,7 +70,10 @@ public class PaymentRepositoryImpl implements PaymentRepository {
       e.version = newVersion;
       e.createdAt = p.createdAt();
       e.updatedAt = p.updatedAt();
-      jpa.save(e);
+      // persist, not jpa.save: the id is already assigned (a ULID), so save() would go through
+      // Hibernate's merge path (a SELECT to check whether the row exists, then an INSERT) — an
+      // unnecessary round trip for a row we know is brand new. persist() inserts directly.
+      em.persist(e);
     } else {
       int updated =
           jpa.updateIfVersionMatches(
@@ -86,7 +93,9 @@ public class PaymentRepositoryImpl implements PaymentRepository {
     }
 
     for (PaymentEvent event : newEvents) {
-      eventsJpa.save(toEventEntity(event));
+      // Same reasoning as the payment row above: every event is a brand-new row with an assigned
+      // id, so persist() (direct INSERT) instead of save() (SELECT-then-INSERT/UPDATE merge).
+      em.persist(toEventEntity(event));
     }
     return p;
   }
@@ -112,9 +121,9 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   }
 
   @Override
-  public List<Payment> findByStatusIn(Set<PaymentStatus> statuses, Instant createdAfter) {
+  public List<Payment> findByStatusIn(Set<PaymentStatus> statuses, Instant createdAfter, int limit) {
     Set<String> names = statuses.stream().map(Enum::name).collect(Collectors.toSet());
-    return jpa.findByStatusInAndCreatedAtAfter(names, createdAfter).stream().map(PaymentRepositoryImpl::toDomain).toList();
+    return jpa.findByStatusInAndCreatedAtAfter(names, createdAfter, Limit.of(limit)).stream().map(PaymentRepositoryImpl::toDomain).toList();
   }
 
   @Override

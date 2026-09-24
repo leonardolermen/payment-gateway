@@ -65,6 +65,16 @@ class JobsAndOutboxClaimIntegrationTest {
   }
 
   @Test
+  void enqueueReturnsWhetherItInsertedTheRow() {
+    Job reconcile = Job.reconcile(clock);
+    Boolean first = tx().execute(status -> jobs.enqueue(reconcile));
+    Boolean second = tx().execute(status -> jobs.enqueue(Job.reconcile(clock))); // same (type, ref_id="all"): conflicts
+
+    assertThat(first).isTrue();
+    assertThat(second).isFalse();
+  }
+
+  @Test
   void twoConcurrentClaimsGetDisjointSets() throws InterruptedException {
     for (int i = 0; i < 20; i++) {
       Job j = Job.processWebhook(Ulid.next(), clock);

@@ -27,7 +27,8 @@ public interface PaymentRepository {
 
   List<Payment> findPendingOlderThan(Instant expiresBefore, int limit);
 
-  List<Payment> findByStatusIn(Set<PaymentStatus> statuses, Instant createdAfter);
+  /** Ordered by {@code created_at} ascending, capped at {@code limit}. */
+  List<Payment> findByStatusIn(Set<PaymentStatus> statuses, Instant createdAfter, int limit);
 
   List<PaymentEvent> events(String paymentId);
 }
