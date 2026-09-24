@@ -1,5 +1,6 @@
 package com.gateway.app;
 
+import com.gateway.app.providers.ProviderWiring;
 import com.gateway.merchants.MerchantsConfiguration;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -16,7 +17,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  */
 @SpringBootApplication
 @EnableScheduling
-@Import(MerchantsConfiguration.class)
+@Import({MerchantsConfiguration.class, ProviderWiring.class})
 public class GatewayApplication {
   public static void main(String[] args) {
     SpringApplication.run(GatewayApplication.class, args);

@@ -35,6 +35,27 @@ gateway:
   api-key-pepper: ${GATEWAY_API_KEY_PEPPER:}
   rate-limit:
     requests-per-minute: 600
+  providers:
+    itau:
+      live-api-base: https://pix-pj.api.itau.com/regulatorio-pix/v2
+      live-token-url: https://sts.itau.com.br/as/token.oauth2
+      test-api-base: https://sandbox.devportal.itau.com.br/itau-ep9-api-regulatorio-pix-v2-externo/v2
+      test-token-url: https://sandbox.devportal.itau.com.br/api/oauth/jwt
+      test-mutual-tls: false
+      live-mutual-tls: true
+      trust-store-pem: ${ITAU_CA_PEM:}         # Itau CA chain (ca-cert.zip from the portal); empty = JDK truststore
+      read-timeout: PT10S
+  payments:
+    default-expires-in-seconds: 3600
+    expiration-grace: PT5M
+    reconciliation-lookback: PT48H
+    reconciliation-min-age: PT10M
+    idempotency-ttl: PT24H
+    job-max-attempts: 8
+    job-lease: PT2M
+    outbox-lease: PT1M
+    outbox-relay-ms: 1000
+    jobs-poll-ms: 2000
 
 management:
   endpoints:

@@ -27,8 +27,16 @@ public class MerchantEvents {
   }
 
   public IntakeResult emit(MerchantId merchantId, String eventType, String aggregateId, String partitionKey, Object payload) {
-    String json = mapper.writeValueAsString(payload);
+    return emitRaw(merchantId, eventType, aggregateId, partitionKey, mapper.writeValueAsString(payload));
+  }
+
+  /**
+   * For payloads that are already JSON: the payments outbox stores the exact public body its module
+   * chose for merchants. Passed through untouched, because a round-trip through a {@code Map} and
+   * this app's mapper (global SNAKE_CASE) could rename keys the payments module already wrote.
+   */
+  public IntakeResult emitRaw(MerchantId merchantId, String eventType, String aggregateId, String partitionKey, String rawJson) {
     return intake.accept(new DeliveryRequest(
-        merchantId.value(), eventType, UUID.randomUUID(), aggregateId, partitionKey, json, MDC.get("correlationId")));
+        merchantId.value(), eventType, UUID.randomUUID(), aggregateId, partitionKey, rawJson, MDC.get("correlationId")));
   }
 }
