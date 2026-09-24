@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.0.7</version>
+        <relativePath/>
+    </parent>
+    <groupId>com.gateway</groupId>
+    <artifactId>payment-gateway-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>payment-gateway</name>
+
+    <modules>
+        <module>gateway-kernel</module>
+        <module>gateway-merchants</module>
+        <module>gateway-app</module>
+    </modules>
+
+    <properties>
+        <java.version>25</java.version>
+        <archunit.version>1.5.0</archunit.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
+        <webhook-delivery.version>0.1.1</webhook-delivery.version>
+        <ulid-creator.version>5.2.3</ulid-creator.version>
+        <bucket4j.version>8.14.0</bucket4j.version>
+        <logstash-encoder.version>8.1</logstash-encoder.version>
+    </properties>
+
+    <repositories>
+        <!-- GitHub Packages requires a token even to read; local builds resolve from ~/.m2, CI uses a PAT secret. -->
+        <repository>
+            <id>github-webhook-delivery</id>
+            <url>https://maven.pkg.github.com/leonardolermen/webhook-delivery</url>
+        </repository>
+    </repositories>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency><groupId>com.gateway</groupId><artifactId>gateway-kernel</artifactId><version>${project.version}</version></dependency>
+            <dependency><groupId>com.gateway</groupId><artifactId>gateway-merchants</artifactId><version>${project.version}</version></dependency>
+            <dependency><groupId>com.barrier</groupId><artifactId>webhook-delivery</artifactId><version>${webhook-delivery.version}</version></dependency>
+            <dependency><groupId>com.github.f4b6a3</groupId><artifactId>ulid-creator</artifactId><version>${ulid-creator.version}</version></dependency>
+            <dependency><groupId>com.bucket4j</groupId><artifactId>bucket4j_jdk17-core</artifactId><version>${bucket4j.version}</version></dependency>
+            <dependency><groupId>net.logstash.logback</groupId><artifactId>logstash-logback-encoder</artifactId><version>${logstash-encoder.version}</version></dependency>
+            <dependency><groupId>com.tngtech.archunit</groupId><artifactId>archunit-junit5</artifactId><version>${archunit.version}</version><scope>test</scope></dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
+        <dependency><groupId>org.assertj</groupId><artifactId>assertj-core</artifactId><scope>test</scope></dependency>
+    </dependencies>
+</project>
