@@ -1,0 +1,162 @@
+package com.gateway.payments.repository;
+
+import static org.assertj.core.api.Assertions.*;
+
+import com.gateway.kernel.ids.MerchantId;
+import com.gateway.kernel.money.Money;
+import com.gateway.kernel.provider.ProviderEnvironment;
+import com.gateway.payments.TestApp;
+import com.gateway.payments.domain.EventSource;
+import com.gateway.payments.domain.Payment;
+import com.gateway.payments.domain.PaymentEvent;
+import com.gateway.payments.domain.PaymentStatus;
+import com.gateway.payments.domain.PixDetails;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Set;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+@SpringBootTest(classes = TestApp.class)
+@Testcontainers
+class PaymentRepositoryIntegrationTest {
+
+  @Container @ServiceConnection
+  static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17-alpine");
+
+  @Autowired PaymentRepository repository;
+  @Autowired JdbcTemplate jdbc;
+  @Autowired PlatformTransactionManager txManager;
+
+  final Clock clock = Clock.fixed(Instant.parse("2026-09-24T12:00:00Z"), ZoneOffset.UTC);
+  TransactionTemplate tx;
+
+  TransactionTemplate tx() {
+    if (tx == null) {
+      tx = new TransactionTemplate(txManager);
+    }
+    return tx;
+  }
+
+  Payment fresh() {
+    return Payment.create(MerchantId.next(), ProviderEnvironment.TEST, "ITAU", Money.brl(15990), "order-8812", "Order 8812", null, 3600, clock);
+  }
+
+  /** Persists a freshly-created payment (its own "created" event) inside a short transaction. */
+  void persistNew(Payment p) {
+    tx().executeWithoutResult(status -> repository.save(p, List.of(p.createdEvent())));
+  }
+
+  @Test
+  void savingANewPaymentWritesThePaymentsRowAndTheCreatedEvent() {
+    Payment p = fresh();
+    persistNew(p);
+
+    Long paymentRows = jdbc.queryForObject("SELECT count(*) FROM payments.payments WHERE id = ?", Long.class, p.id());
+    assertThat(paymentRows).isEqualTo(1);
+    Long eventRows = jdbc.queryForObject("SELECT count(*) FROM payments.payment_events WHERE payment_id = ?", Long.class, p.id());
+    assertThat(eventRows).isEqualTo(1);
+  }
+
+  @Test
+  void findByIdRehydratesPixVersionAndStatus() {
+    Payment p = fresh();
+    PaymentEvent pendingEvent =
+        p.markPending(new PixDetails(p.id(), "000201...copia-e-cola", "pix.example.com/loc", null), Instant.parse("2026-09-24T13:00:00Z"));
+    tx().executeWithoutResult(status -> repository.save(p, List.of(p.createdEvent(), pendingEvent)));
+
+    Payment loaded = repository.findById(p.id()).orElseThrow();
+    assertThat(loaded.status()).isEqualTo(PaymentStatus.PENDING);
+    assertThat(loaded.version()).isEqualTo(2);
+    assertThat(loaded.pix().pixCopiaECola()).isEqualTo("000201...copia-e-cola");
+    assertThat(loaded.pix().location()).isEqualTo("pix.example.com/loc");
+    assertThat(loaded.amount()).isEqualTo(Money.brl(15990));
+    assertThat(loaded.merchantId()).isEqualTo(p.merchantId());
+  }
+
+  @Test
+  void findByMerchantAndIdOnlyMatchesTheOwningMerchant() {
+    Payment p = fresh();
+    persistNew(p);
+    assertThat(repository.findByMerchantAndId(p.merchantId(), p.id())).isPresent();
+    assertThat(repository.findByMerchantAndId(MerchantId.next(), p.id())).isEmpty();
+  }
+
+  @Test
+  void aStaleSecondSaveThrowsOptimisticLockingFailure() {
+    Payment p = fresh();
+    persistNew(p);
+
+    // Two independent copies of the same persisted payment, as two callers loading concurrently would.
+    Payment copy1 = repository.findById(p.id()).orElseThrow();
+    Payment copy2 = repository.findById(p.id()).orElseThrow();
+
+    PaymentEvent e1 = copy1.markPending(new PixDetails(p.id(), "a", "b", null), Instant.now());
+    PaymentEvent e2 = copy2.markPending(new PixDetails(p.id(), "c", "d", null), Instant.now());
+
+    tx().executeWithoutResult(status -> repository.save(copy1, List.of(e1)));
+
+    assertThatThrownBy(() -> tx().executeWithoutResult(status -> repository.save(copy2, List.of(e2))))
+        .isInstanceOf(OptimisticLockingFailureException.class)
+        .isInstanceOf(ObjectOptimisticLockingFailureException.class);
+  }
+
+  /** Persists a payment that has already transitioned once, past its own creation: both events go in the same insert. */
+  void persistWithOneTransition(Payment p, PaymentEvent transitionEvent) {
+    tx().executeWithoutResult(status -> repository.save(p, List.of(p.createdEvent(), transitionEvent)));
+  }
+
+  @Test
+  void findPendingOlderThanReturnsOnlyPendingBeforeTheCutoff() {
+    Payment expiredPending = fresh();
+    PaymentEvent e1 = expiredPending.markPending(new PixDetails(expiredPending.id(), "a", "b", null), Instant.parse("2026-09-24T12:30:00Z"));
+    persistWithOneTransition(expiredPending, e1);
+
+    Payment stillFreshPending = fresh();
+    PaymentEvent e2 = stillFreshPending.markPending(new PixDetails(stillFreshPending.id(), "a", "b", null), Instant.parse("2026-09-25T12:30:00Z"));
+    persistWithOneTransition(stillFreshPending, e2);
+
+    Payment created = fresh(); // status CREATED, not PENDING — must not match
+    persistNew(created);
+
+    // Other tests in this class share the same Testcontainers database (no per-test rollback), so
+    // assert on membership rather than an exact list: only that this test's own PENDING-and-overdue
+    // payment is included and its own not-yet-due / not-PENDING siblings are excluded.
+    List<Payment> due = repository.findPendingOlderThan(Instant.parse("2026-09-24T18:00:00Z"), 100);
+    assertThat(due).extracting(Payment::id).contains(expiredPending.id()).doesNotContain(stillFreshPending.id(), created.id());
+    assertThat(due).allSatisfy(p -> assertThat(p.status()).isEqualTo(PaymentStatus.PENDING));
+  }
+
+  @Test
+  void findByStatusInFiltersByStatusAndCreationTime() {
+    Payment p = fresh();
+    persistNew(p);
+    assertThat(repository.findByStatusIn(Set.of(PaymentStatus.CREATED), Instant.parse("2026-09-24T11:00:00Z"))).extracting(Payment::id).contains(p.id());
+    assertThat(repository.findByStatusIn(Set.of(PaymentStatus.COMPLETED), Instant.parse("2026-09-24T11:00:00Z"))).isEmpty();
+    assertThat(repository.findByStatusIn(Set.of(PaymentStatus.CREATED), Instant.parse("2026-09-24T13:00:00Z"))).isEmpty();
+  }
+
+  @Test
+  void eventsComeBackInSequenceOrder() {
+    Payment p = fresh();
+    PaymentEvent pending = p.markPending(new PixDetails(p.id(), "a", "b", null), Instant.now());
+    PaymentEvent completed = p.markCompleted("E1", Money.brl(15990), Instant.now(), EventSource.PROVIDER_WEBHOOK);
+    tx().executeWithoutResult(status -> repository.save(p, List.of(p.createdEvent(), pending, completed)));
+
+    List<PaymentEvent> events = repository.events(p.id());
+    assertThat(events).extracting(PaymentEvent::sequence).containsExactly(1L, 2L, 3L);
+    assertThat(events).extracting(PaymentEvent::type).containsExactly("created", "pending", "completed");
+  }
+}
