@@ -4,120 +4,23 @@ One deployable, four business modules, one library. The boundary between modules
 
 ## Modules and who may import whom
 
-```mermaid
-flowchart TB
-  subgraph app["gateway-app — the only deployable"]
-    REST["REST API<br/>/v1/payments, /v1/webhooks, /v1/admin, /v1/me"]
-    SEC["security<br/>PathSanityFilter · AdminKeyFilter · ApiKeyAuthFilter · RateLimitFilter"]
-    MTLS["mTLS connector :8443<br/>/v1/providers/itau/webhooks/{token}/pix"]
-    RELAY["OutboxRelay + JobScheduler<br/>(@Scheduled)"]
-    WIRING["ProviderWiring<br/>CredentialLookup adapter · Clock"]
-  end
+![Modules and import rules](diagrams/modules.png)
 
-  subgraph payments["gateway-payments (schema: payments)"]
-    PS["PaymentService · RefundService<br/>IdempotencyService · ProviderGateway"]
-    WI["WebhookInboxService<br/>ExpirationService · ReconciliationService · RefundPollingService"]
-    JR["JobRunner"]
-    PD["domain: Payment (state table) · PaymentEvent · Refund · IdempotencyKey"]
-    PR["repositories: payments · payment_events · refunds · idempotency_keys<br/>outbox · jobs · webhook_inbox · provider_requests · reconciliation_divergences"]
-  end
-
-  subgraph merchants["gateway-merchants (schema: merchants)"]
-    MS["MerchantService · ApiKeyService · ProviderCredentialService"]
-    ENV["EnvelopeCipher (AES-256-GCM, DEK per row, master key)"]
-    MR["repositories: merchants · api_keys · provider_credentials"]
-  end
-
-  subgraph providers["gateway-providers"]
-    IP["ItauPixProvider"]
-    PAC["PixApiClient (Bacen/Itaú v2 contract)"]
-    TOK["ItauTokenClient (OAuth2 client credentials; mTLS in LIVE, plain in sandbox)"]
-  end
-
-  subgraph kernel["gateway-kernel — imports nothing"]
-    K1["Money · Ulid · MerchantId · Secret · DomainException"]
-    K2["provider contracts: PixProvider · CredentialLookup · Charge · RefundResult · ProviderException"]
-  end
-
-  WD[["com.barrier:webhook-delivery<br/>(signed outbound webhooks, retry, ordering)"]]
-  PG[("PostgreSQL<br/>one schema per module + webhook_delivery")]
-  ITAU(["Itaú Pix API<br/>sandbox / production"])
-
-  app --> payments
-  app --> merchants
-  app --> providers
-  app --> WD
-  payments --> kernel
-  merchants --> kernel
-  providers --> kernel
-  payments -. "only the interfaces<br/>PixProvider · CredentialLookup" .-> K2
-  PAC --> ITAU
-  TOK --> ITAU
-  PR --> PG
-  MR --> PG
-  WD --> PG
-```
+<sub>Source: [`diagrams/modules.mmd`](diagrams/modules.mmd) — regenerate with `npx -y @mermaid-js/mermaid-cli -i docs/diagrams/modules.mmd -o docs/diagrams/modules.png -b white -s 2`.</sub>
 
 Rules the test enforces: `kernel` imports nothing; nobody imports `app`; `merchants`, `payments` (and later `orders`) do not import each other; only `app` imports `providers`; `payments` sees the bank only through `PixProvider`; Itaú vocabulary (`cob`, `txid`, `devolucao`) never leaves `gateway-providers`.
 
 ## Creating a Pix charge
 
-```mermaid
-sequenceDiagram
-  autonumber
-  participant M as Merchant
-  participant API as app: PaymentsController + IdempotencyFilter
-  participant PS as payments: PaymentService
-  participant DB as PostgreSQL (payments)
-  participant PG as ProviderGateway
-  participant IT as providers: ItauPixProvider
-  participant BANK as Itaú
+![Creating a Pix charge](diagrams/create-charge.png)
 
-  M->>API: POST /v1/payments {amount, reference} + Idempotency-Key
-  API->>DB: INSERT idempotency_keys (IN_PROGRESS) ON CONFLICT DO NOTHING
-  alt key already DONE with same body hash
-    API-->>M: replay of the stored 201 (Idempotent-Replayed: true)
-  else key IN_PROGRESS / different hash
-    API-->>M: 409 IN_PROGRESS / 422 IDEMPOTENCY_KEY_REUSED
-  end
-  API->>PS: createCharge(merchant, env, amount, …)
-  PS->>PG: resolve(merchant, env, ITAU) — credentials decrypted for this call only
-  PS->>DB: tx: Payment CREATED (id = txid) + event 'created'
-  PS->>IT: createCharge(credentials, txid, amount)  (outside any transaction)
-  IT->>BANK: PUT /cob/{txid}  (Bearer token, x-itau-apikey)
-  alt 201
-    BANK-->>IT: ATIVA + pixCopiaECola
-  else timeout / unavailable
-    IT->>BANK: GET /cob/{txid} — did the PUT land?
-    BANK-->>IT: found (adopt) / not found (FAILED, best-effort cancel)
-  end
-  PS->>DB: tx: PENDING + event + outbox 'payment.pending' + job EXPIRE_PAYMENT
-  API->>DB: idempotency key DONE with the response body
-  API-->>M: 201 {id, status: PENDING, pix.copia_e_cola, expires_at}
-  Note over DB,M: OutboxRelay → MerchantEvents → webhook-delivery → signed POST to the merchant
-```
+<sub>Source: [`diagrams/create-charge.mmd`](diagrams/create-charge.mmd) — regenerate with `npx -y @mermaid-js/mermaid-cli -i docs/diagrams/create-charge.mmd -o docs/diagrams/create-charge.png -b white -s 2`.</sub>
 
 ## Getting paid
 
-```mermaid
-sequenceDiagram
-  autonumber
-  participant BANK as Itaú
-  participant MT as app: mTLS connector + ItauWebhookController
-  participant IN as payments: WebhookInboxService
-  participant DB as PostgreSQL
-  participant JR as JobRunner
-  participant M as Merchant
+![Getting paid](diagrams/getting-paid.png)
 
-  BANK->>MT: POST /v1/providers/itau/webhooks/{token}/pix (client certificate from Itaú's CA)
-  MT->>IN: accept(raw headers + body)
-  IN->>DB: tx: webhook_inbox RECEIVED + job PROCESS_WEBHOOK
-  MT-->>BANK: 202 (well inside the bank's 5 s)
-  JR->>IN: process(inboxId)
-  IN->>DB: per Pix, in its own tx: payment PENDING|EXPIRED → COMPLETED (source PROVIDER_WEBHOOK), event, outbox 'payment.completed'
-  Note over IN,DB: duplicate e2eid → 'ignored' event · paid while FAILED/CANCELED → reconciliation divergence, nothing sent
-  DB-->>M: (relay) payment.completed, ordered after payment.pending by partition key
-```
+<sub>Source: [`diagrams/getting-paid.mmd`](diagrams/getting-paid.mmd) — regenerate with `npx -y @mermaid-js/mermaid-cli -i docs/diagrams/getting-paid.mmd -o docs/diagrams/getting-paid.png -b white -s 2`.</sub>
 
 Backstops that do not depend on the webhook:
 
@@ -127,20 +30,9 @@ Backstops that do not depend on the webhook:
 
 ## Payment states
 
-```mermaid
-stateDiagram-v2
-  [*] --> CREATED: POST /v1/payments
-  CREATED --> PENDING: bank accepted (API) / adopted by sweeper (SYSTEM)
-  CREATED --> FAILED: bank refused, or timeout and charge not found
-  PENDING --> COMPLETED: webhook or reconciliation
-  PENDING --> EXPIRED: expiration job (after asking the bank)
-  PENDING --> CANCELED: POST /cancel
-  EXPIRED --> COMPLETED: late settlement — the bank wins
-  COMPLETED --> COMPLETED: refunds are a projection (refunded_amount), not a transition
-  COMPLETED --> [*]
-  CANCELED --> [*]
-  FAILED --> [*]
-```
+![Payment states](diagrams/payment-states.png)
+
+<sub>Source: [`diagrams/payment-states.mmd`](diagrams/payment-states.mmd) — regenerate with `npx -y @mermaid-js/mermaid-cli -i docs/diagrams/payment-states.mmd -o docs/diagrams/payment-states.png -b white -s 2`.</sub>
 
 Every transition is a row in `PaymentTransitions` with the sources allowed to trigger it; a test walks the whole cross product. Every change appends a `payment_events` row whose `sequence` is the aggregate's version (optimistic lock) — the current state is reconstructible from the log.
 
