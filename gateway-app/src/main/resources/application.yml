@@ -35,6 +35,14 @@ gateway:
   api-key-pepper: ${GATEWAY_API_KEY_PEPPER:}
   rate-limit:
     requests-per-minute: 600
+  webhooks:
+    mtls:
+      port: ${WEBHOOK_MTLS_PORT:8443}                 # 0 = no inbound bank webhook connector
+      keystore: ${WEBHOOK_MTLS_KEYSTORE:}            # PKCS12 with the server certificate for the public webhook host
+      keystore-password: ${WEBHOOK_MTLS_KEYSTORE_PASSWORD:}
+      truststore: ${WEBHOOK_MTLS_TRUSTSTORE:}        # PKCS12 with Itau's CA (ca-cert.zip from the portal)
+      truststore-password: ${WEBHOOK_MTLS_TRUSTSTORE_PASSWORD:}
+      public-host: ${WEBHOOK_MTLS_PUBLIC_HOST:localhost}  # host in the inbound_webhook_url the admin API shows
   providers:
     itau:
       live-api-base: https://pix-pj.api.itau.com/regulatorio-pix/v2
