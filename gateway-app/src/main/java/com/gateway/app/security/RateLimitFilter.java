@@ -33,8 +33,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
   @Override
   protected boolean shouldNotFilter(HttpServletRequest req) {
-    String p = req.getRequestURI();
-    return !p.startsWith("/v1/") || p.startsWith("/v1/admin/") || p.startsWith("/v1/providers/");
+    return !ProtectedRoutes.requiresApiKey(req.getRequestURI());
   }
 
   @Override
