@@ -4,7 +4,11 @@ import com.gateway.app.webhooks.MerchantEvents;
 import com.gateway.payments.domain.OutboxMessage;
 import com.gateway.payments.repository.OutboxRepository;
 import com.gateway.payments.service.PaymentsProperties;
+import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -44,20 +48,36 @@ public class OutboxRelay {
   public void relay() {
     List<OutboxMessage> claimed = tx.execute(s -> outbox.claimPending(BATCH, props.outboxLease()));
     if (claimed == null) return;
+    // Delivery is ordered per partition key (a payment's events). Once message N of a key fails,
+    // emitting N+1 in the same batch would deliver it ahead of N's retry: every later message of
+    // that key is released unsent, and the whole key retries together, in order, next tick.
+    Set<String> failedKeys = new HashSet<>();
     for (OutboxMessage m : claimed) {
+      if (failedKeys.contains(m.partitionKey())) {
+        release(m);
+        continue;
+      }
       try {
-        events.emitRaw(m.merchantId(), m.eventType(), m.aggregateId(), m.partitionKey(), m.payload());
+        events.emitRaw(m.merchantId(), m.eventType(), m.aggregateId(), m.partitionKey(), m.payload(), eventId(m));
         outbox.markSent(m.id());
       } catch (RuntimeException e) {
-        // Released, not left claimed: waiting out the lease would delay this payment's later events
-        // too, since delivery is ordered per partition key.
+        // Released, not left claimed: waiting out the lease would delay this payment's later events too.
         log.warn("outbox message {} ({}) not relayed; released for retry", m.id(), m.eventType(), e);
-        try {
-          outbox.release(m.id());
-        } catch (RuntimeException again) {
-          log.warn("could not release outbox message {}; its lease will expire instead", m.id(), again);
-        }
+        failedKeys.add(m.partitionKey());
+        release(m);
       }
+    }
+  }
+
+  static UUID eventId(OutboxMessage m) {
+    return UUID.nameUUIDFromBytes(m.id().getBytes(StandardCharsets.UTF_8));
+  }
+
+  private void release(OutboxMessage m) {
+    try {
+      outbox.release(m.id());
+    } catch (RuntimeException again) {
+      log.warn("could not release outbox message {}; its lease will expire instead", m.id(), again);
     }
   }
 }

@@ -34,11 +34,14 @@ public class JobScheduler {
     this.clock = clock;
   }
 
+  /** Batches per tick: 20 x 20 jobs. A backlog beyond that waits one poll interval instead of pinning this thread. */
+  private static final int MAX_BATCHES_PER_TICK = 20;
+
   /** Drains due jobs in batches: {@code runDue} returns how many it claimed, 0 means caught up. */
   @Scheduled(fixedDelayString = "${gateway.payments.jobs-poll-ms:2000}")
   public void runDueJobs() {
-    while (jobs.runDue(clock.instant()) > 0) {
-      // keep draining; each batch is its own short claim transaction
+    for (int i = 0; i < MAX_BATCHES_PER_TICK && jobs.runDue(clock.instant()) > 0; i++) {
+      // each batch is its own short claim transaction
     }
   }
 

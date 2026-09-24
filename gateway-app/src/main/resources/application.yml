@@ -56,6 +56,7 @@ gateway:
     outbox-lease: PT1M
     outbox-relay-ms: 1000
     jobs-poll-ms: 2000
+    stuck-sweep-ms: 60000
 
 management:
   endpoints:

@@ -44,8 +44,8 @@ public class IdempotencyFilter extends OncePerRequestFilter {
   public static final String RESOURCE_ID_HEADER = "X-Resource-Id";
   static final String KEY_HEADER = "Idempotency-Key";
   static final String REPLAYED_HEADER = "Idempotent-Replayed";
-  /** idempotency_keys.key is VARCHAR(128); a longer key would fail at the insert as a 500. */
-  private static final int MAX_KEY_LENGTH = 128;
+  /** idempotency_keys.key is VARCHAR(128) and holds "LIVE:" + the client's key; longer would fail at the insert as a 500. */
+  private static final int MAX_KEY_LENGTH = 123;
 
   private static final Pattern PAYMENT_ACTION = Pattern.compile("^/v1/payments/[^/]+/(cancel|refunds)$");
 
@@ -73,13 +73,20 @@ public class IdempotencyFilter extends OncePerRequestFilter {
     }
     byte[] body = req.getInputStream().readAllBytes();
     String path = RequestPath.of(req).normalized();
-    String hash = IdempotencyKey.hashOf(req.getMethod() + " " + path + "\n" + new String(body, StandardCharsets.UTF_8));
 
-    Outcome outcome = idempotency.begin(MerchantContext.current().merchantId(), key, hash);
+    // Scoped by environment too: the key row's PK is (merchant, key), and a LIVE request repeating a
+    // TEST request's key and body would otherwise replay the TEST payment as if it were live. The
+    // prefix separates the rows; the environment in the hash makes a mix-up a Mismatch, never a replay.
+    MerchantContext.Current who = MerchantContext.current();
+    String scopedKey = who.environment().name() + ":" + key;
+    String hash = IdempotencyKey.hashOf(
+        who.environment().name() + " " + req.getMethod() + " " + path + "\n" + new String(body, StandardCharsets.UTF_8));
+    Outcome outcome = idempotency.begin(who.merchantId(), scopedKey, hash);
     switch (outcome) {
       case Outcome.Replayed(IdempotencyService.Replay r) -> replay(res, r);
       case Outcome.InProgress() ->
-          Problems.write(res, 409, "IN_PROGRESS", "a request with this Idempotency-Key is still being processed");
+          Problems.write(res, 409, "IN_PROGRESS", "a request with this Idempotency-Key is still being processed, or failed with a server error and is held"
+                  + " until the key expires; GET or list the resource to check its state, and retry with a new Idempotency-Key");
       case Outcome.Mismatch() ->
           Problems.write(res, 422, "IDEMPOTENCY_KEY_REUSED", "this Idempotency-Key was already used with a different request");
       case Outcome.Proceed(IdempotencyKey k) -> proceed(new CachedBodyRequest(req, body), res, chain, k);

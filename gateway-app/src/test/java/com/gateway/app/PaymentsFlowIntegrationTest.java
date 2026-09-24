@@ -198,7 +198,7 @@ class PaymentsFlowIntegrationTest {
     Awaitility.await().atMost(Duration.ofSeconds(15)).until(() -> received.stream().anyMatch(r -> "payment.pending".equals(r.type())));
     Received pending = received.stream().filter(r -> "payment.pending".equals(r.type())).findFirst().orElseThrow();
     assertThat(pending.signature()).isNotBlank();
-    assertThat(pending.body()).contains(paymentId);
+    assertThat(pending.body()).contains(paymentId).contains("\"status\":\"PENDING\"").contains("\"method\":\"PIX\"");
 
     // 6. The bank says it was paid (HTTP + mTLS intake is Task 9; here the inbox is called directly).
     String webhook = fixture("webhook_pix.json")
@@ -217,6 +217,8 @@ class PaymentsFlowIntegrationTest {
     Awaitility.await().atMost(Duration.ofSeconds(15)).until(() -> received.stream().anyMatch(r -> "payment.completed".equals(r.type())));
     List<String> order = received.stream().map(Received::type).filter(t -> t.startsWith("payment.")).toList();
     assertThat(order.indexOf("payment.pending")).isLessThan(order.indexOf("payment.completed"));
+    assertThat(received.stream().filter(r -> "payment.completed".equals(r.type())).findFirst().orElseThrow().body())
+        .contains("\"status\":\"COMPLETED\"");
 
     List<Map<String, Object>> events = http().get().uri("/v1/payments/" + paymentId + "/events").header("Authorization", "Bearer " + testKey)
         .exchange().expectStatus().isOk().expectBody(List.class).returnResult().getResponseBody();
@@ -256,5 +258,13 @@ class PaymentsFlowIntegrationTest {
     assertThat(live.getResponseBody()).containsEntry("type", "urn:gateway:PROVIDER_CREDENTIALS_MISSING");
     assertThat(ITAU.findAll(putRequestedFor(urlMatching("/cob/.*")))).hasSize(putsBefore);
     assertThat(ITAU.findAll(postRequestedFor(urlEqualTo("/api/oauth/jwt")))).hasSize(tokensBefore);
+
+    // 10. Keys are scoped by environment: the LIVE key reusing the TEST request's key and body is a
+    // fresh LIVE request (no LIVE credential -> 422), never a replay of the TEST payment.
+    EntityExchangeResult<Map> liveSameKey = postPayment(liveKey, "k1", request);
+    assertThat(liveSameKey.getStatus().value()).isEqualTo(422);
+    assertThat(liveSameKey.getResponseHeaders().getFirst("Idempotent-Replayed")).isNull();
+    assertThat(liveSameKey.getResponseBody()).containsEntry("type", "urn:gateway:PROVIDER_CREDENTIALS_MISSING");
+    assertThat(ITAU.findAll(putRequestedFor(urlMatching("/cob/.*")))).hasSize(putsBefore);
   }
 }
