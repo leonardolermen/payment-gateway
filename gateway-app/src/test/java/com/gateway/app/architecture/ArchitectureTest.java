@@ -14,7 +14,10 @@ public class ArchitectureTest {
 
   @ArchTest
   static void importSeesTheModules(JavaClasses classes) {
-    assertThat(classes.size()).as("ArchUnit imported too few classes; the rules would pass vacuously").isGreaterThan(30);
+    // 169 main classes as of Plan B (`find gateway-*/src/main -name '*.java' | wc -l`); the guard sits
+    // at roughly half that so a module accidentally dropped from the scan still trips it well before
+    // the count could coincidentally clear the old `> 30`, which every module alone already cleared.
+    assertThat(classes.size()).as("ArchUnit imported too few classes; the rules would pass vacuously").isGreaterThan(60);
   }
 
   @ArchTest
