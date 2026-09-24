@@ -38,6 +38,20 @@ public class ArchitectureTest {
           .should().dependOnClassesThat().resideInAPackage("com.gateway.providers..");
 
   @ArchTest
+  static final ArchRule paymentsDoesNotImportProviders =
+      noClasses().that().resideInAPackage("com.gateway.payments..").should().dependOnClassesThat().resideInAPackage("com.gateway.providers..");
+
+  @ArchTest
+  static final ArchRule providersOnlyKnowsKernel =
+      noClasses().that().resideInAPackage("com.gateway.providers..")
+          .should().dependOnClassesThat().resideInAnyPackage("com.gateway.merchants..", "com.gateway.payments..", "com.gateway.orders..", "com.gateway.app..");
+
+  @ArchTest
+  static final ArchRule itauVocabularyStaysInProviders =
+      noClasses().that().resideOutsideOfPackage("com.gateway.providers..")
+          .should().haveSimpleNameContaining("Itau");
+
+  @ArchTest
   static final ArchRule jpaEntitiesArePackagePrivate =
       classes().that().areAnnotatedWith(jakarta.persistence.Entity.class).should().bePackagePrivate();
 

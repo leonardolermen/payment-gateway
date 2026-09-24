@@ -1,0 +1,81 @@
+{
+  "parametros": {
+    "inicio": "2020-04-01T00:00:00Z",
+    "fim": "2020-04-02T10:00:00Z",
+    "paginacao": {
+      "paginaAtual": 0,
+      "itensPorPagina": 100,
+      "quantidadeDePaginas": 1,
+      "quantidadeTotalDeItens": 2
+    }
+  },
+  "cobs": [
+    {
+      "status": "ATIVA",
+      "calendario": {
+        "criacao": "2020-01-01T00:00:00Z",
+        "expiracao": 3600
+      },
+      "location": "pix.example.com/qr/9d36b84f-c70b-478f-b95c-12729b90ca25",
+      "txid": "7978c0c97ea847e78e8849634473c1f1",
+      "revisao": 1,
+      "devedor": {
+        "cnpj": "12345678000195",
+        "cpf": "11111111111",
+        "nome": "Empresa de Serviços SA"
+      },
+      "valor": {
+        "original": "567.89"
+      },
+      "chave": "a1f4102e-a446-4a57-bcce-6fa48899c1d1",
+      "solicitacaoPagador": "Informar cartão fidelidade"
+    },
+    {
+      "status": "CONCLUIDA",
+      "calendario": {
+        "criacao": "2020-01-01T00:00:00Z",
+        "expiracao": 3600
+      },
+      "location": "pix.example.com/qr/1dd7f893-a58e-4172-8702-8dc33e21a403",
+      "txid": "7978c0c97ea847e78e8849634473c1f1",
+      "revisao": 1,
+      "devedor": {
+        "cnpj": "12345678000195",
+        "cpf": "11111111111",
+        "nome": "Empresa de Serviços SA"
+      },
+      "valor": {
+        "original": "100.00"
+      },
+      "chave": "40a0932d-1918-4eee-845d-35a2da1690dc",
+      "solicitacaoPagador": "Informar cartão fidelidade",
+      "pix": [
+        {
+          "chave": "40a0932d-1918-4eee-845d-35a2da1690dc",
+          "endToEndId": "E12345678202009091221kkkkkkkkkkk",
+          "txid": "7978c0c97ea847e78e8849634473c1f1",
+          "valor": "110.00",
+          "horario": "2020-01-01T00:00:00Z",
+          "infoPagador": 123456789,
+          "devolucoes": [
+            {
+              "id": "123ABC",
+              "rtrId": "Dxxxxxxxx202009091221kkkkkkkkkkk",
+              "valor": "10.00",
+              "horario": {
+                "solicitacao": "2020-01-01T00:00:00Z"
+              },
+              "status": "EM_PROCESSAMENTO"
+            }
+          ]
+        }
+      ],
+      "infoAdicionais": [
+        {
+          "nome": "codigo_cliente",
+          "valor": "59ba145f-adf9-440c-af8e-fb16f0d9d07a"
+        }
+      ]
+    }
+  ]
+}

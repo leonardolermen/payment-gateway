@@ -1,0 +1,30 @@
+{
+  "pix": [
+    {
+      "endToEndId": "E12345678202009091221kkkkkkkkkkk",
+      "txid": "7978c0c97ea847e78e8849634473c1f1",
+      "chave": "40a0932d-1918-4eee-845d-35a2da1690dc",
+      "valor": "110.00",
+      "horario": "2020-01-01T00:00:00Z",
+      "infoPagador": "0123456789",
+      "componentesValor": {
+        "original": {
+          "valor": "110.00"
+        }
+      },
+      "devolucoes": [
+        {
+          "id": "123ABC",
+          "rtrId": "Dxxxxxxxx202009091221kkkkkkkkkkk",
+          "valor": "10.00",
+          "natureza": "ORIGINAL",
+          "horario": {
+            "solicitacao": "2020-01-01T00:00:00Z",
+            "liquidacao": "2020-01-01T00:05:00Z"
+          },
+          "status": "DEVOLVIDO"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "calendario": {
+    "criacao": "2023-01-01T00:00:00Z",
+    "expiracao": 3600
+  },
+  "txid": "7978c0c97ea847e78e8849634473c1f1",
+  "revisao": 1,
+  "loc": {
+    "id": 789,
+    "location": "pix.example.com/pix/qr/v2/c8cff0b5-5b2f-4154-835f-14ede94a2afc",
+    "tipoCob": "cob",
+    "criacao": "2023-01-01T00:00:00Z"
+  },
+  "location": "pix.example.com/pix/qr/v2/c8cff0b5-5b2f-4154-835f-14ede94a2afc",
+  "status": "ATIVA",
+  "devedor": {
+    "cnpj": "12345678000195",
+    "nome": "PMD HOBISSOM EDERLAN EINS"
+  },
+  "valor": {
+    "original": "567.89",
+    "modalidadeAlteracao": 0
+  },
+  "chave": "a1f4102e-a446-4a57-bcce-6fa48899c1d1",
+  "pixCopiaECola": "00020101021226840014BR.GOV.BCB.PIX2562pix.example.com/pix/qr/v2/c8cff0b5-5b2f-4154-835f-14ede94a2afc5204000053039865802BR5925PMD HOBISSOM EDERLAN EINS6009SAO PAULO62070503***6304D56E",
+  "solicitacaoPagador": "Serviço realizado.",
+  "infoAdicionais": [
+    {
+      "nome": "Campo 1",
+      "valor": "Informação Adicional 1 do PSP-Recebedor"
+    },
+    {
+      "nome": "Campo 2",
+      "valor": "Informação Adicional 2 do PSP-Recebedor"
+    }
+  ]
+}
