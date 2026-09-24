@@ -6,6 +6,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.regex.Pattern;
 import org.slf4j.MDC;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -23,12 +24,15 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class CorrelationFilter extends OncePerRequestFilter {
   private static final String HEADER = "X-Correlation-Id";
   private static final String MDC_KEY = "correlationId";
+  private static final Pattern VALID = Pattern.compile("[A-Za-z0-9_-]{1,64}");
 
   @Override
   protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
       throws ServletException, IOException {
     String correlationId = req.getHeader(HEADER);
-    if (correlationId == null || correlationId.isBlank()) {
+    // Echoed in a response header and written to every log line: an unbounded or arbitrary value
+    // is log injection and header bloat on the caller's say-so.
+    if (correlationId == null || !VALID.matcher(correlationId).matches()) {
       correlationId = Ulid.next();
     }
     res.setHeader(HEADER, correlationId);

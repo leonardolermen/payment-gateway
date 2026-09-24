@@ -51,6 +51,15 @@ class ObservabilityIntegrationTest {
   }
 
   @Test
+  void oversizedCorrelationIdIsReplaced() {
+    String huge = "a".repeat(200);
+    var result = http().get().uri("/actuator/health").header("X-Correlation-Id", huge)
+        .exchange().expectStatus().isOk().returnResult(String.class);
+    String echoed = result.getResponseHeaders().getFirst("X-Correlation-Id");
+    assertThat(echoed).isNotBlank().isNotEqualTo(huge).hasSizeLessThanOrEqualTo(64);
+  }
+
+  @Test
   void prometheusAndHealthArePublic() {
     http().get().uri("/actuator/prometheus").exchange().expectStatus().isEqualTo(HttpStatus.OK);
     http().get().uri("/actuator/health").exchange().expectStatus().isEqualTo(HttpStatus.OK);

@@ -40,4 +40,28 @@ class MaskingJsonProviderTest {
     assertThat(json).contains("\"message\":\"key ***\"");
     assertThat(json).doesNotContain("gk_live_01ARZ3");
   }
+
+  @Test
+  void masksTheStackTraceItWrites() throws Exception {
+    LoggingEvent event = new LoggingEvent();
+    event.setLoggerName("test");
+    event.setLevel(Level.ERROR);
+    event.setMessage("boom");
+    event.setThrowableProxy(new ch.qos.logback.classic.spi.ThrowableProxy(
+        new IllegalStateException("outer", new RuntimeException("rejected key gk_live_01ARZ3NDEKTSV4RRFFQ69G5FAV"))));
+    event.setLoggerContext((ch.qos.logback.classic.LoggerContext) LoggerFactory.getILoggerFactory());
+
+    MaskingStackTraceJsonProvider provider = new MaskingStackTraceJsonProvider();
+    provider.start();
+    StringWriter writer = new StringWriter();
+    JsonGenerator generator = new JsonFactory().createGenerator(writer);
+    generator.writeStartObject();
+    provider.writeTo(generator, event);
+    generator.writeEndObject();
+    generator.flush();
+
+    String json = writer.toString();
+    assertThat(json).contains("stack_trace").contains("rejected key ***");
+    assertThat(json).doesNotContain("gk_live_01ARZ3");
+  }
 }

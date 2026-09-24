@@ -18,7 +18,7 @@
         <dependency><groupId>net.logstash.logback</groupId><artifactId>logstash-logback-encoder</artifactId></dependency>
         <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId><scope>runtime</scope></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
-        <!-- Boot 4 split TestRestTemplate out of spring-boot-test-autoconfigure into this module. -->
+        <!-- Provides the Boot 4 test support behind RestTestClient (TestRestTemplate is gone in Boot 4). -->
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-webmvc-test</artifactId><scope>test</scope></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-testcontainers</artifactId><scope>test</scope></dependency>
         <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>

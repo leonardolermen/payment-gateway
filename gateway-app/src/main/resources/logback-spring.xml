@@ -8,7 +8,7 @@
         <threadName/>
         <mdc/>
         <provider class="com.gateway.app.observability.MaskingJsonProvider"/>
-        <stackTrace/>
+        <provider class="com.gateway.app.observability.MaskingStackTraceJsonProvider"/>
       </providers>
     </encoder>
   </appender>
