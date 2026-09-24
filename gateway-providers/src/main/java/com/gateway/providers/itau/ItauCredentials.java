@@ -1,7 +1,6 @@
 package com.gateway.providers.itau;
 
 import com.gateway.kernel.security.Secret;
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.regex.Pattern;
@@ -16,7 +15,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * {@code private_key_pem}) — see {@link #requireProductionShape()}.
  */
 public record ItauCredentials(
-    String clientId, Secret clientSecret, String apiKey, String certificatePem, Secret privateKeyPem, String pixKey) {
+    String clientId, Secret clientSecret, String apiKey, String certificatePem, Secret privateKeyPem, String pixKey, String fingerprint) {
 
   private static final Pattern API_KEY = Pattern.compile("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
 
@@ -48,16 +47,17 @@ public record ItauCredentials(
     if (apiKey == null) throw new IllegalArgumentException("production credential missing x_itau_apikey");
   }
 
-  /** SHA-256 hex of clientId + certificatePem: cache key for the OAuth token, never the secret. */
+  /**
+   * SHA-256 hex of the whole decrypted payload, computed once in {@link #parse}: the cache key for
+   * the OAuth token and the mTLS HttpClient. It used to hash only client_id + certificate_pem, so a
+   * rotated client_secret or private key (same id, same certificate) kept hitting the cached token
+   * and the HttpClient built with the OLD key until the token expired or a 401 evicted it. Covering
+   * every byte means any change to the credential is a new cache entry. Not a secret by itself, but
+   * derived from one: never log it ({@link #toString} leaves it out).
+   */
+  @Override
   public String fingerprint() {
-    MessageDigest digest;
-    try {
-      digest = MessageDigest.getInstance("SHA-256");
-    } catch (java.security.NoSuchAlgorithmException e) {
-      throw new IllegalStateException(e);
-    }
-    byte[] hash = digest.digest((clientId + "\n" + (certificatePem == null ? "" : certificatePem)).getBytes(StandardCharsets.UTF_8));
-    return HexFormat.of().formatHex(hash);
+    return fingerprint;
   }
 
   @Override
@@ -67,6 +67,7 @@ public record ItauCredentials(
   }
 
   public static ItauCredentials parse(byte[] json) {
+    String fingerprint = sha256Hex(json);
     Raw raw = new ObjectMapper().readValue(json, Raw.class);
     if (raw.clientId == null || raw.clientId.isBlank()) throw new IllegalArgumentException("missing required field: client_id");
     if (raw.clientSecret == null || raw.clientSecret.isBlank()) throw new IllegalArgumentException("missing required field: client_secret");
@@ -75,9 +76,24 @@ public record ItauCredentials(
         raw.clientId,
         Secret.of(raw.clientSecret),
         raw.apiKey,
-        raw.certificatePem,
-        raw.privateKeyPem == null ? null : Secret.of(raw.privateKeyPem),
-        raw.pixKey);
+        blankToNull(raw.certificatePem),
+        // A blank key is a missing key: "" used to pass as present, pair with a certificate, and
+        // fail only at the first mTLS handshake instead of here.
+        blankToNull(raw.privateKeyPem) == null ? null : Secret.of(raw.privateKeyPem),
+        raw.pixKey,
+        fingerprint);
+  }
+
+  private static String blankToNull(String s) {
+    return s == null || s.isBlank() ? null : s;
+  }
+
+  private static String sha256Hex(byte[] bytes) {
+    try {
+      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+    } catch (java.security.NoSuchAlgorithmException e) {
+      throw new IllegalStateException(e);
+    }
   }
 
   /** Intermediate shape for Jackson: snake_case wire names, nothing validated yet. */

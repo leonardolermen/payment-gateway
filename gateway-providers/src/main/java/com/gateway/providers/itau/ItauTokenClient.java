@@ -17,7 +17,9 @@ import tools.jackson.databind.ObjectMapper;
  * OAuth2 client credentials at Itaú's STS, over mTLS with the merchant's dynamic certificate
  * (docs/providers/itau/NOTES.md). Tokens live 300 s; we cache one per credential fingerprint and
  * refresh 60 s early. One HttpClient per fingerprint too: the SSLContext carries the merchant's
- * private key, so clients are never shared across merchants.
+ * private key, so clients are never shared across merchants. The fingerprint hashes the whole
+ * credential payload ({@link ItauCredentials#fingerprint}), so a rotated secret or key is a new
+ * entry at once instead of reusing the token and TLS context built with the old one.
  */
 public class ItauTokenClient {
   private record Entry(HttpClient http, AccessToken token) {}

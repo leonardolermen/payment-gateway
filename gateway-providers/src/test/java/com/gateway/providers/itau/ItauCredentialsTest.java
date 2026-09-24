@@ -39,9 +39,20 @@ class ItauCredentialsTest {
         .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("private_key_pem");
   }
 
-  @Test void fingerprintIgnoresTheSecret() {
+  @Test void fingerprintChangesWhenAnyFieldChanges() {
     ItauCredentials a = ItauCredentials.parse(JSON.getBytes());
-    ItauCredentials b = ItauCredentials.parse(JSON.replace("s3cr3t", "other").getBytes());
-    assertThat(a.fingerprint()).isEqualTo(b.fingerprint()).hasSize(64);
+    assertThat(a.fingerprint()).hasSize(64).isEqualTo(ItauCredentials.parse(JSON.getBytes()).fingerprint());
+    for (String[] change : new String[][] {
+        {"s3cr3t", "other"}, {"MIIE", "MIIF"}, {"MIIB", "MIIC"}, {"60701190000104", "60701190000105"},
+        {"11111111-2222", "11111111-9999"}, {"aaaaaaaa-bbbb", "aaaaaaaa-ffff"}}) {
+      ItauCredentials b = ItauCredentials.parse(JSON.replace(change[0], change[1]).getBytes());
+      assertThat(b.fingerprint()).as("changing %s", change[0]).isNotEqualTo(a.fingerprint());
+    }
+    assertThat(a.toString()).doesNotContain(a.fingerprint());
+  }
+
+  @Test void blankPrivateKeyCountsAsMissing() {
+    assertThatThrownBy(() -> ItauCredentials.parse(JSON.replace("-----BEGIN PRIVATE KEY-----\\nMIIE\\n-----END PRIVATE KEY-----", "  ").getBytes()))
+        .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("without private_key_pem");
   }
 }
