@@ -104,14 +104,15 @@ public final class Payment {
   }
 
   public PaymentEvent markPending(PixDetails pixDetails, Instant expiresAt) {
-    PaymentEvent event = transition(PaymentStatus.PENDING, EventSource.API, "pending", "{\"txid\":\"" + pixDetails.txid() + "\"}");
+    PaymentEvent event =
+        transition(PaymentStatus.PENDING, EventSource.API, "pending", "{\"txid\":" + json(pixDetails.txid()) + "}");
     this.pix = pixDetails;
     this.expiresAt = expiresAt;
     return event;
   }
 
   public PaymentEvent markFailed(String reason, EventSource by) {
-    return transition(PaymentStatus.FAILED, by, "failed", "{\"reason\":\"" + reason + "\"}");
+    return transition(PaymentStatus.FAILED, by, "failed", "{\"reason\":" + json(reason) + "}");
   }
 
   public PaymentEvent markCompleted(String endToEndId, Money paidAmount, Instant paidAt, EventSource by) {
@@ -120,7 +121,7 @@ public final class Payment {
             PaymentStatus.COMPLETED,
             by,
             "completed",
-            "{\"endToEndId\":\"" + endToEndId + "\",\"paidAmount\":" + paidAmount.cents() + "}");
+            "{\"endToEndId\":" + json(endToEndId) + ",\"paidAmount\":" + paidAmount.cents() + "}");
     this.pix = pix.withEndToEndId(endToEndId);
     this.paidAmount = paidAmount;
     this.paidAt = paidAt;
@@ -140,9 +141,48 @@ public final class Payment {
    * duplicate settlement, a late notification after cancellation) is not an error — it is recorded
    * as an "ignored" event, without a state transition. It still bumps {@code version}: it is a
    * stored fact, and {@code sequence} must keep advancing for the event log to stay monotonic.
+   *
+   * <p>Only valid once the payment is in a {@linkplain PaymentStatus#terminal() terminal} status —
+   * that is the only case the spec defines this for; a webhook arriving mid-flight (e.g. on
+   * PENDING) belongs to a real transition instead, not a silent ignore.
    */
   public Optional<PaymentEvent> recordIgnored(String what, EventSource by) {
-    return Optional.of(recordEvent("ignored", by, "{\"what\":\"" + what + "\"}"));
+    if (!status.terminal()) {
+      throw new IllegalStateException("recordIgnored requires a terminal status, was " + status);
+    }
+    return Optional.of(recordEvent("ignored", by, "{\"what\":" + json(what) + "}"));
+  }
+
+  /**
+   * Escapes a string for embedding in the hand-built JSON payloads this domain writes (no Jackson
+   * here — see the module's javadoc). Handles the characters JSON requires escaping plus other
+   * control characters, so a quote, backslash or newline in a provider-supplied string (a webhook
+   * reason, an end-to-end id) cannot corrupt the audit trail. {@code null} becomes the JSON
+   * {@code null} literal, unquoted.
+   */
+  private static String json(String s) {
+    if (s == null) {
+      return "null";
+    }
+    StringBuilder sb = new StringBuilder(s.length() + 2).append('"');
+    for (int i = 0; i < s.length(); i++) {
+      char c = s.charAt(i);
+      switch (c) {
+        case '"' -> sb.append("\\\"");
+        case '\\' -> sb.append("\\\\");
+        case '\n' -> sb.append("\\n");
+        case '\r' -> sb.append("\\r");
+        case '\t' -> sb.append("\\t");
+        default -> {
+          if (c < 0x20) {
+            sb.append(String.format("\\u%04x", (int) c));
+          } else {
+            sb.append(c);
+          }
+        }
+      }
+    }
+    return sb.append('"').toString();
   }
 
   public void applyRefund(Money amount) {
@@ -232,6 +272,12 @@ public final class Payment {
     return updatedAt;
   }
 
+  /**
+   * The "created" event produced by {@link #create}. Only available on a freshly created
+   * aggregate — {@link #rehydrate} does not reconstruct it (the events table, not the aggregate,
+   * is the source of truth for history once a payment has been persisted and reloaded), so this
+   * returns {@code null} on a rehydrated instance.
+   */
   public PaymentEvent createdEvent() {
     return createdEvent;
   }

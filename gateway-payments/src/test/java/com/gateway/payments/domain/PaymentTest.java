@@ -68,6 +68,14 @@ class PaymentTest {
   }
 
   @Test
+  void eventPayloadsEscapeEmbeddedStrings() {
+    Payment p = fresh();
+    PaymentEvent event = p.markFailed("bank said \"no\" \\ line\nbreak", EventSource.SYSTEM);
+    assertThat(event.payload()).isEqualTo("{\"reason\":\"bank said \\\"no\\\" \\\\ line\\nbreak\"}");
+    assertThat(event.payload()).doesNotContain("\n");
+  }
+
+  @Test
   void refundsAreProjectedNotTransitions() {
     Payment p = fresh();
     p.markPending(new PixDetails(p.id(), "x", "y", null), Instant.now());
