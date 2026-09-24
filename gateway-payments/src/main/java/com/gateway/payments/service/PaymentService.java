@@ -15,6 +15,11 @@ import com.gateway.payments.domain.PaymentStatus;
 import com.gateway.payments.domain.PixDetails;
 import com.gateway.payments.repository.JobRepository;
 import com.gateway.payments.repository.PaymentRepository;
+import com.gateway.payments.repository.ReconciliationDivergenceRepository;
+import com.gateway.payments.domain.ReconciliationDivergence;
+import com.gateway.kernel.ids.Ulid;
+import com.gateway.kernel.provider.ReceivedPix;
+import java.util.Objects;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -46,6 +51,7 @@ public class PaymentService {
       Integer expiresInSeconds) {}
 
   private final PaymentRepository payments;
+  private final ReconciliationDivergenceRepository divergences;
   private final JobRepository jobs;
   private final ProviderGateway providers;
   private final PaymentEvents events;
@@ -55,6 +61,7 @@ public class PaymentService {
 
   public PaymentService(
       PaymentRepository payments,
+      ReconciliationDivergenceRepository divergences,
       JobRepository jobs,
       ProviderGateway providers,
       PaymentEvents events,
@@ -62,6 +69,7 @@ public class PaymentService {
       TransactionTemplate tx,
       Clock clock) {
     this.payments = payments;
+    this.divergences = divergences;
     this.jobs = jobs;
     this.providers = providers;
     this.events = events;
@@ -91,30 +99,44 @@ public class PaymentService {
               r,
               x -> x.provider().createCharge(x.credentials(), payment.id(), cmd.amount(), expires, cmd.customerDocument(), null, cmd.description()));
     } catch (ProviderException e) {
-      if (e.code() != ProviderException.Code.TIMEOUT) {
+      boolean mayHaveLanded = e.code() == ProviderException.Code.TIMEOUT || e.code() == ProviderException.Code.UNAVAILABLE;
+      if (!mayHaveLanded) {
         boolean declined = e.code() == ProviderException.Code.INVALID || e.code() == ProviderException.Code.DECLINED;
-        throw fail(payment.id(), declined ? "PROVIDER_DECLINED" : "PROVIDER_UNAVAILABLE", e);
+        throw fail(payment.id(), declined ? "PROVIDER_DECLINED" : "PROVIDER_UNAVAILABLE", e, null);
       }
-      // The PUT may have landed. The txid is ours, so we can ask before deciding (spec section 3.2)
-      // instead of failing a charge the payer may already be looking at.
+      // The PUT may have landed: a timeout, and equally a 503/504 from a gateway in front of the
+      // bank, says nothing about whether the charge was created. The txid is ours, so we ask
+      // before deciding (spec section 3.2) instead of failing a charge the payer may be looking at.
+      String code = e.code() == ProviderException.Code.TIMEOUT ? "PROVIDER_TIMEOUT" : "PROVIDER_UNAVAILABLE";
       Optional<Charge> existing;
       try {
         existing = providers.call(payment.id(), "findCharge", r, x -> x.provider().findCharge(x.credentials(), payment.id()));
       } catch (ProviderException again) {
-        throw fail(payment.id(), "PROVIDER_TIMEOUT", again);
+        throw fail(payment.id(), code, again, r);
       }
       if (existing.isEmpty()) {
-        throw fail(payment.id(), "PROVIDER_TIMEOUT", e);
+        throw fail(payment.id(), code, e, r);
       }
       charge = existing.get();
     }
+    return adoptPending(payment.id(), charge, expires, EventSource.API);
+  }
 
-    Charge accepted = charge;
+  /**
+   * CREATED -> PENDING with the bank's charge details, plus the expire job and the outbox row. A
+   * payment no longer CREATED is returned as is: the stuck-CREATED sweeper and a slow createCharge
+   * can race to adopt the same charge, and the loser must not fail on PENDING -> PENDING.
+   */
+  Payment adoptPending(String paymentId, Charge accepted, int fallbackExpires, EventSource by) {
     return tx.execute(s -> {
-      Payment p = payments.findById(payment.id()).orElseThrow();
-      int bankExpiry = accepted.expiresInSeconds() > 0 ? accepted.expiresInSeconds() : expires;
+      Payment p = payments.findById(paymentId).orElseThrow();
+      if (p.status() != PaymentStatus.CREATED) {
+        return p;
+      }
+      int bankExpiry = accepted.expiresInSeconds() > 0 ? accepted.expiresInSeconds() : fallbackExpires;
       PaymentEvent ev =
-          p.markPending(new PixDetails(accepted.txid(), accepted.pixCopiaECola(), accepted.location(), null), clock.instant().plusSeconds(bankExpiry));
+          p.markPending(
+              new PixDetails(accepted.txid(), accepted.pixCopiaECola(), accepted.location(), null), clock.instant().plusSeconds(bankExpiry), by);
       Payment saved = payments.save(p, List.of(ev));
       if (!jobs.enqueue(Job.expireAt(saved.id(), saved.expiresAt().plus(props.expirationGrace()), clock))) {
         log.debug("expire job for payment {} was already queued", saved.id());
@@ -124,16 +146,35 @@ public class PaymentService {
     });
   }
 
-  /** Marks the payment FAILED (with its event and outbox row) and returns the exception to throw. */
-  private DomainException fail(String paymentId, String code, ProviderException cause) {
-    tx.executeWithoutResult(s -> {
-      Payment p = payments.findById(paymentId).orElseThrow();
-      Payment saved = payments.save(p, List.of(p.markFailed(code, EventSource.API)));
-      events.emit(saved.merchantId(), "payment.failed", saved);
-    });
+  /**
+   * Marks the payment FAILED (with its event and outbox row) and returns the exception to throw.
+   * With {@code r} set (the charge's fate is unknown), also asks the bank to remove the charge,
+   * best effort: if the PUT did land after all, a QR we reported as failed must not stay payable.
+   */
+  private DomainException fail(String paymentId, String code, ProviderException cause, ProviderGateway.Resolved r) {
+    if (r != null) {
+      try {
+        providers.run(paymentId, "cancelCharge", r, x -> x.provider().cancelCharge(x.credentials(), paymentId));
+      } catch (RuntimeException ignored) {
+        // NOT_FOUND is the expected answer; anything else is left to reconciliation.
+      }
+    }
+    markFailed(paymentId, code, EventSource.API);
     DomainException e = new DomainException(code, cause.getMessage());
     e.initCause(cause);
     return e;
+  }
+
+  /** CREATED -> FAILED with event and outbox row; a payment no longer CREATED is left alone. */
+  void markFailed(String paymentId, String code, EventSource by) {
+    tx.executeWithoutResult(s -> {
+      Payment p = payments.findById(paymentId).orElseThrow();
+      if (p.status() != PaymentStatus.CREATED) {
+        return;
+      }
+      Payment saved = payments.save(p, List.of(p.markFailed(code, by)));
+      events.emit(saved.merchantId(), "payment.failed", saved);
+    });
   }
 
   public Payment get(MerchantId merchantId, String id) {
@@ -188,7 +229,7 @@ public class PaymentService {
    * an "ignored" event (a duplicate or late notification is a stored fact, not an error) and emits
    * nothing, so a merchant never gets a second {@code payment.completed}.
    */
-  public Settlement settle(MerchantId merchantId, String paymentId, com.gateway.kernel.provider.ReceivedPix pix, EventSource by) {
+  public Settlement settle(MerchantId merchantId, String paymentId, ReceivedPix pix, EventSource by) {
     return tx.execute(s -> {
       Optional<Payment> found = payments.findByMerchantAndId(merchantId, paymentId);
       if (found.isEmpty()) {
@@ -201,14 +242,41 @@ public class PaymentService {
         return Settlement.COMPLETED;
       }
       if (p.status().terminal()) {
-        String what = pix.endToEndId().equals(p.pix().endToEndId()) ? "duplicate e2eid " + pix.endToEndId() : "pix " + pix.endToEndId() + " on a " + p.status() + " payment";
+        String knownE2e = p.pix() == null ? null : p.pix().endToEndId();
+        boolean duplicate =
+            p.status() == PaymentStatus.COMPLETED
+                && Objects.equals(knownE2e, pix.endToEndId())
+                && p.paidAmount() != null
+                && p.paidAmount().cents() == pix.amount().cents();
+        String what = duplicate ? "duplicate e2eid " + pix.endToEndId() : "pix " + pix.endToEndId() + " on a " + p.status() + " payment";
         payments.save(p, List.of(p.recordIgnored(what, by).orElseThrow()));
+        if (!duplicate) {
+          // Money arrived that the merchant will never hear about (FAILED/CANCELED), or a second,
+          // different Pix on a COMPLETED charge. No legal transition moves the payment and nothing
+          // goes to the merchant; a human decides (refund the payer, or reopen the order).
+          openDivergence(p, "PIX_RECEIVED", "paid at bank while " + p.status() + ": e2eid " + pix.endToEndId() + ", " + pix.amount().cents() + " cents");
+        }
         return Settlement.IGNORED;
       }
       // CREATED: the bank cannot have been paid for a charge it has not answered yet; failing makes
       // the caller's job retry once the PENDING write lands.
       throw new IllegalStateException("pix for payment " + paymentId + " still in " + p.status());
     });
+  }
+
+  /**
+   * Opens a divergence unless the same (payment, provider status) one is already OPEN. Reconciliation
+   * runs every 15 minutes over a 48 h window: without the check one mismatch would open ~190
+   * identical divergences before anyone looked at the first.
+   */
+  public boolean openDivergence(Payment p, String providerStatus, String detail) {
+    boolean alreadyOpen = divergences.open().stream().anyMatch(d -> d.paymentId().equals(p.id()) && d.providerStatus().equals(providerStatus));
+    if (alreadyOpen) {
+      return false;
+    }
+    String trimmed = detail.length() <= 500 ? detail : detail.substring(0, 500);
+    divergences.save(new ReconciliationDivergence(Ulid.next(), p.id(), p.status().name(), providerStatus, trimmed, "OPEN", clock.instant()));
+    return true;
   }
 
   /**

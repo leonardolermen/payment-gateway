@@ -27,8 +27,9 @@ public class RefundPollingService {
 
   /**
    * Returns {@code true} once the refund is settled either way. {@code false} means "still
-   * processing": the {@link JobRunner} reschedules with backoff, and after {@code jobMaxAttempts}
-   * (8 attempts, about a day) the job goes DEAD for a human to look at.
+   * processing": the {@link JobRunner} polls again in 5 minutes, up to {@code refundPollMaxAttempts}
+   * (288, i.e. 24 h); then the job goes DEAD and {@link RefundService#giveUp} marks the refund
+   * FAILED and opens a divergence.
    */
   public boolean poll(String refundId) {
     Refund refund = refunds.findById(refundId).orElse(null);

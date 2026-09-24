@@ -63,16 +63,16 @@ public class PaymentsConfiguration {
 
   @Bean
   PaymentService paymentService(
-      PaymentRepository payments, JobRepository jobs, ProviderGateway providers, PaymentEvents events, PaymentsProperties props,
-      TransactionTemplate paymentsTransactionTemplate, Clock clock) {
-    return new PaymentService(payments, jobs, providers, events, props, paymentsTransactionTemplate, clock);
+      PaymentRepository payments, ReconciliationDivergenceRepository divergences, JobRepository jobs, ProviderGateway providers,
+      PaymentEvents events, PaymentsProperties props, TransactionTemplate paymentsTransactionTemplate, Clock clock) {
+    return new PaymentService(payments, divergences, jobs, providers, events, props, paymentsTransactionTemplate, clock);
   }
 
   @Bean
   RefundService refundService(
       RefundRepository refunds, PaymentRepository payments, JobRepository jobs, ProviderGateway providers, PaymentEvents events,
-      TransactionTemplate paymentsTransactionTemplate, Clock clock) {
-    return new RefundService(refunds, payments, jobs, providers, events, paymentsTransactionTemplate, clock);
+      PaymentService paymentService, TransactionTemplate paymentsTransactionTemplate, Clock clock) {
+    return new RefundService(refunds, payments, jobs, providers, events, paymentService, paymentsTransactionTemplate, clock);
   }
 
   @Bean
@@ -103,8 +103,8 @@ public class PaymentsConfiguration {
 
   @Bean
   JobRunner jobRunner(
-      JobRepository jobs, WebhookInboxService inbox, ExpirationService expiration, RefundPollingService polling,
+      JobRepository jobs, WebhookInboxService inbox, ExpirationService expiration, RefundPollingService polling, RefundService refunds,
       ReconciliationService reconciliation, PaymentsProperties props, TransactionTemplate paymentsTransactionTemplate, Clock clock) {
-    return new JobRunner(jobs, inbox, expiration, polling, reconciliation, props, paymentsTransactionTemplate, clock);
+    return new JobRunner(jobs, inbox, expiration, polling, refunds, reconciliation, props, paymentsTransactionTemplate, clock);
   }
 }

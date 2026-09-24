@@ -18,6 +18,14 @@ interface PaymentJpaRepository extends JpaRepository<PaymentEntity, String> {
   @Query("SELECT p FROM PaymentEntity p WHERE p.status = 'PENDING' AND p.expiresAt < :before ORDER BY p.expiresAt ASC")
   java.util.List<PaymentEntity> findPendingOlderThan(@Param("before") Instant before, Limit limit);
 
+  /** Row lock for read-modify-writes that the version check alone cannot serialize (refund sums). */
+  @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT p FROM PaymentEntity p WHERE p.id = :id")
+  Optional<PaymentEntity> findByIdForUpdate(@Param("id") String id);
+
+  @Query("SELECT p FROM PaymentEntity p WHERE p.status = :status AND p.createdAt < :before ORDER BY p.createdAt ASC")
+  java.util.List<PaymentEntity> findByStatusAndCreatedAtBefore(@Param("status") String status, @Param("before") Instant before, Limit limit);
+
   @Query("SELECT p FROM PaymentEntity p WHERE p.status IN :statuses AND p.createdAt > :after ORDER BY p.createdAt ASC")
   java.util.List<PaymentEntity> findByStatusInAndCreatedAtAfter(
       @Param("statuses") Collection<String> statuses, @Param("after") Instant after, Limit limit);

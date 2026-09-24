@@ -27,6 +27,7 @@ public class JobRunner {
   private final WebhookInboxService inbox;
   private final ExpirationService expiration;
   private final RefundPollingService polling;
+  private final RefundService refunds;
   private final ReconciliationService reconciliation;
   private final PaymentsProperties props;
   private final TransactionTemplate tx;
@@ -37,6 +38,7 @@ public class JobRunner {
       WebhookInboxService inbox,
       ExpirationService expiration,
       RefundPollingService polling,
+      RefundService refunds,
       ReconciliationService reconciliation,
       PaymentsProperties props,
       TransactionTemplate tx,
@@ -45,6 +47,7 @@ public class JobRunner {
     this.inbox = inbox;
     this.expiration = expiration;
     this.polling = polling;
+    this.refunds = refunds;
     this.reconciliation = reconciliation;
     this.props = props;
     this.tx = tx;
@@ -66,10 +69,18 @@ public class JobRunner {
       Job next;
       try {
         boolean done = run(job, now);
-        next = done ? job.done() : job.reschedule(now.plus(backoff(job.attempts())), "not settled yet", props.jobMaxAttempts());
+        next = done ? job.done() : retry(job, now, "not settled yet");
       } catch (RuntimeException e) {
         log.warn("job {} {} for {} failed (attempt {})", job.type(), job.id(), job.refId(), job.attempts() + 1, e);
-        next = job.reschedule(now.plus(backoff(job.attempts())), truncate(e.getClass().getSimpleName() + ": " + e.getMessage()), props.jobMaxAttempts());
+        next = retry(job, now, truncate(e.getClass().getSimpleName() + ": " + e.getMessage()));
+      }
+      if (job.type() == JobType.POLL_REFUND && "DEAD".equals(next.status())) {
+        try {
+          refunds.giveUp(job.refId());
+        } catch (RuntimeException e) {
+          // Stays DEAD with the error; the refund is still PROCESSING and visible to support.
+          log.error("could not give up on refund {}", job.refId(), e);
+        }
       }
       if (job.type() == JobType.RECONCILE) {
         // A periodic singleton: ON CONFLICT DO NOTHING means a DONE or DEAD row would stop
@@ -96,13 +107,29 @@ public class JobRunner {
       }
       case POLL_REFUND -> polling.poll(job.refId());
       case RECONCILE -> {
+        expiration.sweepStuckCreated(now);
         reconciliation.reconcileAll(now);
         yield true;
       }
     };
   }
 
-  /** 1 min, 2 min, 4 min, ... capped at 24 h. */
+  /**
+   * POLL_REFUND polls every 5 minutes for {@code refundPollMaxAttempts} (288 = 24 h): exponential
+   * backoff with 8 attempts gave up after about 4 h, while the bank may take a day to settle a
+   * devolucao. Everything else backs off exponentially up to {@code jobMaxAttempts}.
+   */
+  private Job retry(Job job, Instant now, String error) {
+    if (job.type() == JobType.POLL_REFUND) {
+      return job.reschedule(now.plus(RefundService.POLL_EVERY), error, props.refundPollMaxAttempts());
+    }
+    return job.reschedule(now.plus(backoff(job.attempts())), error, props.jobMaxAttempts());
+  }
+
+  /**
+   * 1 min, 2 min, 4 min, ... capped at 24 h. {@code attempts} is the count BEFORE this failure
+   * ({@code claimDue} does not increment it; {@code reschedule} does), so the first retry waits 1 min.
+   */
   static Duration backoff(int attempts) {
     if (attempts >= 11) return MAX_BACKOFF; // 2^11 min > 24 h, and avoids shifting into overflow
     Duration d = Duration.ofMinutes(1L << attempts);

@@ -109,6 +109,38 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
   }
 
   @Test
+  void unavailableThatLandedIsAdoptedLikeATimeout() {
+    bank.landNextCreateThenFailWith(new ProviderException(ProviderException.Code.UNAVAILABLE, 503, null, "proxy said 503"));
+
+    Payment p = newCharge(700);
+
+    assertThat(p.status()).isEqualTo(PaymentStatus.PENDING);
+    assertThat(bank.callsFor(p.id())).containsExactly("createCharge:" + p.id(), "findCharge:" + p.id());
+  }
+
+  @Test
+  void unknownFateFailureAlsoAsksTheBankToRemoveTheCharge() {
+    bank.failNextCreateWith(new ProviderException(ProviderException.Code.UNAVAILABLE, 503, null, "down"));
+
+    assertThatThrownBy(() -> newCharge(700))
+        .isInstanceOf(DomainException.class)
+        .extracting(e -> ((DomainException) e).code())
+        .isEqualTo("PROVIDER_UNAVAILABLE");
+
+    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    assertThat(p.status()).isEqualTo(PaymentStatus.FAILED);
+    assertThat(bank.callsFor(p.id())).containsExactly("createCharge:" + p.id(), "findCharge:" + p.id(), "cancelCharge:" + p.id());
+  }
+
+  @Test
+  void declineDoesNotAskTheBankAnythingElse() {
+    bank.failNextCreateWith(new ProviderException(ProviderException.Code.DECLINED, 422, null, "no"));
+    assertThatThrownBy(() -> newCharge(700)).isInstanceOf(DomainException.class);
+    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    assertThat(bank.callsFor(p.id())).containsExactly("createCharge:" + p.id());
+  }
+
+  @Test
   void cancelPendingCallsTheBankAndEmits() {
     Payment p = newCharge(100);
 

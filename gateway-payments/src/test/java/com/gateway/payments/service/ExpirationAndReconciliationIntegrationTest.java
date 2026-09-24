@@ -140,6 +140,91 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
   }
 
   @Test
+  void bankCompletedWithoutPixLeavesThePaymentAlone() {
+    Payment p = newCharge(1000);
+    bank.setStatus(p.id(), ChargeStatus.COMPLETED); // no pix[]
+    clock.advance(Duration.ofHours(2));
+
+    expiration.expireDue(clock.instant());
+
+    assertThat(reload(p).status()).isEqualTo(PaymentStatus.PENDING);
+  }
+
+  /** A payment left CREATED, as if the process died between the insert and the bank's answer. */
+  Payment stuckCreated() {
+    Payment p = Payment.create(merchant, ProviderEnvironment.TEST, "ITAU", Money.brl(1000), null, null, null, 3600, clock);
+    return new TransactionTemplate(txManager).execute(s -> payments.save(p, List.of(p.createdEvent())));
+  }
+
+  @Test
+  void stuckCreatedWithAnActiveChargeIsAdopted() {
+    Payment p = stuckCreated();
+    bank.createCharge(null, p.id(), Money.brl(1000), 3600, null, null, null);
+    clock.advance(Duration.ofMinutes(11));
+
+    expiration.sweepStuckCreated(clock.instant());
+
+    Payment after = reload(p);
+    assertThat(after.status()).isEqualTo(PaymentStatus.PENDING);
+    assertThat(after.pix().pixCopiaECola()).isEqualTo("00020101021226" + p.id());
+    assertThat(payments.events(p.id()).getLast().source()).isEqualTo(EventSource.SYSTEM);
+    assertThat(jobs.findByTypeAndRef(JobType.EXPIRE_PAYMENT, p.id())).isPresent();
+    assertThat(outboxTypes(p.id())).containsExactly("payment.pending");
+  }
+
+  @Test
+  void stuckCreatedAlreadyPaidIsAdoptedThenCompleted() {
+    Payment p = stuckCreated();
+    bank.createCharge(null, p.id(), Money.brl(1000), 3600, null, null, null);
+    bank.markPaid(p.id(), "E2E" + p.id(), Money.brl(1000));
+    clock.advance(Duration.ofMinutes(11));
+
+    expiration.sweepStuckCreated(clock.instant());
+
+    assertThat(reload(p).status()).isEqualTo(PaymentStatus.COMPLETED);
+    assertThat(outboxTypes(p.id())).containsExactly("payment.pending", "payment.completed");
+  }
+
+  @Test
+  void stuckCreatedUnknownToTheBankFails() {
+    Payment p = stuckCreated();
+    clock.advance(Duration.ofMinutes(11));
+
+    expiration.sweepStuckCreated(clock.instant());
+
+    assertThat(reload(p).status()).isEqualTo(PaymentStatus.FAILED);
+    assertThat(payments.events(p.id()).getLast().source()).isEqualTo(EventSource.SYSTEM);
+    assertThat(outboxTypes(p.id())).containsExactly("payment.failed");
+  }
+
+  @Test
+  void youngCreatedIsLeftToItsInFlightCall() {
+    Payment p = stuckCreated();
+    clock.advance(Duration.ofMinutes(2));
+
+    expiration.sweepStuckCreated(clock.instant());
+
+    assertThat(reload(p).status()).isEqualTo(PaymentStatus.CREATED);
+  }
+
+  @Test
+  void reconciliationOpensADivergenceForAFailedPaymentPaidAtTheBank() {
+    bank.landNextCreateThenFailWith(new com.gateway.kernel.provider.ProviderException(
+        com.gateway.kernel.provider.ProviderException.Code.DECLINED, 422, null, "declined but created"));
+    assertThatThrownBy(() -> newCharge(1000)).isInstanceOf(com.gateway.kernel.errors.DomainException.class);
+    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    bank.markPaid(p.id(), "E2E" + p.id(), Money.brl(1000));
+
+    reconciliation.reconcileAll(clock.instant().plus(Duration.ofMinutes(30)));
+    reconciliation.reconcileAll(clock.instant().plus(Duration.ofMinutes(45)));
+
+    assertThat(reload(p).status()).isEqualTo(PaymentStatus.FAILED);
+    assertThat(divergences.open()).filteredOn(d -> d.paymentId().equals(p.id())).singleElement()
+        .satisfies(d -> assertThat(d.detail()).startsWith("paid at bank while FAILED"));
+    assertThat(outboxTypes(p.id())).containsExactly("payment.failed");
+  }
+
+  @Test
   void backoffDoublesAndCapsAtOneDay() {
     assertThat(JobRunner.backoff(0)).isEqualTo(Duration.ofMinutes(1));
     assertThat(JobRunner.backoff(3)).isEqualTo(Duration.ofMinutes(8));

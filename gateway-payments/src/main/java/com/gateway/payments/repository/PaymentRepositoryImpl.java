@@ -127,6 +127,21 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   }
 
   @Override
+  public Optional<Payment> findByIdForUpdate(String id) {
+    // Same guard as JobRepositoryImpl.claimDue: outside a transaction the lock is released the
+    // instant it is taken, and the caller would believe it holds it.
+    if (!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
+      throw new IllegalStateException("findByIdForUpdate must run inside a transaction: the row lock depends on it.");
+    }
+    return jpa.findByIdForUpdate(id).map(PaymentRepositoryImpl::toDomain);
+  }
+
+  @Override
+  public List<Payment> findByStatusCreatedBefore(PaymentStatus status, Instant createdBefore, int limit) {
+    return jpa.findByStatusAndCreatedAtBefore(status.name(), createdBefore, Limit.of(limit)).stream().map(PaymentRepositoryImpl::toDomain).toList();
+  }
+
+  @Override
   public List<PaymentEvent> events(String paymentId) {
     return eventsJpa.findByPaymentIdOrderBySequenceAsc(paymentId).stream().map(PaymentRepositoryImpl::toEventDomain).toList();
   }

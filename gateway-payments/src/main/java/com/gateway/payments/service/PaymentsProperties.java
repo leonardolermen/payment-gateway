@@ -17,7 +17,9 @@ public record PaymentsProperties(
     Duration idempotencyTtl,
     int jobMaxAttempts,
     Duration jobLease,
-    Duration outboxLease) {
+    Duration outboxLease,
+    Duration stuckCreatedAfter,
+    int refundPollMaxAttempts) {
 
   public PaymentsProperties {
     if (defaultExpiresInSeconds <= 0) defaultExpiresInSeconds = 3600;
@@ -28,9 +30,14 @@ public record PaymentsProperties(
     if (jobMaxAttempts <= 0) jobMaxAttempts = 8;
     if (jobLease == null) jobLease = Duration.ofMinutes(2);
     if (outboxLease == null) outboxLease = Duration.ofMinutes(1);
+    // Well above the bank's recommended 30 s client timeout: a CREATED younger than this may still
+    // have its createCharge call in flight.
+    if (stuckCreatedAfter == null) stuckCreatedAfter = Duration.ofMinutes(10);
+    // 288 polls x 5 min = 24 h, the bank's own horizon for settling a devolucao.
+    if (refundPollMaxAttempts <= 0) refundPollMaxAttempts = 288;
   }
 
   public static PaymentsProperties defaults() {
-    return new PaymentsProperties(0, null, null, null, null, 0, null, null);
+    return new PaymentsProperties(0, null, null, null, null, 0, null, null, null, 0);
   }
 }

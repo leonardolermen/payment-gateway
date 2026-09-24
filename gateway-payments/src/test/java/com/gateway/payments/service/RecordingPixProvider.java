@@ -36,7 +36,7 @@ public class RecordingPixProvider implements PixProvider {
   private final Map<String, RefundResult> refunds = new ConcurrentHashMap<>();
   private final List<String> calls = new CopyOnWriteArrayList<>();
   private volatile ProviderException failNextCreate;
-  private volatile boolean timeoutNextCreate;
+  private volatile ProviderException landThenFail;
   private volatile RefundStatus nextRefundStatus = RefundStatus.PROCESSING;
 
   public RecordingPixProvider(Clock clock) {
@@ -54,7 +54,12 @@ public class RecordingPixProvider implements PixProvider {
 
   /** The PUT reached the bank and created the charge, but the response never came back. */
   public void timeoutNextCreateButCreateAnyway() {
-    this.timeoutNextCreate = true;
+    landNextCreateThenFailWith(new ProviderException(ProviderException.Code.TIMEOUT, "read timed out", null));
+  }
+
+  /** The charge is created at the bank, but the caller sees {@code e} (a 503 from a proxy, say). */
+  public void landNextCreateThenFailWith(ProviderException e) {
+    this.landThenFail = e;
   }
 
   public void markPaid(String txid, String endToEndId, Money amount) {
@@ -94,9 +99,10 @@ public class RecordingPixProvider implements PixProvider {
     Charge charge =
         new Charge(txid, ChargeStatus.ACTIVE, amount, "00020101021226" + txid, "pix.example/qr/" + txid, clock.instant(), expiresInSeconds, List.of());
     charges.put(txid, charge);
-    if (timeoutNextCreate) {
-      timeoutNextCreate = false;
-      throw new ProviderException(ProviderException.Code.TIMEOUT, "read timed out", null);
+    ProviderException after = landThenFail;
+    if (after != null) {
+      landThenFail = null;
+      throw after;
     }
     return charge;
   }

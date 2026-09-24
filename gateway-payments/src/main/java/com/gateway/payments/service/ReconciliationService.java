@@ -1,7 +1,6 @@
 package com.gateway.payments.service;
 
 import com.gateway.kernel.ids.MerchantId;
-import com.gateway.kernel.ids.Ulid;
 import com.gateway.kernel.provider.Charge;
 import com.gateway.kernel.provider.ChargeStatus;
 import com.gateway.kernel.provider.ProviderEnvironment;
@@ -9,7 +8,6 @@ import com.gateway.kernel.provider.ReceivedPix;
 import com.gateway.payments.domain.EventSource;
 import com.gateway.payments.domain.Payment;
 import com.gateway.payments.domain.PaymentStatus;
-import com.gateway.payments.domain.ReconciliationDivergence;
 import com.gateway.payments.repository.PaymentRepository;
 import com.gateway.payments.repository.ReconciliationDivergenceRepository;
 import java.time.Clock;
@@ -60,13 +58,16 @@ public class ReconciliationService {
   /**
    * Scopes are the (merchant, environment) pairs that have something worth checking in the last
    * {@code reconciliationLookback}: PENDING older than {@code reconciliationMinAge} (younger ones
-   * are still waiting for their webhook, normally), EXPIRED, and COMPLETED (to catch removals).
+   * are still waiting for their webhook, normally), EXPIRED, COMPLETED (to catch removals), and
+   * FAILED/CANCELED (a charge we gave up on that the payer paid anyway). Oldest first
+   * ({@code findByStatusIn} orders by {@code created_at} ascending), so the cap drains a backlog
+   * run after run instead of re-reading the newest rows forever.
    */
   public int reconcileAll(Instant now) {
     Instant from = now.minus(props.reconciliationLookback());
     Instant youngCutoff = now.minus(props.reconciliationMinAge());
     Map<Scope, Instant> scopes = new LinkedHashMap<>();
-    for (Payment p : payments.findByStatusIn(EnumSet.of(PaymentStatus.PENDING, PaymentStatus.EXPIRED, PaymentStatus.COMPLETED), from, CANDIDATES)) {
+    for (Payment p : payments.findByStatusIn(EnumSet.of(PaymentStatus.PENDING, PaymentStatus.EXPIRED, PaymentStatus.COMPLETED, PaymentStatus.FAILED, PaymentStatus.CANCELED), from, CANDIDATES)) {
       if (p.status() == PaymentStatus.PENDING && p.createdAt().isAfter(youngCutoff)) {
         continue;
       }
@@ -100,6 +101,10 @@ public class ReconciliationService {
       if (bankPaid && (p.status() == PaymentStatus.PENDING || p.status() == PaymentStatus.EXPIRED)) {
         paymentService.settle(merchantId, p.id(), pix.get(), EventSource.RECONCILIATION);
         changed++;
+      } else if (bankPaid && (p.status() == PaymentStatus.FAILED || p.status() == PaymentStatus.CANCELED)) {
+        // Same rule as a late webhook (PaymentService.settle), minus the "ignored" event: this runs
+        // every 15 minutes and must not grow the payment's log each time it looks.
+        changed += open(p, "PIX_RECEIVED", "paid at bank while " + p.status() + ": e2eid " + pix.get().endToEndId() + ", " + pix.get().amount().cents() + " cents");
       } else if (p.status() == PaymentStatus.COMPLETED && isRemoved(charge.status())) {
         changed += open(p, charge.status().name(), "bank shows the charge as " + charge.status());
       } else if (p.status() == PaymentStatus.COMPLETED && bankPaid && p.paidAmount() != null && pix.get().amount().cents() != p.paidAmount().cents()) {
@@ -113,14 +118,7 @@ public class ReconciliationService {
     return s == ChargeStatus.REMOVED_BY_MERCHANT || s == ChargeStatus.REMOVED_BY_PSP;
   }
 
-  // Runs every 15 minutes over a 48 h window: without this check one mismatch would open ~190
-  // identical divergences before anyone looked at the first.
   private int open(Payment p, String providerStatus, String detail) {
-    boolean alreadyOpen = divergences.open().stream().anyMatch(d -> d.paymentId().equals(p.id()) && d.providerStatus().equals(providerStatus));
-    if (alreadyOpen) {
-      return 0;
-    }
-    divergences.save(new ReconciliationDivergence(Ulid.next(), p.id(), p.status().name(), providerStatus, detail, "OPEN", clock.instant()));
-    return 1;
+    return paymentService.openDivergence(p, providerStatus, detail) ? 1 : 0;
   }
 }

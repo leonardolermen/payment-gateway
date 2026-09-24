@@ -40,4 +40,12 @@ class PaymentTransitionsTest {
     assertThat(PaymentTransitions.allowed(PaymentStatus.EXPIRED, PaymentStatus.COMPLETED, EventSource.API)).isFalse();
     assertThat(EnumSet.of(PaymentStatus.COMPLETED, PaymentStatus.CANCELED, PaymentStatus.FAILED)).allMatch(PaymentStatus::terminal);
   }
+
+  /** Adopting a charge the bank confirms (lost createCharge response) is the system's job, never the provider's. */
+  @org.junit.jupiter.api.Test
+  void createdCanBecomePendingByApiOrSystem() {
+    assertThat(PaymentTransitions.allowed(PaymentStatus.CREATED, PaymentStatus.PENDING, EventSource.API)).isTrue();
+    assertThat(PaymentTransitions.allowed(PaymentStatus.CREATED, PaymentStatus.PENDING, EventSource.SYSTEM)).isTrue();
+    assertThat(PaymentTransitions.allowed(PaymentStatus.CREATED, PaymentStatus.PENDING, EventSource.RECONCILIATION)).isFalse();
+  }
 }

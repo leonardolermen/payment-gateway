@@ -129,6 +129,78 @@ class RefundServiceIntegrationTest extends ServiceIntegrationTestBase {
     assertThat(refunds.request(merchant, p.id(), Money.brl(1000)).state()).isEqualTo(RefundState.PROCESSING);
   }
 
+  @Autowired JobRunner runner;
+  @Autowired com.gateway.payments.repository.ReconciliationDivergenceRepository divergences;
+
+  @Test
+  void pollingThatNeverSettlesEndsFailedWithADivergence() {
+    Payment p = paid(1000);
+    Refund r = refunds.request(merchant, p.id(), Money.brl(400));
+    // One poll left in the 288-attempt budget, and due now.
+    jdbc.update("UPDATE payments.jobs SET attempts = 287, next_run_at = ? WHERE type = 'POLL_REFUND' AND ref_id = ?",
+        java.sql.Timestamp.from(clock.instant()), r.id());
+
+    while (runner.runDue(clock.instant()) > 0) {}
+
+    assertThat(jobs.findByTypeAndRef(JobType.POLL_REFUND, r.id()).orElseThrow().status()).isEqualTo("DEAD");
+    Refund failed = refunds.get(merchant, r.id());
+    assertThat(failed.state()).isEqualTo(RefundState.FAILED);
+    assertThat(failed.failureReason()).isEqualTo("refund status unknown after 24h; check the bank");
+    assertThat(outboxTypes(r.id())).containsExactly("refund.requested", "refund.failed");
+    assertThat(divergences.open()).filteredOn(d -> d.paymentId().equals(p.id())).singleElement()
+        .satisfies(d -> assertThat(d.providerStatus()).isEqualTo("REFUND_UNKNOWN"));
+  }
+
+  @Test
+  void pollingRetriesEveryFiveMinutes() {
+    Payment p = paid(1000);
+    Refund r = refunds.request(merchant, p.id(), Money.brl(400));
+    clock.advance(Duration.ofMinutes(5));
+
+    while (runner.runDue(clock.instant()) > 0) {}
+
+    var job = jobs.findByTypeAndRef(JobType.POLL_REFUND, r.id()).orElseThrow();
+    assertThat(job.status()).isEqualTo("PENDING");
+    assertThat(job.attempts()).isEqualTo(1);
+    assertThat(job.nextRunAt()).isEqualTo(clock.instant().plus(Duration.ofMinutes(5)));
+  }
+
+  @Test
+  void concurrentRefundsCannotTogetherExceedTheAmount() throws Exception {
+    Payment p = paid(1000);
+    java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+    java.util.concurrent.Callable<String> attempt = () -> {
+      start.await();
+      try {
+        refunds.request(merchant, p.id(), Money.brl(600));
+        return "ok";
+      } catch (DomainException e) {
+        return e.code();
+      }
+    };
+    var a = pool.submit(attempt);
+    var b = pool.submit(attempt);
+    start.countDown();
+    List<String> outcomes = List.of(a.get(), b.get());
+    pool.shutdown();
+
+    assertThat(outcomes).containsExactlyInAnyOrder("ok", "REFUND_EXCEEDS_AMOUNT");
+    assertThat(refunds.list(merchant, p.id())).hasSize(1);
+  }
+
+  @Test
+  void settlementBumpsThePaymentVersion() {
+    Payment p = paid(1000);
+    long before = payments.findById(p.id()).orElseThrow().version();
+    Refund r = refunds.request(merchant, p.id(), Money.brl(400));
+
+    refunds.applyProviderUpdate(new RefundResult(r.id(), RefundStatus.COMPLETED, Money.brl(400), null, clock.instant(), clock.instant()));
+
+    assertThat(payments.findById(p.id()).orElseThrow().version()).isEqualTo(before + 1);
+    assertThat(payments.events(p.id()).getLast().type()).isEqualTo("refund_completed");
+  }
+
   @Test
   void pollingClosesTheRefundWhenTheBankSettles() {
     Payment p = paid(1000);

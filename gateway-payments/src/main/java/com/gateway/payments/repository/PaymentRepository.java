@@ -31,4 +31,11 @@ public interface PaymentRepository {
   List<Payment> findByStatusIn(Set<PaymentStatus> statuses, Instant createdAfter, int limit);
 
   List<PaymentEvent> events(String paymentId);
+  /**
+   * {@code SELECT ... FOR UPDATE}; requires an active transaction. For the refund reserve: two
+   * concurrent requests must not both see the same "remaining" and together exceed the amount.
+   */
+  Optional<Payment> findByIdForUpdate(String id);
+  /** Ordered by {@code created_at} ascending, capped at {@code limit}. */
+  List<Payment> findByStatusCreatedBefore(PaymentStatus status, Instant createdBefore, int limit);
 }

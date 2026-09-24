@@ -104,8 +104,12 @@ public final class Payment {
   }
 
   public PaymentEvent markPending(PixDetails pixDetails, Instant expiresAt) {
+    return markPending(pixDetails, expiresAt, EventSource.API);
+  }
+
+  public PaymentEvent markPending(PixDetails pixDetails, Instant expiresAt, EventSource by) {
     PaymentEvent event =
-        transition(PaymentStatus.PENDING, EventSource.API, "pending", "{\"txid\":" + json(pixDetails.txid()) + "}");
+        transition(PaymentStatus.PENDING, by, "pending", "{\"txid\":" + json(pixDetails.txid()) + "}");
     this.pix = pixDetails;
     this.expiresAt = expiresAt;
     return event;
@@ -183,6 +187,19 @@ public final class Payment {
       }
     }
     return sb.append('"').toString();
+  }
+
+  /**
+   * A refund settled (or failed) at the bank. Recorded as a payment event, not only as a change of
+   * {@code refunded_amount}: the event bumps {@code version}, so two concurrent read-modify-writes
+   * of {@code refunded_amount} collide on the optimistic lock instead of one silently losing.
+   */
+  public PaymentEvent recordRefund(String refundId, Money amount, boolean completed, EventSource by) {
+    if (completed) {
+      applyRefund(amount);
+    }
+    return recordEvent(
+        completed ? "refund_completed" : "refund_failed", by, "{\"refundId\":" + json(refundId) + ",\"amount\":" + amount.cents() + "}");
   }
 
   public void applyRefund(Money amount) {

@@ -60,6 +60,36 @@ public class ExpirationService {
     return changed;
   }
 
+  /**
+   * CREATED older than {@code stuckCreatedAfter} means the createCharge call never finished (the
+   * process died between the insert and the bank's answer). The txid is ours, so the bank can say
+   * what became of it: ACTIVE is adopted as PENDING (by SYSTEM), COMPLETED is adopted and then
+   * settled, absent is FAILED. Without this, a charge the bank accepted stays CREATED forever and
+   * its payment would never reach the merchant.
+   */
+  public int sweepStuckCreated(Instant now) {
+    int changed = 0;
+    for (Payment p : payments.findByStatusCreatedBefore(PaymentStatus.CREATED, now.minus(props.stuckCreatedAfter()), BATCH)) {
+      try {
+        ProviderGateway.Resolved r = providers.resolve(p.merchantId(), p.environment(), p.provider());
+        Optional<Charge> atBank = providers.call(p.id(), "findCharge", r, x -> x.provider().findCharge(x.credentials(), p.id()));
+        if (atBank.isEmpty()) {
+          paymentService.markFailed(p.id(), "PROVIDER_TIMEOUT", EventSource.SYSTEM);
+        } else {
+          int fallback = (int) java.time.Duration.between(p.createdAt(), p.expiresAt()).toSeconds();
+          paymentService.adoptPending(p.id(), atBank.get(), fallback, EventSource.SYSTEM);
+          if (atBank.get().status() == ChargeStatus.COMPLETED && atBank.get().firstPix().isPresent()) {
+            paymentService.settle(p.merchantId(), p.id(), atBank.get().firstPix().get(), EventSource.RECONCILIATION);
+          }
+        }
+        changed++;
+      } catch (RuntimeException e) {
+        log.warn("could not resolve stuck CREATED payment {}", p.id(), e);
+      }
+    }
+    return changed;
+  }
+
   /** Returns whether the payment changed state. A payment no longer PENDING (or not yet due) is a no-op. */
   public boolean expireOne(String paymentId, Instant now) {
     Payment p = payments.findById(paymentId).orElse(null);
@@ -68,7 +98,14 @@ public class ExpirationService {
     }
     ProviderGateway.Resolved r = providers.resolve(p.merchantId(), p.environment(), p.provider());
     Optional<Charge> atBank = providers.call(p.id(), "findCharge", r, x -> x.provider().findCharge(x.credentials(), p.id()));
-    if (atBank.isPresent() && atBank.get().status() == ChargeStatus.COMPLETED && atBank.get().firstPix().isPresent()) {
+    if (atBank.isPresent() && atBank.get().status() == ChargeStatus.COMPLETED) {
+      if (atBank.get().firstPix().isEmpty()) {
+        // Paid, but without the pix[] that says by whom and how much: we cannot complete it, and
+        // expiring a charge the bank calls paid would be wrong. Left PENDING for the webhook or the
+        // next reconciliation to bring the details.
+        log.warn("bank reports payment {} COMPLETED without pix[]; leaving it PENDING", p.id());
+        return false;
+      }
       paymentService.settle(p.merchantId(), p.id(), atBank.get().firstPix().get(), EventSource.RECONCILIATION);
       return true;
     }
