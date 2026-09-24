@@ -2,6 +2,7 @@ package com.gateway.app.api;
 
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.errors.NotFoundException;
+import com.gateway.app.security.UnauthenticatedException;
 import java.net.URI;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -32,8 +33,8 @@ public class ErrorHandler {
   }
 
   /** Thrown by {@code MerchantContext.current()} when there is no authenticated merchant on the request. */
-  @ExceptionHandler(IllegalStateException.class)
-  public ProblemDetail unauthenticated(IllegalStateException e) {
+  @ExceptionHandler(UnauthenticatedException.class)
+  public ProblemDetail unauthenticated(UnauthenticatedException e) {
     return problem(HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED", e.getMessage());
   }
 

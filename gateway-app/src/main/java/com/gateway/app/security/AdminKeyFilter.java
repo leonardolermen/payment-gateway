@@ -25,7 +25,7 @@ public class AdminKeyFilter extends OncePerRequestFilter {
 
   @Override
   protected boolean shouldNotFilter(HttpServletRequest req) {
-    return !req.getRequestURI().startsWith("/v1/admin/");
+    return !ProtectedRoutes.isAdmin(RequestPath.of(req).normalized());
   }
 
   @Override

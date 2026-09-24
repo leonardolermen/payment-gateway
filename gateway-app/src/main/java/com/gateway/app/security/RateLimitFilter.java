@@ -33,7 +33,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
   @Override
   protected boolean shouldNotFilter(HttpServletRequest req) {
-    return !ProtectedRoutes.requiresApiKey(req.getRequestURI());
+    return !ProtectedRoutes.requiresApiKey(RequestPath.of(req).normalized());
   }
 
   @Override

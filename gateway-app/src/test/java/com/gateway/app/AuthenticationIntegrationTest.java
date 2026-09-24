@@ -105,4 +105,38 @@ class AuthenticationIntegrationTest {
         .expectStatus().isEqualTo(HttpStatusCode.valueOf(422)).expectBody(Map.class).returnResult().getResponseBody();
     assertThat(third).containsEntry("type", "urn:gateway:API_KEY_LIMIT");
   }
+
+  /**
+   * The final review's reproduction: MVC routes on the decoded, matrix-stripped path, so these used
+   * to reach the admin controller with a merchant key. PathSanityFilter refuses them before any auth.
+   */
+  @Test
+  void encodedOrMatrixAdminPathsAreRejected() {
+    String key = (String) merchantAndKey("Store P", "TEST").get("key");
+    for (boolean withKey : new boolean[] {true, false}) {
+      var get = http().get().uri(java.net.URI.create("http://localhost:" + port + "/v1/%61dmin/merchants"));
+      if (withKey) get = get.header("Authorization", "Bearer " + key);
+      Map<String, Object> body = get.exchange().expectStatus().isBadRequest().expectBody(Map.class).returnResult().getResponseBody();
+      assertThat(body).containsEntry("type", "urn:gateway:INVALID_PATH");
+
+      var post = http().post().uri(java.net.URI.create("http://localhost:" + port + "/v1/admin;x/merchants"))
+          .contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(Map.of("name", "evil"));
+      if (withKey) post = post.header("Authorization", "Bearer " + key);
+      post.exchange().expectStatus().isBadRequest();
+    }
+  }
+
+  @Test
+  void merchantKeyAloneIsForbiddenOnAdmin() {
+    String key = (String) merchantAndKey("Store Q", "TEST").get("key");
+    http().get().uri("/v1/admin/merchants").header("Authorization", "Bearer " + key).exchange().expectStatus().isForbidden();
+    http().get().uri("/v1/me").header("Authorization", "Bearer " + key).exchange().expectStatus().isOk();
+  }
+
+  @Test
+  void createMerchantWithoutNameIs400() {
+    Map<String, Object> body = adminPost("/v1/admin/merchants").body(Map.of()).exchange()
+        .expectStatus().isBadRequest().expectBody(Map.class).returnResult().getResponseBody();
+    assertThat(body).containsEntry("type", "urn:gateway:INVALID_REQUEST");
+  }
 }
