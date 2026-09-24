@@ -16,7 +16,12 @@ public interface JobRepository {
   boolean enqueue(Job j);
 
   /** {@code FOR UPDATE SKIP LOCKED}; requires an active transaction. */
-  List<Job> claimDue(Instant now, int limit, Duration lease);
+  default List<Job> claimDue(Instant now, int limit, Duration lease) {
+    return claimDue(now, limit, lease, lease);
+  }
+
+  /** {@code reconcileLease} applies to the RECONCILE singleton only: a run lasts minutes, not seconds. */
+  List<Job> claimDue(Instant now, int limit, Duration lease, Duration reconcileLease);
 
   void save(Job j);
 

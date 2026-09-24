@@ -142,6 +142,7 @@ class ItauPixProviderTest {
       assertThat(r.status()).isEqualTo(RefundStatus.COMPLETED);
       assertThat(r.refundId()).isEqualTo("123ABC");
     });
+    assertThat(ev.endToEndIdByRefundId()).containsExactly(java.util.Map.entry("123ABC", E2E));
   }
 
   @Test void parseWebhookWithNullFields() {

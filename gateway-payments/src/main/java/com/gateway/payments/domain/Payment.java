@@ -146,13 +146,14 @@ public final class Payment {
    * as an "ignored" event, without a state transition. It still bumps {@code version}: it is a
    * stored fact, and {@code sequence} must keep advancing for the event log to stay monotonic.
    *
-   * <p>Only valid once the payment is in a {@linkplain PaymentStatus#terminal() terminal} status —
-   * that is the only case the spec defines this for; a webhook arriving mid-flight (e.g. on
-   * PENDING) belongs to a real transition instead, not a silent ignore.
+   * <p>Also valid on PENDING/EXPIRED since the webhook stopped being trusted on its own word: a
+   * notification the bank does not confirm, or a Pix of the wrong amount, must leave a trace on the
+   * payment without moving it. Only CREATED refuses: nothing can have been paid for a charge the
+   * bank has not answered yet.
    */
   public Optional<PaymentEvent> recordIgnored(String what, EventSource by) {
-    if (!status.terminal()) {
-      throw new IllegalStateException("recordIgnored requires a terminal status, was " + status);
+    if (status == PaymentStatus.CREATED) {
+      throw new IllegalStateException("recordIgnored is meaningless on a CREATED payment");
     }
     return Optional.of(recordEvent("ignored", by, "{\"what\":" + json(what) + "}"));
   }

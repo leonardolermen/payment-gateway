@@ -22,8 +22,12 @@ interface JobJpaRepository extends JpaRepository<JobEntity, String> {
   @Query(
       """
       SELECT j FROM JobEntity j
-       WHERE j.status = 'PENDING' AND j.nextRunAt <= :now AND (j.claimedAt IS NULL OR j.claimedAt < :leaseCutoff)
+       WHERE j.status = 'PENDING' AND j.nextRunAt <= :now
+         AND (j.claimedAt IS NULL
+              OR (j.type <> 'RECONCILE' AND j.claimedAt < :leaseCutoff)
+              OR (j.type = 'RECONCILE' AND j.claimedAt < :reconcileCutoff))
        ORDER BY j.nextRunAt ASC
       """)
-  List<JobEntity> selectDue(@Param("now") Instant now, @Param("leaseCutoff") Instant leaseCutoff, Limit limit);
+  List<JobEntity> selectDue(
+      @Param("now") Instant now, @Param("leaseCutoff") Instant leaseCutoff, @Param("reconcileCutoff") Instant reconcileCutoff, Limit limit);
 }

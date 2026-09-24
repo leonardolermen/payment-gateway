@@ -208,6 +208,13 @@ class PaymentsFlowIntegrationTest {
         .replace("\"2020-01-01T00:00:00Z\"", "\"" + java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS) + "\"")
         .replaceAll("(?s),\\s*\"devolucoes\": \\[.*?\\]\\s*(?=})", "");
     assertThat(webhook).doesNotContain("devolucoes");
+    // The webhook is only a hint: processing asks GET /cob/{txid}, and the bank must say CONCLUIDA
+    // with the same endToEndId and amount before anything reaches the merchant.
+    ITAU.stubFor(get(urlEqualTo("/cob/" + paymentId))
+        .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json")
+            .withBody(fixture("get_cob_200_completed.json").replace("7978c0c97ea847e78e8849634473c1f1", paymentId).replace("\"567.89\"", "\"159.90\"")
+                // The bank's horario is what paid_at becomes; 2020 would close the 90-day refund window below.
+                .replace("\"2020-01-01T00:00:00Z\"", "\"" + java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS) + "\""))));
     webhookInbox.accept("ITAU", new MerchantId(merchantId), "{}", webhook.getBytes(StandardCharsets.UTF_8));
 
     Awaitility.await().atMost(Duration.ofSeconds(15)).until(() -> "COMPLETED".equals(getJson(testKey, "/v1/payments/" + paymentId).get("status")));
@@ -243,6 +250,14 @@ class PaymentsFlowIntegrationTest {
     List<?> refunds = http().get().uri("/v1/payments/" + paymentId + "/refunds").header("Authorization", "Bearer " + testKey)
         .exchange().expectStatus().isOk().expectBody(List.class).returnResult().getResponseBody();
     assertThat(refunds).hasSize(1);
+
+    // 7b. Lookup by the merchant's own reference: what the 409 IN_PROGRESS text points to.
+    List<Map<String, Object>> byReference = http().get().uri("/v1/payments?reference=order-42").header("Authorization", "Bearer " + testKey)
+        .exchange().expectStatus().isOk().expectBody(List.class).returnResult().getResponseBody();
+    assertThat(byReference).extracting(m -> m.get("id")).containsExactly(paymentId);
+    List<?> none = http().get().uri("/v1/payments?reference=order-nope").header("Authorization", "Bearer " + testKey)
+        .exchange().expectStatus().isOk().expectBody(List.class).returnResult().getResponseBody();
+    assertThat(none).isEmpty();
 
     // 8. No Idempotency-Key.
     EntityExchangeResult<Map> noKey = postPayment(testKey, null, request);

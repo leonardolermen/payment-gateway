@@ -46,6 +46,24 @@ class RefundTest {
   }
 
   @Test
+  void unknownKeepsTheReasonAndCanStillSettleEitherWay() {
+    Refund r = Refund.request("payment-1", MerchantId.next(), Money.brl(5000), clock);
+    r.markProcessing();
+    r.markUnknown("no answer");
+    assertThat(r.state()).isEqualTo(RefundState.UNKNOWN);
+    assertThat(r.failureReason()).isEqualTo("no answer");
+    assertThatThrownBy(() -> r.markUnknown("again")).isInstanceOf(IllegalStateException.class);
+    r.markCompleted(Instant.parse("2026-09-25T12:00:00Z"));
+    assertThat(r.state()).isEqualTo(RefundState.COMPLETED);
+
+    Refund f = Refund.request("payment-1", MerchantId.next(), Money.brl(5000), clock);
+    f.markUnknown("no answer");
+    f.markFailed("NAO_REALIZADO");
+    assertThat(f.state()).isEqualTo(RefundState.FAILED);
+    assertThatThrownBy(() -> f.markUnknown("late")).isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
   void completedDoesNotGoBack() {
     Refund r = Refund.request("payment-1", MerchantId.next(), Money.brl(5000), clock);
     r.markProcessing();

@@ -1,6 +1,7 @@
 package com.gateway.app;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.put;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
@@ -222,6 +223,10 @@ class ItauWebhookMtlsIntegrationTest {
         .header("Idempotency-Key", "w1").contentType(MediaType.APPLICATION_JSON)
         .body(Map.of("amount", 15990, "currency", "BRL", "method", "PIX", "reference", "order-9"))
         .exchange().expectStatus().isCreated().expectBody(Map.class).returnResult().getResponseBody().get("id");
+
+    ITAU.stubFor(get(urlEqualTo("/cob/" + paymentId))
+        .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json")
+            .withBody(fixture("get_cob_200_completed.json").replace("7978c0c97ea847e78e8849634473c1f1", paymentId).replace("\"567.89\"", "\"159.90\""))));
 
     long start = System.nanoTime();
     HttpResponse<String> res = postWebhook(client(BANK), mtlsUrl("/v1/providers/itau/webhooks/" + m.token() + "/pix"), webhookFor(paymentId));

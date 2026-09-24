@@ -116,6 +116,11 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   }
 
   @Override
+  public List<Payment> listByMerchantAndReference(MerchantId merchantId, String reference, int limit) {
+    return jpa.findByMerchantIdAndReferenceOrderByIdDesc(merchantId.value(), reference, Limit.of(limit)).stream().map(PaymentRepositoryImpl::toDomain).toList();
+  }
+
+  @Override
   public List<Payment> findPendingOlderThan(Instant expiresBefore, int limit) {
     return jpa.findPendingOlderThan(expiresBefore, Limit.of(limit)).stream().map(PaymentRepositoryImpl::toDomain).toList();
   }

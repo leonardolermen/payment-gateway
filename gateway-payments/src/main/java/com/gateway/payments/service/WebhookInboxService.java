@@ -5,7 +5,6 @@ import com.gateway.kernel.ids.Ulid;
 import com.gateway.kernel.provider.ProviderWebhookEvent;
 import com.gateway.kernel.provider.ReceivedPix;
 import com.gateway.kernel.provider.RefundResult;
-import com.gateway.payments.domain.EventSource;
 import com.gateway.payments.domain.Job;
 import com.gateway.payments.domain.WebhookInboxEntry;
 import com.gateway.payments.repository.JobRepository;
@@ -58,7 +57,10 @@ public class WebhookInboxService {
   }
 
   /**
-   * One transaction per payment (inside {@link PaymentService#settle}), not one for the whole
+   * The body is a hint: every Pix and every refund update is confirmed with the bank before it
+   * moves anything ({@link PaymentService#settleFromWebhook}, {@link RefundService#confirmFromWebhook}).
+   *
+   * <p>One transaction per payment (inside {@link PaymentService#settle}), not one for the whole
    * body: a batch of Pix in one webhook must not roll back the ones that succeeded because a later
    * one hit an optimistic-lock conflict. A conflict propagates, the row stays RECEIVED and the job
    * retries — settling is idempotent, so the ones already done become "ignored".
@@ -82,13 +84,13 @@ public class WebhookInboxService {
       if (txid == null) {
         continue; // static QR or key transfer: not a charge of ours (NOTES.md)
       }
-      PaymentService.Settlement outcome = paymentService.settle(entry.merchantId(), txid, pix, EventSource.PROVIDER_WEBHOOK);
+      PaymentService.Settlement outcome = paymentService.settleFromWebhook(entry.merchantId(), txid, pix);
       matched |= outcome != PaymentService.Settlement.UNKNOWN_PAYMENT;
     }
     if (event.refundUpdates() != null) {
       for (RefundResult update : event.refundUpdates()) {
-        refundService.applyProviderUpdate(update);
-        matched = true;
+        String e2e = event.endToEndIdByRefundId() == null ? null : event.endToEndIdByRefundId().get(update.refundId());
+        matched |= refundService.confirmFromWebhook(entry.merchantId(), e2e, update);
       }
     }
     mark(entry, matched ? "PROCESSED" : "IGNORED", null);

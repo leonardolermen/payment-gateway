@@ -59,6 +59,15 @@ class PaymentTest {
   }
 
   @Test
+  void unconfirmedWebhookOnPendingIsRecordedWithoutATransition() {
+    Payment p = fresh();
+    assertThatThrownBy(() -> p.recordIgnored("too early", EventSource.PROVIDER_WEBHOOK)).isInstanceOf(IllegalStateException.class);
+    p.markPending(new PixDetails(p.id(), "x", "y", null), Instant.now());
+    assertThat(p.recordIgnored("unconfirmed webhook E1", EventSource.PROVIDER_WEBHOOK)).isPresent();
+    assertThat(p.status()).isEqualTo(PaymentStatus.PENDING);
+  }
+
+  @Test
   void expiredThenPaidByTheBankCompletes() {
     Payment p = fresh();
     p.markPending(new PixDetails(p.id(), "x", "y", null), Instant.now());

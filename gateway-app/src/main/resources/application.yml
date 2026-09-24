@@ -63,6 +63,8 @@ gateway:
     reconciliation-lookback: PT48H
     reconciliation-min-age: PT10M
     idempotency-ttl: PT24H
+    refund-not-found-grace: PT30M              # a refund PUT that timed out / got a 503 and the bank still does not know is FAILED after this
+    reconcile-lease: PT10M                     # a RECONCILE run lasts minutes; the 2 min job lease let a second worker start another
     job-max-attempts: 8
     job-lease: PT2M
     outbox-lease: PT1M

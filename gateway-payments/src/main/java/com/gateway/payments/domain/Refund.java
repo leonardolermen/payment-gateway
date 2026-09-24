@@ -48,6 +48,15 @@ public final class Refund {
     this.failureReason = reason;
   }
 
+  /** Only from REQUESTED/PROCESSING: a refund the bank already settled either way is not "unknown". */
+  public void markUnknown(String reason) {
+    if (state != RefundState.REQUESTED && state != RefundState.PROCESSING) {
+      throw new IllegalStateException("refund " + id + " is " + state + ", not in flight");
+    }
+    this.state = RefundState.UNKNOWN;
+    this.failureReason = reason;
+  }
+
   private void requireNotTerminal() {
     if (state == RefundState.COMPLETED) {
       throw new IllegalStateException("refund " + id + " is already completed");

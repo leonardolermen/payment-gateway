@@ -112,6 +112,68 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
     assertThat(reload(p).status()).isEqualTo(PaymentStatus.COMPLETED);
   }
 
+  /** Critical 1(c): COMPLETED here, but the bank never concluded it (a forged webhook got through, say). */
+  @Test
+  void reconciliationFlagsACompletedPaymentTheBankStillHasActive() {
+    Payment p = newCharge(1000);
+    new TransactionTemplate(txManager).executeWithoutResult(s -> {
+      Payment loaded = reload(p);
+      payments.save(loaded, List.of(loaded.markCompleted("E2E" + p.id(), Money.brl(1000), clock.instant(), EventSource.PROVIDER_WEBHOOK)));
+    });
+
+    reconciliation.reconcile(merchant, ProviderEnvironment.TEST, clock.instant().minus(Duration.ofDays(1)), clock.instant());
+
+    assertThat(divergences.open()).filteredOn(d -> d.paymentId().equals(p.id())).singleElement()
+        .satisfies(d -> {
+          assertThat(d.gatewayStatus()).isEqualTo("COMPLETED");
+          assertThat(d.providerStatus()).isEqualTo("ACTIVE");
+        });
+    assertThat(reload(p).status()).isEqualTo(PaymentStatus.COMPLETED);
+  }
+
+  @Test
+  void reconciliationFlagsACompletedPaymentWhoseEndToEndIdTheBankDoesNotKnow() {
+    Payment p = newCharge(1000);
+    new TransactionTemplate(txManager).executeWithoutResult(s -> {
+      Payment loaded = reload(p);
+      payments.save(loaded, List.of(loaded.markCompleted("E2E-OURS" + p.id(), Money.brl(1000), clock.instant(), EventSource.PROVIDER_WEBHOOK)));
+    });
+    bank.markPaid(p.id(), "E2E-BANK" + p.id(), Money.brl(1000));
+
+    reconciliation.reconcile(merchant, ProviderEnvironment.TEST, clock.instant().minus(Duration.ofDays(1)), clock.instant());
+
+    assertThat(divergences.open()).filteredOn(d -> d.paymentId().equals(p.id())).singleElement()
+        .satisfies(d -> {
+          assertThat(d.providerStatus()).isEqualTo("COMPLETED");
+          assertThat(d.detail()).contains("E2E-BANK" + p.id());
+        });
+  }
+
+  @Test
+  void theDatabaseRefusesASecondOpenDivergenceForTheSameMismatch() {
+    Payment p = newCharge(1000);
+    assertThat(paymentService.openDivergence(p, "ACTIVE", "first")).isTrue();
+    assertThat(paymentService.openDivergence(p, "ACTIVE", "second")).isFalse();
+    assertThat(paymentService.openDivergence(p, "REMOVED_BY_PSP", "other status")).isTrue();
+    assertThat(divergences.open()).filteredOn(d -> d.paymentId().equals(p.id())).hasSize(2);
+  }
+
+  @Test
+  void theReconcileJobHasItsOwnLongerLease() {
+    jdbc.update("DELETE FROM payments.jobs WHERE type = 'RECONCILE'");
+    new TransactionTemplate(txManager).executeWithoutResult(s -> jobs.enqueue(Job.reconcile(clock)));
+    clock.advance(Duration.ofMinutes(1));
+    // A run claimed 5 minutes ago is still in progress: past the 2 min jobLease, inside the 10 min reconcileLease.
+    jdbc.update("UPDATE payments.jobs SET claimed_at = ? WHERE type = 'RECONCILE'", java.sql.Timestamp.from(clock.instant().minus(Duration.ofMinutes(5))));
+
+    List<Job> claimed = new TransactionTemplate(txManager).execute(s -> jobs.claimDue(clock.instant(), 100, Duration.ofMinutes(2), Duration.ofMinutes(10)));
+    assertThat(claimed).noneMatch(j -> j.type() == JobType.RECONCILE);
+
+    List<Job> later = new TransactionTemplate(txManager).execute(s -> jobs.claimDue(clock.instant().plus(Duration.ofMinutes(6)), 100, Duration.ofMinutes(2), Duration.ofMinutes(10)));
+    assertThat(later).anyMatch(j -> j.type() == JobType.RECONCILE);
+    jdbc.update("DELETE FROM payments.jobs WHERE type = 'RECONCILE'");
+  }
+
   @Test
   void theReconcileJobIsRescheduledNeverDone() {
     // The singleton may already exist, rescheduled by another test's runner pass.

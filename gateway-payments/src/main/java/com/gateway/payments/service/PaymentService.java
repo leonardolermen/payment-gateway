@@ -5,6 +5,7 @@ import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.money.Money;
 import com.gateway.kernel.provider.Charge;
+import com.gateway.kernel.provider.ChargeStatus;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.payments.domain.EventSource;
@@ -160,9 +161,7 @@ public class PaymentService {
       }
     }
     markFailed(paymentId, code, EventSource.API);
-    DomainException e = new DomainException(code, cause.getMessage());
-    e.initCause(cause);
-    return e;
+    return ProviderErrors.toDomain(code, cause, log, "createCharge", paymentId);
   }
 
   /** CREATED -> FAILED with event and outbox row; a payment no longer CREATED is left alone. */
@@ -185,6 +184,14 @@ public class PaymentService {
     return payments.listByMerchant(merchantId, limit, cursor);
   }
 
+  /**
+   * The merchant's own order reference, newest first. What a client checks after a 409 IN_PROGRESS
+   * on a create: whether the interrupted request left a payment behind before retrying with a new key.
+   */
+  public List<Payment> listByReference(MerchantId merchantId, String reference, int limit) {
+    return payments.listByMerchantAndReference(merchantId, reference, limit);
+  }
+
   public List<PaymentEvent> events(MerchantId merchantId, String id) {
     return payments.events(get(merchantId, id).id());
   }
@@ -203,7 +210,7 @@ public class PaymentService {
       if (e.code() == ProviderException.Code.INVALID) {
         throw new DomainException("INVALID_STATE", "the bank no longer accepts cancelling this charge");
       }
-      throw new DomainException("PROVIDER_UNAVAILABLE", e.getMessage());
+      throw ProviderErrors.toDomain("PROVIDER_UNAVAILABLE", e, log, "cancelCharge", id);
     }
     return tx.execute(s -> {
       Payment p = payments.findByMerchantAndId(merchantId, id).orElseThrow();
@@ -236,6 +243,14 @@ public class PaymentService {
         return Settlement.UNKNOWN_PAYMENT;
       }
       Payment p = found.get();
+      if ((p.status() == PaymentStatus.PENDING || p.status() == PaymentStatus.EXPIRED) && pix.amount().cents() != p.amount().cents()) {
+        // A charge has a fixed amount; a Pix of another amount is not "the payment". Completing it
+        // would tell the merchant to ship an order of 159.90 against 1.00. No transition, nothing to
+        // the merchant; a human decides.
+        payments.save(p, List.of(p.recordIgnored("pix " + pix.endToEndId() + " of " + pix.amount().cents() + " cents, charge is " + p.amount().cents(), by).orElseThrow()));
+        openDivergence(p, "AMOUNT_MISMATCH", "pix " + pix.endToEndId() + " paid " + pix.amount().cents() + " cents, charge is " + p.amount().cents());
+        return Settlement.IGNORED;
+      }
       if (p.status() == PaymentStatus.PENDING || p.status() == PaymentStatus.EXPIRED) {
         Payment saved = payments.save(p, List.of(p.markCompleted(pix.endToEndId(), pix.amount(), pix.paidAt(), by)));
         events.emit(saved.merchantId(), "payment.completed", saved);
@@ -265,18 +280,55 @@ public class PaymentService {
   }
 
   /**
+   * A received Pix announced by the bank's webhook. The webhook is a hint, not the truth: anyone who
+   * can reach the endpoint with the right token could POST a body saying "paid", and the merchant
+   * would ship goods on our {@code payment.completed}. So the bank is asked ({@code GET /cob/{txid}})
+   * and the payment completes only with what the BANK reports: the charge CONCLUIDA with a Pix of the
+   * same endToEndId. The amount is then checked by {@link #settle} against the charge's own.
+   *
+   * <p>Not confirmed: an "ignored" event and an {@code UNCONFIRMED_WEBHOOK} divergence, nothing to
+   * the merchant. The bank unreachable: the exception propagates and the inbox job retries.
+   */
+  public Settlement settleFromWebhook(MerchantId merchantId, String paymentId, ReceivedPix hinted) {
+    Optional<Payment> found = payments.findByMerchantAndId(merchantId, paymentId);
+    if (found.isEmpty()) {
+      return Settlement.UNKNOWN_PAYMENT;
+    }
+    Payment p = found.get();
+    if (p.status() == PaymentStatus.CREATED) {
+      // Same as settle: the PENDING write has not landed yet; fail and let the job retry.
+      throw new IllegalStateException("pix for payment " + paymentId + " still in " + p.status());
+    }
+    ProviderGateway.Resolved r = providers.resolve(merchantId, p.environment(), p.provider());
+    Optional<Charge> atBank = providers.call(p.id(), "findCharge", r, x -> x.provider().findCharge(x.credentials(), p.id()));
+    Optional<ReceivedPix> confirmed =
+        atBank
+            .filter(c -> c.status() == ChargeStatus.COMPLETED && c.received() != null)
+            .flatMap(c -> c.received().stream().filter(x -> Objects.equals(x.endToEndId(), hinted.endToEndId())).findFirst());
+    if (confirmed.isPresent()) {
+      return settle(merchantId, paymentId, confirmed.get(), EventSource.PROVIDER_WEBHOOK);
+    }
+    String bankSays = atBank.map(c -> c.status().name()).orElse("NOT_FOUND");
+    tx.executeWithoutResult(s -> {
+      Payment loaded = payments.findById(paymentId).orElseThrow();
+      payments.save(loaded, List.of(loaded.recordIgnored("unconfirmed webhook: e2eid " + hinted.endToEndId() + ", bank says " + bankSays, EventSource.PROVIDER_WEBHOOK).orElseThrow()));
+      openDivergence(
+          loaded,
+          "UNCONFIRMED_WEBHOOK",
+          "webhook said e2eid " + hinted.endToEndId() + " paid " + hinted.amount().cents() + " cents; bank says " + bankSays);
+    });
+    return Settlement.IGNORED;
+  }
+
+  /**
    * Opens a divergence unless the same (payment, provider status) one is already OPEN. Reconciliation
    * runs every 15 minutes over a 48 h window: without the check one mismatch would open ~190
-   * identical divergences before anyone looked at the first.
+   * identical divergences before anyone looked at the first. The check is the database's (partial
+   * unique index, V201), not a scan of every OPEN row.
    */
   public boolean openDivergence(Payment p, String providerStatus, String detail) {
-    boolean alreadyOpen = divergences.open().stream().anyMatch(d -> d.paymentId().equals(p.id()) && d.providerStatus().equals(providerStatus));
-    if (alreadyOpen) {
-      return false;
-    }
     String trimmed = detail.length() <= 500 ? detail : detail.substring(0, 500);
-    divergences.save(new ReconciliationDivergence(Ulid.next(), p.id(), p.status().name(), providerStatus, trimmed, "OPEN", clock.instant()));
-    return true;
+    return divergences.openIfAbsent(new ReconciliationDivergence(Ulid.next(), p.id(), p.status().name(), providerStatus, trimmed, "OPEN", clock.instant()));
   }
 
   /**

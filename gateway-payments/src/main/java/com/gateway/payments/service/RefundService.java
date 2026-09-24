@@ -20,6 +20,7 @@ import com.gateway.payments.repository.RefundRepository;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -87,8 +88,9 @@ public class RefundService {
           if (locked.paidAt() != null && clock.instant().isAfter(locked.paidAt().plus(WINDOW))) {
             throw new DomainException("REFUND_WINDOW_CLOSED", "the bank accepts refunds up to 90 days after payment");
           }
-          // Reserved = everything not FAILED: a PROCESSING refund is money the bank may still send
-          // back, and counting only COMPLETED ones would let two quick requests exceed the original.
+          // Reserved = everything not FAILED: a PROCESSING or UNKNOWN refund is money the bank may
+          // still send back, and counting only COMPLETED ones would let two quick requests exceed
+          // the original.
           long reserved =
               refunds.findByPayment(paymentId).stream().filter(x -> x.state() != RefundState.FAILED).mapToLong(x -> x.amount().cents()).sum();
           long remaining = locked.amount().cents() - reserved;
@@ -108,18 +110,22 @@ public class RefundService {
               r,
               x -> x.provider().requestRefund(x.credentials(), new RefundRequest(payment.pix().endToEndId(), refund.id(), refund.amount())));
     } catch (ProviderException e) {
-      if (e.code() == ProviderException.Code.TIMEOUT) {
+      if (!definitelyRefused(e.code())) {
         // The refund id is ours, so the PUT is safe to have landed: polling asks the bank for it by
-        // that id and settles whichever way the bank says.
+        // that id and settles whichever way the bank says. A 503/504 from a gateway in front of the
+        // bank says no more about that than a timeout does; failing it here freed the reserve while
+        // the money could still leave, and a second refund on top would pay the payer twice.
+        // A refund the bank never saw is FAILED by polling after refundNotFoundGrace.
+        log.warn("refund {} PUT ended in {}; left PROCESSING for polling to decide", refund.id(), e.code());
         result = new RefundResult(refund.id(), RefundStatus.PROCESSING, refund.amount(), null, clock.instant(), null);
       } else {
+        String code = "PROVIDER_DECLINED";
         tx.executeWithoutResult(s -> {
           Refund loaded = refunds.findById(refund.id()).orElseThrow();
-          loaded.markFailed(e.code() + ": " + e.getMessage());
+          loaded.markFailed(ProviderErrors.message(code));
           events.emitRefund(merchantId, "refund.failed", refunds.save(loaded), payment);
         });
-        boolean declined = e.code() == ProviderException.Code.INVALID || e.code() == ProviderException.Code.DECLINED;
-        throw new DomainException(declined ? "PROVIDER_DECLINED" : "PROVIDER_UNAVAILABLE", e.getMessage());
+        throw ProviderErrors.toDomain(code, e, log, "requestRefund", refund.id());
       }
     }
 
@@ -141,6 +147,14 @@ public class RefundService {
     return processing;
   }
 
+  /**
+   * The only answers that prove the bank did not take the refund: it refused the request (400/422)
+   * or does not know the Pix it is against (404). Anything else may have landed.
+   */
+  private static boolean definitelyRefused(ProviderException.Code code) {
+    return code == ProviderException.Code.INVALID || code == ProviderException.Code.DECLINED || code == ProviderException.Code.NOT_FOUND;
+  }
+
   public Refund get(MerchantId merchantId, String refundId) {
     return refunds.findById(refundId).filter(r -> r.merchantId().equals(merchantId)).orElseThrow(() -> new NotFoundException("refund", refundId));
   }
@@ -151,9 +165,11 @@ public class RefundService {
   }
 
   /**
-   * The bank's word on a refund, from the webhook or from polling. Idempotent: a refund already
+   * The bank's word on a refund, from polling or from a webhook confirmed by
+   * {@link #confirmFromWebhook}; never from a webhook body alone. Idempotent: a refund already
    * COMPLETED or FAILED ignores later notifications, so a webhook and a poll racing to deliver the
-   * same settlement cannot count the money twice. Settlement is recorded as a payment event
+   * same settlement cannot count the money twice. UNKNOWN still accepts COMPLETED/FAILED: it is
+   * "we stopped asking", not "the bank decided". Settlement is recorded as a payment event
    * ({@code refund_completed}/{@code refund_failed}) so it bumps the payment's version.
    */
   public void applyProviderUpdate(RefundResult result) {
@@ -196,17 +212,60 @@ public class RefundService {
 
   /**
    * Polling ran out of budget ({@code refundPollMaxAttempts}, 24 h) with the bank still saying
-   * EM_PROCESSAMENTO. The refund cannot stay PROCESSING forever (it reserves the amount), but the
-   * money may still move at the bank: FAILED for the merchant, plus a divergence for a human.
+   * EM_PROCESSAMENTO. This used to mark the refund FAILED, which freed its amount: the merchant
+   * could refund again while the first devolucao was still able to settle, and the payer got paid
+   * back twice. Now: UNKNOWN (still reserved), {@code refund.unknown} to the merchant and a
+   * {@code REFUND_UNKNOWN} divergence, in one transaction so neither exists without the other.
    */
   public void giveUp(String refundId) {
-    Refund refund = refunds.findById(refundId).orElse(null);
-    if (refund == null || refund.state() == RefundState.COMPLETED || refund.state() == RefundState.FAILED) {
-      return;
+    tx.executeWithoutResult(s -> {
+      Refund probe = refunds.findById(refundId).orElse(null);
+      if (probe == null) {
+        return;
+      }
+      Payment payment = payments.findByIdForUpdate(probe.paymentId()).orElseThrow();
+      Refund refund = refunds.findById(refundId).orElseThrow();
+      if (refund.state() != RefundState.REQUESTED && refund.state() != RefundState.PROCESSING) {
+        return;
+      }
+      refund.markUnknown("refund status unknown after the polling budget; check the bank");
+      Refund saved = refunds.save(refund);
+      events.emitRefund(refund.merchantId(), "refund.unknown", saved, payment);
+      paymentService.openDivergence(payment, "REFUND_UNKNOWN", "refund " + refundId + " still processing at the bank after the polling budget");
+    });
+  }
+
+  /**
+   * A refund status carried by the bank's webhook. Like a received Pix, the body is a hint: it is
+   * applied only when the refund belongs to the merchant whose webhook URL was called, hangs off
+   * that payment's own endToEndId, and the bank's {@code GET /devolucao} agrees. What gets applied
+   * is the bank's answer, not the body's. Returns whether the update was ours; a mismatch opens a
+   * divergence on the refund's payment. The bank unreachable propagates so the inbox job retries.
+   */
+  public boolean confirmFromWebhook(MerchantId merchantId, String endToEndId, RefundResult hinted) {
+    Refund refund = refunds.findById(hinted.refundId()).orElse(null);
+    if (refund == null) {
+      log.warn("webhook refund update for unknown refund {}", hinted.refundId());
+      return false;
     }
-    applyProviderUpdate(
-        new RefundResult(refundId, RefundStatus.FAILED, refund.amount(), "refund status unknown after 24h; check the bank", refund.createdAt(), null));
-    Payment p = payments.findById(refund.paymentId()).orElseThrow();
-    paymentService.openDivergence(p, "REFUND_UNKNOWN", "refund " + refundId + " still processing at the bank after the polling budget");
+    Payment payment = payments.findById(refund.paymentId()).orElseThrow();
+    String paymentE2e = payment.pix() == null ? null : payment.pix().endToEndId();
+    if (!refund.merchantId().equals(merchantId) || endToEndId == null || !endToEndId.equals(paymentE2e)) {
+      log.warn("webhook refund update for refund {} does not match its merchant or payment; ignored", refund.id());
+      tx.executeWithoutResult(
+          s -> paymentService.openDivergence(
+              payment,
+              "UNCONFIRMED_REFUND_WEBHOOK",
+              "webhook for merchant " + merchantId.value() + ", e2eid " + endToEndId + " named refund " + refund.id() + " of another merchant or payment"));
+      return false;
+    }
+    ProviderGateway.Resolved r = providers.resolve(payment.merchantId(), payment.environment(), payment.provider());
+    Optional<RefundResult> atBank = providers.call(payment.id(), "findRefund", r, x -> x.provider().findRefund(x.credentials(), paymentE2e, refund.id()));
+    if (atBank.isEmpty()) {
+      log.warn("webhook refund update for {} not known at the bank; polling decides", refund.id());
+      return true;
+    }
+    applyProviderUpdate(atBank.get());
+    return true;
   }
 }

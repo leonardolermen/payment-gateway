@@ -49,7 +49,8 @@ public class PaymentEvents {
         new OutboxMessage(Ulid.next(), merchantId, aggregateId, partitionKey, type, json.writeValueAsString(body), "PENDING", null, clock.instant()));
   }
 
-  static Map<String, Object> paymentJson(Payment p) {
+  /** Public for the contract test in gateway-app that holds it to the REST {@code PaymentResponse}'s key set. */
+  public static Map<String, Object> paymentJson(Payment p) {
     Map<String, Object> m = new LinkedHashMap<>();
     m.put("id", p.id());
     // Same spelling as the REST API (PaymentResponse): one resource, one vocabulary, whichever way it arrives.
@@ -76,6 +77,11 @@ public class PaymentEvents {
     return m;
   }
 
+  /**
+   * {@code state} is one of REQUESTED, PROCESSING, COMPLETED, FAILED or UNKNOWN. UNKNOWN (event
+   * {@code refund.unknown}) means the bank never settled it within the polling budget: the amount
+   * stays reserved and a later {@code refund.completed} or {@code refund.failed} may still follow.
+   */
   static Map<String, Object> refundJson(Refund r) {
     Map<String, Object> m = new LinkedHashMap<>();
     m.put("id", r.id());

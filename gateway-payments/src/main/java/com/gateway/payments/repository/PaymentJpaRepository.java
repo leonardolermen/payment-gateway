@@ -15,6 +15,8 @@ interface PaymentJpaRepository extends JpaRepository<PaymentEntity, String> {
 
   Optional<PaymentEntity> findByMerchantIdAndId(String merchantId, String id);
 
+  java.util.List<PaymentEntity> findByMerchantIdAndReferenceOrderByIdDesc(String merchantId, String reference, Limit limit);
+
   @Query("SELECT p FROM PaymentEntity p WHERE p.status = 'PENDING' AND p.expiresAt < :before ORDER BY p.expiresAt ASC")
   java.util.List<PaymentEntity> findPendingOlderThan(@Param("before") Instant before, Limit limit);
 

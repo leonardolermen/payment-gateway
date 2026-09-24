@@ -49,10 +49,20 @@ public class PaymentsController {
     return PaymentResponse.from(payments.get(MerchantContext.current().merchantId(), id));
   }
 
+  /**
+   * {@code reference} is the merchant's own order id: what the 409 IN_PROGRESS answer tells a client
+   * to look up before retrying a create with a new Idempotency-Key.
+   */
   @GetMapping
-  public List<PaymentResponse> list(@RequestParam(defaultValue = "20") int limit, @RequestParam(required = false) String cursor) {
+  public List<PaymentResponse> list(
+      @RequestParam(defaultValue = "20") int limit, @RequestParam(required = false) String cursor, @RequestParam(required = false) String reference) {
     if (limit <= 0 || limit > MAX_PAGE) throw new IllegalArgumentException("limit must be between 1 and " + MAX_PAGE);
-    return payments.list(MerchantContext.current().merchantId(), limit, cursor).stream().map(PaymentResponse::from).toList();
+    var merchantId = MerchantContext.current().merchantId();
+    if (reference != null) {
+      if (cursor != null) throw new IllegalArgumentException("cursor and reference cannot be combined");
+      return payments.listByReference(merchantId, reference, limit).stream().map(PaymentResponse::from).toList();
+    }
+    return payments.list(merchantId, limit, cursor).stream().map(PaymentResponse::from).toList();
   }
 
   @GetMapping("/{id}/events")

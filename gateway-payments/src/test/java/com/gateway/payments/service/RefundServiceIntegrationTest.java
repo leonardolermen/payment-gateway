@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.money.Money;
+import com.gateway.kernel.provider.ProviderException;
 import com.gateway.kernel.provider.RefundResult;
 import com.gateway.kernel.provider.RefundStatus;
 import com.gateway.payments.domain.EventSource;
@@ -36,6 +37,8 @@ class RefundServiceIntegrationTest extends ServiceIntegrationTestBase {
 
   Payment paid(long cents) {
     Payment p = newCharge(cents);
+    // The bank agrees, so a reconciliation pass from another test's runner finds nothing to flag.
+    bank.markPaid(p.id(), "E2E" + p.id(), Money.brl(cents));
     return new TransactionTemplate(txManager).execute(s -> {
       Payment loaded = payments.findById(p.id()).orElseThrow();
       return payments.save(
@@ -133,7 +136,7 @@ class RefundServiceIntegrationTest extends ServiceIntegrationTestBase {
   @Autowired com.gateway.payments.repository.ReconciliationDivergenceRepository divergences;
 
   @Test
-  void pollingThatNeverSettlesEndsFailedWithADivergence() {
+  void pollingThatNeverSettlesEndsUnknownKeepingTheReserve() {
     Payment p = paid(1000);
     Refund r = refunds.request(merchant, p.id(), Money.brl(400));
     // One poll left in the 288-attempt budget, and due now.
@@ -143,12 +146,56 @@ class RefundServiceIntegrationTest extends ServiceIntegrationTestBase {
     while (runner.runDue(clock.instant()) > 0) {}
 
     assertThat(jobs.findByTypeAndRef(JobType.POLL_REFUND, r.id()).orElseThrow().status()).isEqualTo("DEAD");
+    Refund unknown = refunds.get(merchant, r.id());
+    assertThat(unknown.state()).isEqualTo(RefundState.UNKNOWN);
+    assertThat(outboxTypes(r.id())).containsExactly("refund.requested", "refund.unknown");
+    assertThat(outboxPayload(r.id(), "refund.unknown")).contains("\"state\":\"UNKNOWN\"");
+    assertThat(divergences.open()).filteredOn(d -> d.paymentId().equals(p.id()) && d.providerStatus().equals("REFUND_UNKNOWN")).hasSize(1);
+    // The 400 may still leave at the bank: it stays reserved.
+    assertThatThrownBy(() -> refunds.request(merchant, p.id(), Money.brl(700)))
+        .isInstanceOf(DomainException.class).extracting(e -> ((DomainException) e).code()).isEqualTo("REFUND_EXCEEDS_AMOUNT");
+
+    // A later word from the bank still settles it.
+    refunds.applyProviderUpdate(new RefundResult(r.id(), RefundStatus.COMPLETED, Money.brl(400), null, clock.instant(), clock.instant()));
+    assertThat(refunds.get(merchant, r.id()).state()).isEqualTo(RefundState.COMPLETED);
+    assertThat(payments.findById(p.id()).orElseThrow().refundedAmount()).isEqualTo(Money.brl(400));
+  }
+
+  @Test
+  void unavailableOnThePutIsProcessingAndPollingFailsItOnceTheBankNeverSawIt() {
+    Payment p = paid(1000);
+    bank.failNextRefundWith(new ProviderException(ProviderException.Code.UNAVAILABLE, 503, null, "Servico indisponivel, cliente 123.456.789-09"));
+
+    Refund r = refunds.request(merchant, p.id(), Money.brl(400));
+
+    assertThat(r.state()).isEqualTo(RefundState.PROCESSING);
+    assertThat(jobs.findByTypeAndRef(JobType.POLL_REFUND, r.id())).isPresent();
+    // Inside the grace, "not found" may just be "not visible yet".
+    clock.advance(Duration.ofMinutes(10));
+    assertThat(polling.poll(r.id())).isFalse();
+    assertThat(refunds.get(merchant, r.id()).state()).isEqualTo(RefundState.PROCESSING);
+
+    clock.advance(Duration.ofMinutes(25));
+    assertThat(polling.poll(r.id())).isTrue();
     Refund failed = refunds.get(merchant, r.id());
     assertThat(failed.state()).isEqualTo(RefundState.FAILED);
-    assertThat(failed.failureReason()).isEqualTo("refund status unknown after 24h; check the bank");
+    assertThat(failed.failureReason()).isEqualTo("refund not found at the bank");
     assertThat(outboxTypes(r.id())).containsExactly("refund.requested", "refund.failed");
-    assertThat(divergences.open()).filteredOn(d -> d.paymentId().equals(p.id())).singleElement()
-        .satisfies(d -> assertThat(d.providerStatus()).isEqualTo("REFUND_UNKNOWN"));
+  }
+
+  @Test
+  void aRefusedPutFailsAtOnceWithAFixedMessage() {
+    Payment p = paid(1000);
+    bank.failNextRefundWith(new ProviderException(ProviderException.Code.INVALID, 400, "ValorInvalido", "valor acima do permitido para 123.456.789-09"));
+
+    assertThatThrownBy(() -> refunds.request(merchant, p.id(), Money.brl(400)))
+        .isInstanceOf(DomainException.class)
+        .hasMessage("The bank declined the request.")
+        .extracting(e -> ((DomainException) e).code()).isEqualTo("PROVIDER_DECLINED");
+    Refund failed = refunds.list(merchant, p.id()).getFirst();
+    assertThat(failed.state()).isEqualTo(RefundState.FAILED);
+    assertThat(failed.failureReason()).doesNotContain("123.456");
+    assertThat(outboxPayload(failed.id(), "refund.failed")).doesNotContain("123.456").doesNotContain("valor acima");
   }
 
   @Test

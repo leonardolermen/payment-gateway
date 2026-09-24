@@ -86,6 +86,7 @@ public class ItauPixProvider implements PixProvider {
     List<ReceivedPix> received = new ArrayList<>();
     List<RefundResult> refunds = new ArrayList<>();
     Map<String, String> txids = new HashMap<>();
+    Map<String, String> refundE2e = new HashMap<>();
     for (PixItem it : p.pix()) {
       if (it == null || it.endToEndId() == null) {
         // endToEndId is the dedup key; an item without it cannot be recorded or matched.
@@ -94,9 +95,14 @@ public class ItauPixProvider implements PixProvider {
       }
       received.add(toReceived(it));
       if (it.txid() != null) txids.put(it.endToEndId(), it.txid());
-      if (it.devolucoes() != null) it.devolucoes().forEach(d -> refunds.add(toRefund(d)));
+      if (it.devolucoes() != null) {
+        it.devolucoes().forEach(d -> {
+          refunds.add(toRefund(d));
+          if (d.id() != null) refundE2e.put(d.id(), it.endToEndId());
+        });
+      }
     }
-    return new ProviderWebhookEvent(received, refunds, txids);
+    return new ProviderWebhookEvent(received, refunds, txids, refundE2e);
   }
 
   static Charge toCharge(CobResponse r) {

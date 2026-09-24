@@ -54,11 +54,11 @@ public class JobRepositoryImpl implements JobRepository {
    * {@code DeliveryRepositoryImpl.claimDue} in webhook-delivery, including this guard.
    */
   @Override
-  public List<Job> claimDue(Instant now, int limit, Duration lease) {
+  public List<Job> claimDue(Instant now, int limit, Duration lease, Duration reconcileLease) {
     if (!TransactionSynchronizationManager.isActualTransactionActive()) {
       throw new IllegalStateException("claimDue must run inside a transaction: the SKIP LOCKED claim depends on it.");
     }
-    List<JobEntity> due = jpa.selectDue(now, now.minus(lease), Limit.of(limit));
+    List<JobEntity> due = jpa.selectDue(now, now.minus(lease), now.minus(reconcileLease), Limit.of(limit));
     due.forEach(e -> e.claimedAt = now);
     return due.stream().map(JobRepositoryImpl::toDomain).toList();
   }

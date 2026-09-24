@@ -19,7 +19,9 @@ public record PaymentsProperties(
     Duration jobLease,
     Duration outboxLease,
     Duration stuckCreatedAfter,
-    int refundPollMaxAttempts) {
+    int refundPollMaxAttempts,
+    Duration refundNotFoundGrace,
+    Duration reconcileLease) {
 
   public PaymentsProperties {
     if (defaultExpiresInSeconds <= 0) defaultExpiresInSeconds = 3600;
@@ -35,9 +37,15 @@ public record PaymentsProperties(
     if (stuckCreatedAfter == null) stuckCreatedAfter = Duration.ofMinutes(10);
     // 288 polls x 5 min = 24 h, the bank's own horizon for settling a devolucao.
     if (refundPollMaxAttempts <= 0) refundPollMaxAttempts = 288;
+    // A refund PUT that timed out or got a 503 may or may not have landed. The bank answers GET
+    // /devolucao within seconds of accepting one, so 30 min of "not found" means it never landed.
+    if (refundNotFoundGrace == null) refundNotFoundGrace = Duration.ofMinutes(30);
+    // RECONCILE walks up to 1000 payments with a bank call per merchant, each with a 30 s timeout;
+    // the 2 min jobLease let a second worker reclaim a run still in progress.
+    if (reconcileLease == null) reconcileLease = Duration.ofMinutes(10);
   }
 
   public static PaymentsProperties defaults() {
-    return new PaymentsProperties(0, null, null, null, null, 0, null, null, null, 0);
+    return new PaymentsProperties(0, null, null, null, null, 0, null, null, null, 0, null, null);
   }
 }

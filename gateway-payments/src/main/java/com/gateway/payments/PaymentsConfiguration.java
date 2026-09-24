@@ -76,8 +76,9 @@ public class PaymentsConfiguration {
   }
 
   @Bean
-  RefundPollingService refundPollingService(RefundRepository refunds, PaymentRepository payments, ProviderGateway providers, RefundService refundService) {
-    return new RefundPollingService(refunds, payments, providers, refundService);
+  RefundPollingService refundPollingService(
+      RefundRepository refunds, PaymentRepository payments, ProviderGateway providers, RefundService refundService, PaymentsProperties props, Clock clock) {
+    return new RefundPollingService(refunds, payments, providers, refundService, props, clock);
   }
 
   @Bean

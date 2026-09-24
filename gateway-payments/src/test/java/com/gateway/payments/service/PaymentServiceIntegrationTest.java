@@ -71,10 +71,12 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
 
   @Test
   void providerDeclineMarksFailed() {
-    bank.failNextCreateWith(new ProviderException(ProviderException.Code.INVALID, 400, "CobOperacaoInvalida", "bad key"));
+    bank.failNextCreateWith(new ProviderException(ProviderException.Code.INVALID, 400, "CobOperacaoInvalida", "chave bad key do pagador 123.456.789-09"));
 
+    // The bank's wording (and whatever payer data it echoes) never reaches the merchant.
     assertThatThrownBy(() -> newCharge(100))
         .isInstanceOf(DomainException.class)
+        .hasMessage("The bank declined the request.")
         .extracting(e -> ((DomainException) e).code())
         .isEqualTo("PROVIDER_DECLINED");
 

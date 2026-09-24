@@ -23,9 +23,10 @@ import org.slf4j.LoggerFactory;
 /**
  * Compares our view with the bank's {@code GET /cob?inicio&fim}. The bank is the source of truth
  * for money: a charge it says was paid and we have as PENDING/EXPIRED is completed here (the
- * webhook was lost). Anything else that disagrees — a COMPLETED payment the bank shows as removed,
- * or paid with a different amount — is NOT fixed automatically: it opens a divergence for a human,
- * because the state machine has no legal transition out of COMPLETED and guessing would be worse.
+ * webhook was lost). Anything else that disagrees — a COMPLETED payment the bank shows as removed
+ * or still active, paid by another endToEndId, or with a different amount — is NOT fixed
+ * automatically: it opens a divergence for a human, because the state machine has no legal
+ * transition out of COMPLETED and guessing would be worse.
  */
 public class ReconciliationService {
   private static final Logger log = LoggerFactory.getLogger(ReconciliationService.class);
@@ -105,17 +106,21 @@ public class ReconciliationService {
         // Same rule as a late webhook (PaymentService.settle), minus the "ignored" event: this runs
         // every 15 minutes and must not grow the payment's log each time it looks.
         changed += open(p, "PIX_RECEIVED", "paid at bank while " + p.status() + ": e2eid " + pix.get().endToEndId() + ", " + pix.get().amount().cents() + " cents");
-      } else if (p.status() == PaymentStatus.COMPLETED && isRemoved(charge.status())) {
-        changed += open(p, charge.status().name(), "bank shows the charge as " + charge.status());
+      } else if (p.status() == PaymentStatus.COMPLETED && charge.status() != ChargeStatus.COMPLETED) {
+        // Removed, and equally still ACTIVE: we told the merchant "paid" for a charge the bank never
+        // concluded. Since the webhook is confirmed with the bank this should not happen; if it does,
+        // a human must see it before the goods go out.
+        changed += open(p, charge.status().name(), "gateway has COMPLETED, bank shows the charge as " + charge.status());
+      } else if (p.status() == PaymentStatus.COMPLETED
+          && bankPaid
+          && p.pix() != null
+          && charge.received().stream().noneMatch(x -> java.util.Objects.equals(x.endToEndId(), p.pix().endToEndId()))) {
+        changed += open(p, charge.status().name(), "e2eid differs: gateway " + p.pix().endToEndId() + ", bank " + pix.get().endToEndId());
       } else if (p.status() == PaymentStatus.COMPLETED && bankPaid && p.paidAmount() != null && pix.get().amount().cents() != p.paidAmount().cents()) {
         changed += open(p, charge.status().name(), "paid amount differs: gateway " + p.paidAmount().cents() + ", bank " + pix.get().amount().cents());
       }
     }
     return changed;
-  }
-
-  private static boolean isRemoved(ChargeStatus s) {
-    return s == ChargeStatus.REMOVED_BY_MERCHANT || s == ChargeStatus.REMOVED_BY_PSP;
   }
 
   private int open(Payment p, String providerStatus, String detail) {

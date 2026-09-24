@@ -38,6 +38,8 @@ public class RecordingPixProvider implements PixProvider {
   private volatile ProviderException failNextCreate;
   private volatile ProviderException landThenFail;
   private volatile RefundStatus nextRefundStatus = RefundStatus.PROCESSING;
+  private volatile ProviderException failNextRefund;
+  private final Map<String, ProviderException> failFind = new ConcurrentHashMap<>();
 
   public RecordingPixProvider(Clock clock) {
     this.clock = clock;
@@ -75,6 +77,16 @@ public class RecordingPixProvider implements PixProvider {
     charges.put(txid, new Charge(txid, status, c.amount(), c.pixCopiaECola(), c.location(), c.createdAt(), c.expiresInSeconds(), c.received()));
   }
 
+  /** The refund PUT fails with {@code e} and the bank keeps nothing (findRefund stays empty). */
+  public void failNextRefundWith(ProviderException e) {
+    this.failNextRefund = e;
+  }
+
+  /** The next findCharge for {@code txid} fails with {@code e}: the bank unreachable. */
+  public void failNextFindWith(String txid, ProviderException e) {
+    failFind.put(txid, e);
+  }
+
   public void nextRefundStatus(RefundStatus s) {
     this.nextRefundStatus = s;
   }
@@ -110,6 +122,10 @@ public class RecordingPixProvider implements PixProvider {
   @Override
   public Optional<Charge> findCharge(ProviderCredentials c, String txid) {
     calls.add("findCharge:" + txid);
+    ProviderException fail = failFind.remove(txid);
+    if (fail != null) {
+      throw fail;
+    }
     return Optional.ofNullable(charges.get(txid));
   }
 
@@ -129,6 +145,11 @@ public class RecordingPixProvider implements PixProvider {
   @Override
   public RefundResult requestRefund(ProviderCredentials c, RefundRequest r) {
     calls.add("requestRefund:" + r.refundId());
+    ProviderException fail = failNextRefund;
+    if (fail != null) {
+      failNextRefund = null;
+      throw fail;
+    }
     RefundResult result = new RefundResult(r.refundId(), nextRefundStatus, r.amount(), null, clock.instant(), null);
     refunds.put(r.refundId(), result);
     return result;
@@ -147,21 +168,29 @@ public class RecordingPixProvider implements PixProvider {
   }
 
   /**
-   * Test body format, one Pix per line: {@code endToEndId txid cents}. Anything else is
-   * unreadable, which is what lets a test drive the FAILED path.
+   * Test body format, one item per line: a Pix is {@code endToEndId txid cents}; a refund update is
+   * {@code REFUND refundId endToEndId STATUS}. Anything else is unreadable, which is what lets a test
+   * drive the FAILED path.
    */
   @Override
   public ProviderWebhookEvent parseWebhook(byte[] body) {
     List<ReceivedPix> received = new ArrayList<>();
+    List<RefundResult> refundUpdates = new ArrayList<>();
     Map<String, String> txids = new HashMap<>();
+    Map<String, String> refundE2e = new HashMap<>();
     for (String line : new String(body, StandardCharsets.UTF_8).strip().split("\n")) {
       String[] parts = line.strip().split(" ");
+      if (parts.length == 4 && parts[0].equals("REFUND")) {
+        refundUpdates.add(new RefundResult(parts[1], RefundStatus.valueOf(parts[3]), Money.brl(1), "from the body", clock.instant(), clock.instant()));
+        refundE2e.put(parts[1], parts[2]);
+        continue;
+      }
       if (parts.length != 3) {
         throw new IllegalArgumentException("unreadable webhook line: " + line);
       }
       received.add(new ReceivedPix(parts[0], Money.brl(Long.parseLong(parts[2])), clock.instant(), "payer"));
       txids.put(parts[0], parts[1]);
     }
-    return new ProviderWebhookEvent(received, List.of(), txids);
+    return new ProviderWebhookEvent(received, refundUpdates, txids, refundE2e);
   }
 }

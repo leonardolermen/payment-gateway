@@ -25,6 +25,9 @@ public interface PaymentRepository {
 
   List<Payment> listByMerchant(MerchantId merchantId, int limit, String cursorId);
 
+  /** Newest first, capped at {@code limit}. */
+  List<Payment> listByMerchantAndReference(MerchantId merchantId, String reference, int limit);
+
   List<Payment> findPendingOlderThan(Instant expiresBefore, int limit);
 
   /** Ordered by {@code created_at} ascending, capped at {@code limit}. */
