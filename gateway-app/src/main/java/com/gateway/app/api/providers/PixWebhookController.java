@@ -1,15 +1,18 @@
 package com.gateway.app.api.providers;
 
+import com.gateway.app.mtls.WebhookMtlsProperties;
+import com.gateway.app.security.Problems;
 import com.gateway.merchants.domain.Merchant;
 import com.gateway.payments.service.WebhookInboxService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.security.cert.X509Certificate;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.ObjectMapper;
 
@@ -31,17 +34,26 @@ public class PixWebhookController {
   private final WebhookTokenGuard guard;
   private final WebhookInboxService inbox;
   private final ObjectMapper json;
+  private final int maxBodyBytes;
 
-  public PixWebhookController(WebhookTokenGuard guard, WebhookInboxService inbox, ObjectMapper json) {
+  public PixWebhookController(WebhookTokenGuard guard, WebhookInboxService inbox, ObjectMapper json, WebhookMtlsProperties props) {
+    this.maxBodyBytes = props.maxBodyBytes();
     this.guard = guard;
     this.inbox = inbox;
     this.json = json;
   }
 
   @PostMapping({"/v1/providers/itau/webhooks/{token}", "/v1/providers/itau/webhooks/{token}/pix"})
-  public ResponseEntity<Void> receive(@PathVariable String token, @RequestBody(required = false) byte[] body, HttpServletRequest req) {
+  public ResponseEntity<Void> receive(@PathVariable String token, HttpServletRequest req, HttpServletResponse res) throws IOException {
     Merchant merchant = guard.resolve(token);
-    inbox.accept("ITAU", merchant.id(), headers(req), body == null ? new byte[0] : body);
+    // Read through a bounded stream, not @RequestBody byte[]: MtlsPortFilter refuses an oversized
+    // Content-Length, but a chunked body declares none, and an unbounded read would buffer it all.
+    byte[] body = req.getInputStream().readNBytes(maxBodyBytes + 1);
+    if (body.length > maxBodyBytes) {
+      Problems.write(res, 413, "PAYLOAD_TOO_LARGE", "webhook body exceeds " + maxBodyBytes + " bytes");
+      return null;
+    }
+    inbox.accept("ITAU", merchant.id(), headers(req), body);
     return ResponseEntity.accepted().build();
   }
 

@@ -1,5 +1,6 @@
 package com.gateway.app.mtls;
 
+import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -9,7 +10,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "gateway.webhooks.mtls")
 public record WebhookMtlsProperties(
-    int port, String keystore, String keystorePassword, String truststore, String truststorePassword, String publicHost) {
+    int port, String keystore, String keystorePassword, String truststore, String truststorePassword, String publicHost,
+    Integer maxBodyBytes, List<String> allowedSubjects) {
+
+  public static final int DEFAULT_MAX_BODY_BYTES = 262_144;
+
+  public WebhookMtlsProperties {
+    if (maxBodyBytes == null || maxBodyBytes <= 0) maxBodyBytes = DEFAULT_MAX_BODY_BYTES;
+    allowedSubjects = allowedSubjects == null ? List.of() : allowedSubjects.stream().filter(s -> s != null && !s.isBlank()).toList();
+  }
 
   public boolean enabled() { return port > 0; }
 

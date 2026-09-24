@@ -43,6 +43,10 @@ gateway:
       truststore: ${WEBHOOK_MTLS_TRUSTSTORE:}        # PKCS12 with Itau's CA (ca-cert.zip from the portal)
       truststore-password: ${WEBHOOK_MTLS_TRUSTSTORE_PASSWORD:}
       public-host: ${WEBHOOK_MTLS_PUBLIC_HOST:localhost}  # host in the inbound_webhook_url the admin API shows
+      max-body-bytes: 262144                       # a Pix notification is a few KB; the bank batches but not by megabytes
+      # Exact client-cert subject DNs; empty = any certificate the CA signed. Verify what the bank's CA
+      # signs and set this before go-live (.env.example).
+      allowed-subjects: ${WEBHOOK_MTLS_ALLOWED_SUBJECTS:}
   providers:
     itau:
       live-api-base: https://pix-pj.api.itau.com/regulatorio-pix/v2

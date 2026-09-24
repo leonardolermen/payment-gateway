@@ -32,6 +32,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 import org.awaitility.Awaitility;
@@ -42,10 +43,12 @@ import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -75,6 +78,7 @@ class ItauWebhookMtlsIntegrationTest {
   static final TestCertificates.Bundle BANK;
   static final TestCertificates.Bundle OTHER;
   static final int MTLS_PORT;
+  static final String BANK_SUBJECT;
   static final File SERVER_KEYSTORE;
   static final File TRUSTSTORE;
 
@@ -83,6 +87,9 @@ class ItauWebhookMtlsIntegrationTest {
       ITAU.start();
       BANK = TestCertificates.generate();
       OTHER = TestCertificates.generate();
+      BANK_SUBJECT = ((java.security.cert.X509Certificate) CertificateFactory.getInstance("X.509")
+          .generateCertificate(new ByteArrayInputStream(BANK.clientCertPem().getBytes(StandardCharsets.US_ASCII))))
+          .getSubjectX500Principal().getName();
       try (ServerSocket s = new ServerSocket(0)) { MTLS_PORT = s.getLocalPort(); }
       SERVER_KEYSTORE = File.createTempFile("webhook-server", ".p12");
       TRUSTSTORE = File.createTempFile("webhook-trust", ".p12");
@@ -105,6 +112,10 @@ class ItauWebhookMtlsIntegrationTest {
     r.add("gateway.webhooks.mtls.keystore-password", () -> new String(BANK.serverPassword()));
     r.add("gateway.webhooks.mtls.truststore", TRUSTSTORE::getAbsolutePath);
     r.add("gateway.webhooks.mtls.truststore-password", () -> "changeit");
+    // The allow-list is on for the whole class, so every 202 below also proves a listed subject passes;
+    // a mismatching subject is covered by MtlsPortFilterTest (one CA here issues one client cert).
+    r.add("gateway.webhooks.mtls.allowed-subjects", () -> BANK_SUBJECT);
+    r.add("gateway.webhooks.mtls.max-body-bytes", () -> "4096");
   }
 
   @BeforeAll
@@ -120,6 +131,7 @@ class ItauWebhookMtlsIntegrationTest {
   static void stop() { ITAU.stop(); }
 
   @LocalServerPort int port;
+  @Autowired JdbcTemplate jdbc;
 
   private RestTestClient http() { return RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build(); }
 
@@ -230,13 +242,51 @@ class ItauWebhookMtlsIntegrationTest {
   @Test
   void webhookWithoutClientCertificateIsRefusedAtHandshake() {
     assertThatThrownBy(() -> postWebhook(client(null), mtlsUrl("/v1/providers/itau/webhooks/" + "0".repeat(26) + "/pix"), "{}"))
-        .isInstanceOf(IOException.class);
+        .isInstanceOf(IOException.class).satisfies(ItauWebhookMtlsIntegrationTest::tlsRefusal);
   }
 
   @Test
   void webhookWithCertificateFromAnotherCaIsRefused() {
     assertThatThrownBy(() -> postWebhook(client(OTHER), mtlsUrl("/v1/providers/itau/webhooks/" + "0".repeat(26) + "/pix"), "{}"))
-        .isInstanceOf(IOException.class);
+        .isInstanceOf(IOException.class).satisfies(ItauWebhookMtlsIntegrationTest::tlsRefusal);
+  }
+
+  /**
+   * The refusal must come from TLS, not from any later I/O error. With TLS 1.3 the client may finish
+   * its side of the handshake and only see the server's alert on the first read, so the SSLException
+   * can sit anywhere in the cause chain.
+   */
+  private static void tlsRefusal(Throwable t) {
+    for (Throwable c = t; c != null; c = c.getCause()) {
+      if (c instanceof SSLException) return;
+      if (String.valueOf(c.getMessage()).contains("fatal alert")) return;
+    }
+    throw new AssertionError("expected a TLS refusal in the cause chain", t);
+  }
+
+  private int inboxRows() { return jdbc.queryForObject("SELECT count(*) FROM payments.webhook_inbox", Integer.class); }
+
+  @Test
+  void oversizedBodyWithContentLengthIs413AndNothingIsStored() throws Exception {
+    Merchant m = merchant();
+    int before = inboxRows();
+    HttpResponse<String> res = postWebhook(client(BANK), mtlsUrl("/v1/providers/itau/webhooks/" + m.token() + "/pix"), "x".repeat(5000));
+    assertThat(res.statusCode()).isEqualTo(413);
+    assertThat(res.body()).contains("urn:gateway:PAYLOAD_TOO_LARGE");
+    assertThat(inboxRows()).isEqualTo(before);
+  }
+
+  @Test
+  void oversizedChunkedBodyIs413AndNothingIsStored() throws Exception {
+    Merchant m = merchant();
+    int before = inboxRows();
+    byte[] big = "x".repeat(5000).getBytes(StandardCharsets.US_ASCII);
+    // ofInputStream has no known length, so the client sends Transfer-Encoding: chunked, no Content-Length.
+    HttpResponse<String> res = client(BANK).send(HttpRequest.newBuilder(URI.create(mtlsUrl("/v1/providers/itau/webhooks/" + m.token() + "/pix")))
+        .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofInputStream(() -> new ByteArrayInputStream(big))).build(),
+        HttpResponse.BodyHandlers.ofString());
+    assertThat(res.statusCode()).isEqualTo(413);
+    assertThat(inboxRows()).isEqualTo(before);
   }
 
   @Test

@@ -14,7 +14,8 @@ class MerchantEntity {
   @Id @Column(name = "id", length = 26, nullable = false) @JdbcTypeCode(SqlTypes.CHAR) String id;
   @Column(name = "name", nullable = false, length = 200) String name;
   @Column(name = "status", nullable = false, length = 20) String status;
-  @Column(name = "inbound_webhook_token", length = 26, nullable = false, unique = true) @JdbcTypeCode(SqlTypes.CHAR) String inboundWebhookToken;
+  // No unique=true: it only steers generated DDL, which ddl-auto=validate never runs; V101 holds the constraint.
+  @Column(name = "inbound_webhook_token", length = 26, nullable = false) @JdbcTypeCode(SqlTypes.CHAR) String inboundWebhookToken;
   @Column(name = "created_at", nullable = false) Instant createdAt;
   @Column(name = "updated_at", nullable = false) Instant updatedAt;
   protected MerchantEntity() {}
