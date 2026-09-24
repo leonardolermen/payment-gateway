@@ -55,6 +55,7 @@
             <dependency><groupId>com.gateway</groupId><artifactId>gateway-kernel</artifactId><version>${project.version}</version></dependency>
             <dependency><groupId>com.gateway</groupId><artifactId>gateway-merchants</artifactId><version>${project.version}</version></dependency>
             <dependency><groupId>com.gateway</groupId><artifactId>gateway-providers</artifactId><version>${project.version}</version></dependency>
+            <dependency><groupId>com.gateway</groupId><artifactId>gateway-providers</artifactId><version>${project.version}</version><type>test-jar</type></dependency>
             <dependency><groupId>com.gateway</groupId><artifactId>gateway-payments</artifactId><version>${project.version}</version></dependency>
             <dependency><groupId>com.barrier</groupId><artifactId>webhook-delivery</artifactId><version>${webhook-delivery.version}</version></dependency>
             <dependency><groupId>org.wiremock</groupId><artifactId>wiremock-standalone</artifactId><version>${wiremock.version}</version></dependency>

@@ -15,4 +15,15 @@
         <dependency><groupId>com.networknt</groupId><artifactId>json-schema-validator</artifactId><scope>test</scope></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
     </dependencies>
+    <build>
+        <plugins>
+            <!-- gateway-app's mTLS webhook test needs TestCertificates; publishing the test classes keeps
+                 one generator instead of a copy that drifts (the Bundle shape is shared across tasks). -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions><execution><goals><goal>test-jar</goal></goals></execution></executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>

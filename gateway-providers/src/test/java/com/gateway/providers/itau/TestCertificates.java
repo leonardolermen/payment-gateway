@@ -29,18 +29,19 @@ import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 
 /**
  * In-memory CA + client/server certificates for mTLS tests, so no test ships a checked-in key
- * pair. Tasks 3, 4 and 9 reuse this: keep the {@link Bundle} shape stable.
+ * pair. Tasks 3, 4 and 9 reuse this: keep the {@link Bundle} shape stable. Public because gateway-app's
+ * mTLS webhook test consumes it through this module's test-jar.
  */
-final class TestCertificates {
+public final class TestCertificates {
   static {
     if (Security.getProvider("BC") == null) Security.addProvider(new BouncyCastleProvider());
   }
 
   private TestCertificates() {}
 
-  record Bundle(KeyStore caTrust, String clientCertPem, String clientKeyPem, KeyStore serverKeyStore, char[] serverPassword) {}
+  public record Bundle(KeyStore caTrust, String clientCertPem, String clientKeyPem, KeyStore serverKeyStore, char[] serverPassword) {}
 
-  static Bundle generate() throws Exception {
+  public static Bundle generate() throws Exception {
     KeyPair caKeys = rsaKeyPair();
     X500Name caSubject = new X500Name("CN=Test CA " + UUID.randomUUID());
     // CA: keyCertSign|cRLSign only — it signs other certs and CRLs, never a TLS handshake directly.
