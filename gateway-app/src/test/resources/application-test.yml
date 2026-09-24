@@ -6,5 +6,5 @@ gateway:
     requests-per-minute: 5
 spring:
   flyway:
-    schemas: merchants
-    locations: classpath:db/migration/merchants
+    schemas: merchants,payments
+    locations: classpath:db/migration/merchants,classpath:db/migration/payments

@@ -7,6 +7,8 @@
     <dependencies>
         <dependency><groupId>com.gateway</groupId><artifactId>gateway-kernel</artifactId></dependency>
         <dependency><groupId>com.gateway</groupId><artifactId>gateway-merchants</artifactId></dependency>
+        <dependency><groupId>com.gateway</groupId><artifactId>gateway-providers</artifactId></dependency>
+        <dependency><groupId>com.gateway</groupId><artifactId>gateway-payments</artifactId></dependency>
         <dependency><groupId>com.barrier</groupId><artifactId>webhook-delivery</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-jpa</artifactId></dependency>

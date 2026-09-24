@@ -1,0 +1,1 @@
+-- payments schema; tables arrive with Task 6
