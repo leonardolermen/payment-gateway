@@ -97,3 +97,27 @@ em vez de `PAID`). Motivo: o merchant já lê `GET /v1/payments/{id}` e vê o st
 segundo vocabulário só para o webhook é uma tradução a mais para manter sincronizada e testar. Custo se
 errado: os dois vocabulários divergem silenciosamente na primeira mudança que só atualiza um dos dois,
 e o merchant vê um status na API e outro no webhook para o mesmo pagamento.
+
+## 2026-09-24 — Webhook é gatilho, o banco é a verdade
+Rejeitado: completar o pagamento com o que o corpo do webhook diz (e2eid, valor), confiando no mTLS e no
+token da URL. Motivo: o corpo é uma afirmação de quem conseguiu chegar ao endpoint; o merchant despacha a
+mercadoria no nosso `payment.completed`. Agora `WebhookInboxService` usa o webhook só como gatilho:
+`PaymentService.settleFromWebhook` pergunta `GET /cob/{txid}` e só completa se o banco disser `CONCLUIDA`
+com um `pix[]` de mesmo `endToEndId`; o valor que vale é o do banco, e `settle` recusa (divergência
+`AMOUNT_MISMATCH`) um Pix de valor diferente do da cobrança. Não confirmado: evento `ignored` e divergência
+`UNCONFIRMED_WEBHOOK`, nada ao merchant; banco fora do ar: exceção e o job tenta de novo. O mesmo vale para
+devoluções no webhook (escopo do merchant, e2eid do próprio pagamento, `GET /devolucao` decide), e a
+reconciliação passou a abrir divergência para `COMPLETED` aqui × cobrança não `CONCLUIDA` (ou e2eid
+diferente) no banco. Custo: um GET por webhook, o mesmo que o job de expiração já paga. Custo se errado
+(confiar no corpo): um POST forjado, ou vazado de outro merchant, vira mercadoria entregue sem dinheiro.
+
+## 2026-09-24 — UNKNOWN mantém a reserva da devolução
+Rejeitado: marcar `FAILED` a devolução que esgota o orçamento de polling (24 h em `EM_PROCESSAMENTO`), e
+marcar `FAILED` na hora uma devolução cujo PUT recebeu 503/504. Motivo: `FAILED` libera o valor na conta
+de reserva, e nos dois casos o dinheiro ainda pode sair no banco; o merchant pediria outra devolução por
+cima e o pagador receberia duas vezes. Agora: 503 é tratado como timeout (`PROCESSING`, o polling decide;
+`findRefund` vazio depois de `refund-not-found-grace`, 30 min, vira `FAILED`), e o orçamento esgotado vira
+`RefundState.UNKNOWN` — terminal para o polling, mas contado como reservado — com `refund.unknown` ao
+merchant e divergência `REFUND_UNKNOWN` na mesma transação. Uma palavra posterior do banco ainda move
+UNKNOWN para COMPLETED ou FAILED. Custo: o merchant fica sem poder devolver aquele valor até alguém olhar
+a divergência. Custo se errado (liberar a reserva): devolução em dobro, dinheiro que não volta.
