@@ -52,7 +52,7 @@ class RefundServiceIntegrationTest extends ServiceIntegrationTestBase {
     assertThat(r.state()).isEqualTo(RefundState.PROCESSING);
     assertThat(jobs.findByTypeAndRef(JobType.POLL_REFUND, r.id())).isPresent();
     assertThat(outboxTypes(r.id())).containsExactly("refund.requested");
-    assertThat(outboxPayload(r.id(), "refund.requested")).contains("\"payment_id\":\"" + p.id() + "\"").contains("\"state\":\"processing\"");
+    assertThat(outboxPayload(r.id(), "refund.requested")).contains("\"payment_id\":\"" + p.id() + "\"").contains("\"state\":\"PROCESSING\"");
     assertThat(refunds.list(merchant, p.id())).extracting(Refund::id).containsExactly(r.id());
   }
 

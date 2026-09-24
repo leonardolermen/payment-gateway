@@ -37,7 +37,7 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
     assertThat(outboxTypes(p.id())).containsExactly("payment.pending");
     assertThat(outboxPayload(p.id(), "payment.pending"))
         .contains("\"id\":\"" + p.id() + "\"")
-        .contains("\"status\":\"pending\"")
+        .contains("\"status\":\"PENDING\"")
         .contains("\"copia_e_cola\":")
         .contains("\"expires_at\":");
     List<Integer> statuses =

@@ -11,7 +11,6 @@ import com.gateway.payments.repository.OutboxRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
-import java.util.Locale;
 import java.util.Map;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -53,10 +52,11 @@ public class PaymentEvents {
   static Map<String, Object> paymentJson(Payment p) {
     Map<String, Object> m = new LinkedHashMap<>();
     m.put("id", p.id());
-    m.put("status", lower(p.status()));
-    m.put("method", "pix");
-    m.put("provider", p.provider().toLowerCase(Locale.ROOT));
-    m.put("environment", lower(p.environment()));
+    // Same spelling as the REST API (PaymentResponse): one resource, one vocabulary, whichever way it arrives.
+    m.put("status", p.status().name());
+    m.put("method", "PIX");
+    m.put("provider", p.provider());
+    m.put("environment", p.environment().name());
     m.put("amount", p.amount().cents());
     m.put("currency", p.amount().currency());
     m.put("reference", p.reference());
@@ -81,15 +81,11 @@ public class PaymentEvents {
     m.put("id", r.id());
     m.put("payment_id", r.paymentId());
     m.put("amount", r.amount().cents());
-    m.put("state", lower(r.state()));
+    m.put("state", r.state().name());
     m.put("reason", r.failureReason());
     m.put("requested_at", iso(r.createdAt()));
     m.put("settled_at", iso(r.settledAt()));
     return m;
-  }
-
-  private static String lower(Enum<?> e) {
-    return e.name().toLowerCase(Locale.ROOT);
   }
 
   // Instants as ISO-8601 strings explicitly: the default Jackson shape for java.time has changed
