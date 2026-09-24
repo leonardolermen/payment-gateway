@@ -53,7 +53,7 @@ class PixApiClientContractTest {
   }
 
   static PixApiClient client(Duration readTimeout) {
-    return new PixApiClient(new ItauTokenClient(Clock.systemUTC(), Duration.ofSeconds(3), Duration.ofSeconds(3)), endpoints(), null, readTimeout, Clock.systemUTC());
+    return new PixApiClient(new ItauTokenClient(Clock.systemUTC(), Duration.ofSeconds(3), Duration.ofSeconds(3)), endpoints(), null, readTimeout);
   }
   static PixApiClient client() { return client(Duration.ofSeconds(5)); }
 
@@ -113,10 +113,41 @@ class PixApiClientContractTest {
     });
   }
 
-  @Test void getCob404IsEmpty() {
+  @Test void getCob404WithPixBodyIsEmpty() {
     server.stubFor(get("/v2/cob/" + TXID).willReturn(aResponse().withStatus(404).withHeader("Content-Type", "application/problem+json")
         .withBody(fixture("error_404_cob_nao_encontrado.json"))));
     assertThat(client().getCob(creds(), TXID)).isEmpty();
+  }
+
+  /** A wrong base URL or a proxy page must not read as "the charge does not exist". */
+  @Test void getCob404WithoutPixBodyIsAnError() {
+    server.stubFor(get("/v2/cob/" + TXID).willReturn(aResponse().withStatus(404).withHeader("Content-Type", "text/html")
+        .withBody("<html><body>Not Found</body></html>")));
+    assertThatThrownBy(() -> client().getCob(creds(), TXID)).isInstanceOfSatisfying(ProviderException.class, e -> {
+      assertThat(e.code()).isEqualTo(ProviderException.Code.UNKNOWN);
+      assertThat(e.httpStatus()).isEqualTo(404);
+      assertThat(e.getMessage()).contains("Not Found");
+    });
+    server.stubFor(get("/v2/cob/" + TXID).willReturn(aResponse().withStatus(404)));
+    assertThatThrownBy(() -> client().getCob(creds(), TXID)).isInstanceOfSatisfying(ProviderException.class,
+        e -> assertThat(e.code()).isEqualTo(ProviderException.Code.UNKNOWN));
+  }
+
+  @Test void malformed2xxBodyIsUnknown() {
+    server.stubFor(get("/v2/cob/" + TXID).willReturn(okJson("{not json")));
+    assertThatThrownBy(() -> client().getCob(creds(), TXID)).isInstanceOfSatisfying(ProviderException.class, e -> {
+      assertThat(e.code()).isEqualTo(ProviderException.Code.UNKNOWN);
+      assertThat(e.getMessage()).isEqualTo("unreadable provider response");
+    });
+  }
+
+  @Test void problemWithoutTitleHasNoNullInTheMessage() {
+    server.stubFor(get("/v2/cob/" + TXID).willReturn(aResponse().withStatus(400)
+        .withBody("{\"type\":\"https://pix.bcb.gov.br/api/v2/error/CobConsultaInvalida\",\"detail\":\"txid invalido\"}")));
+    assertThatThrownBy(() -> client().getCob(creds(), TXID)).isInstanceOfSatisfying(ProviderException.class, e -> {
+      assertThat(e.code()).isEqualTo(ProviderException.Code.INVALID);
+      assertThat(e.getMessage()).isEqualTo("txid invalido");
+    });
   }
 
   @Test void patchCobCancelSendsStatus() {
@@ -208,7 +239,7 @@ class PixApiClientContractTest {
       String base = "https://localhost:" + https.httpsPort();
       ItauEndpoints e = ItauEndpoints.custom(URI.create(base + "/v2"), URI.create(base + "/as/token.oauth2"), true);
       PixApiClient c = new PixApiClient(new ItauTokenClient(Clock.systemUTC(), Duration.ofSeconds(3), Duration.ofSeconds(5)), e, certs.caTrust(),
-          Duration.ofSeconds(5), Clock.systemUTC());
+          Duration.ofSeconds(5));
 
       assertThat(c.getCob(full, TXID)).isPresent();
 

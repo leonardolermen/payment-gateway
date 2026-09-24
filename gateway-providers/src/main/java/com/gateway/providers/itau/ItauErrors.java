@@ -20,9 +20,12 @@ final class ItauErrors {
   static ProviderException from(int status, String body) {
     Problem p = parse(body);
     String type = p == null ? null : p.type();
-    String message = p != null && (p.title() != null || p.detail() != null)
-        ? p.title() + ": " + p.detail()
-        : "Itaú HTTP " + status + (body == null || body.isBlank() ? "" : ": " + truncate(body));
+    String message;
+    if (p != null && (p.title() != null || p.detail() != null)) {
+      message = p.title() == null ? p.detail() : p.detail() == null ? p.title() : p.title() + ": " + p.detail();
+    } else {
+      message = "Itaú HTTP " + status + (body == null || body.isBlank() ? "" : ": " + truncate(body));
+    }
     return new ProviderException(code(status, type), status, type, message);
   }
 
@@ -32,9 +35,17 @@ final class ItauErrors {
     if (t.endsWith("OperacaoInvalida") || t.endsWith("ConsultaInvalida") || t.equals("PixDevolucaoInvalida")) return Code.INVALID;
     if (status == 400 || status == 422) return Code.INVALID;
     if (status == 401 || status == 403) return Code.UNAUTHENTICATED;
-    if (status == 404 || status == 410) return Code.NOT_FOUND;
+    // A 404 without a Pix "not found" type is not the Pix API talking (wrong base URL, proxy page):
+    // UNKNOWN, so nobody concludes the charge does not exist.
+    if (status == 410) return Code.NOT_FOUND;
     if (status >= 500) return Code.UNAVAILABLE;
     return Code.UNKNOWN;
+  }
+
+  /** True only for the Pix API's own not-found: an RFC 7807 {@code type} naming {@code NaoEncontrad*}. */
+  static boolean isPixNotFound(String body) {
+    Problem p = parse(body);
+    return p != null && p.type() != null && p.type().contains("NaoEncontrad");
   }
 
   private static Problem parse(String body) {

@@ -8,7 +8,6 @@ import com.gateway.providers.itau.ItauTokenClient;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -16,6 +15,8 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(ProvidersConfiguration.ProvidersProperties.class)
+// Clock is injected, never defined here: the app owns it (a conditional bean in a plain
+// @Configuration would depend on registration order).
 public class ProvidersConfiguration {
 
   /**
@@ -40,10 +41,6 @@ public class ProvidersConfiguration {
           token == null || token.isBlank() ? d.tokenUrl() : URI.create(token), mtls == null ? d.mutualTls() : mtls);
     }
   }
-
-  @Bean
-  @ConditionalOnMissingBean
-  Clock clock() { return Clock.systemUTC(); }
 
   @Bean
   ItauTokenClient itauTokenClient(Clock clock, ProvidersProperties props) {

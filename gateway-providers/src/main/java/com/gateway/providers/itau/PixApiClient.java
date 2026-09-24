@@ -11,7 +11,6 @@ import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
@@ -35,11 +34,10 @@ class PixApiClient {
   private final ItauEndpoints endpoints;
   private final KeyStore trustStore;
   private final Duration readTimeout;
-  @SuppressWarnings("unused") private final Clock clock; // part of the planned signature; time today comes from the token client
   private final ObjectMapper mapper = new ObjectMapper();
 
-  PixApiClient(ItauTokenClient tokens, ItauEndpoints endpoints, KeyStore trustStore, Duration readTimeout, Clock clock) {
-    this.tokens = tokens; this.endpoints = endpoints; this.trustStore = trustStore; this.readTimeout = readTimeout; this.clock = clock;
+  PixApiClient(ItauTokenClient tokens, ItauEndpoints endpoints, KeyStore trustStore, Duration readTimeout) {
+    this.tokens = tokens; this.endpoints = endpoints; this.trustStore = trustStore; this.readTimeout = readTimeout;
   }
 
   CobResponse putCob(ItauCredentials c, String txid, CobRequest body) {
@@ -76,7 +74,7 @@ class PixApiClient {
     return HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body), StandardCharsets.UTF_8);
   }
 
-  /** {@code emptyOn404}: only reads treat "not found" as an answer; on a write it is an error. */
+  /** {@code emptyOn404}: only reads treat the Pix API's "not found" as an answer; on a write it is an error. */
   private <T> Optional<T> send(ItauCredentials creds, HttpRequest.Builder b, Class<T> type, boolean emptyOn404) {
     HttpClient http = tokens.httpClientFor(creds, endpoints, trustStore);
     b.header("Authorization", "Bearer " + tokens.tokenFor(creds, endpoints, trustStore).value())
@@ -98,8 +96,16 @@ class PixApiClient {
       throw new ProviderException(ProviderException.Code.UNAVAILABLE, "interrupted calling Itaú", e);
     }
     int status = res.statusCode();
-    if (status >= 200 && status < 300) return Optional.of(mapper.readValue(res.body(), type));
-    if (status == 404 && emptyOn404) return Optional.empty();
+    if (status >= 200 && status < 300) {
+      try {
+        return Optional.of(mapper.readValue(res.body(), type));
+      } catch (RuntimeException e) {
+        throw new ProviderException(ProviderException.Code.UNKNOWN, "unreadable provider response", e);
+      }
+    }
+    // Only the Pix API's own "not found" is an answer. A 404 from a wrong base URL or a proxy page
+    // would otherwise read as "charge does not exist" and reconciliation would drop paid charges.
+    if (status == 404 && emptyOn404 && ItauErrors.isPixNotFound(res.body())) return Optional.empty();
     // A rejected token must not be reused: the next call fetches a fresh one (and a fresh HttpClient).
     if (status == 401) tokens.evict(creds.fingerprint());
     throw ItauErrors.from(status, res.body());

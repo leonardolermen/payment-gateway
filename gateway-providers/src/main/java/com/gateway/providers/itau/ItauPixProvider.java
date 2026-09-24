@@ -14,11 +14,14 @@ import tools.jackson.databind.ObjectMapper;
 public class ItauPixProvider implements PixProvider {
   private static final int PAGE_SIZE = 100;
   private final PixApiClient live, test;
+  private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(ItauPixProvider.class);
   private final ObjectMapper mapper = new ObjectMapper();
 
   public ItauPixProvider(ItauTokenClient tokens, KeyStore trustStore, Duration readTimeout, Clock clock, ItauEndpoints liveEndpoints, ItauEndpoints testEndpoints) {
-    this.live = new PixApiClient(tokens, liveEndpoints, trustStore, readTimeout, clock);
-    this.test = new PixApiClient(tokens, testEndpoints, trustStore, readTimeout, clock);
+    // clock stays in the public signature (planned interface) but nothing here reads time yet;
+    // token expiry is the token client's clock.
+    this.live = new PixApiClient(tokens, liveEndpoints, trustStore, readTimeout);
+    this.test = new PixApiClient(tokens, testEndpoints, trustStore, readTimeout);
   }
 
   /** Itaú's CA(s) as PEM (one or more certificates) → a truststore for the per-credential SSLContext. */
@@ -84,6 +87,11 @@ public class ItauPixProvider implements PixProvider {
     List<RefundResult> refunds = new ArrayList<>();
     Map<String, String> txids = new HashMap<>();
     for (PixItem it : p.pix()) {
+      if (it == null || it.endToEndId() == null) {
+        // endToEndId is the dedup key; an item without it cannot be recorded or matched.
+        LOG.warn("Itaú webhook item without endToEndId skipped (txid={})", it == null ? null : it.txid());
+        continue;
+      }
       received.add(toReceived(it));
       if (it.txid() != null) txids.put(it.endToEndId(), it.txid());
       if (it.devolucoes() != null) it.devolucoes().forEach(d -> refunds.add(toRefund(d)));
@@ -92,6 +100,9 @@ public class ItauPixProvider implements PixProvider {
   }
 
   static Charge toCharge(CobResponse r) {
+    if (r.valor() == null || r.valor().original() == null) {
+      throw new ProviderException(ProviderException.Code.UNKNOWN, 200, null, "Itaú cob without valor.original: " + r.txid());
+    }
     List<ReceivedPix> pix = r.pix() == null ? List.of() : r.pix().stream().map(ItauPixProvider::toReceived).toList();
     Instant created = r.calendario() == null ? null : r.calendario().criacao();
     int exp = r.calendario() == null || r.calendario().expiracao() == null ? 0 : r.calendario().expiracao();

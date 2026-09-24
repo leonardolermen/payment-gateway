@@ -150,6 +150,20 @@ class ItauPixProviderTest {
     assertThat(ev.refundUpdates()).isEmpty();
   }
 
+  @Test void parseWebhookSkipsItemsWithoutEndToEndId() {
+    String body = "{\"pix\":[{\"txid\":\"" + TXID + "\",\"valor\":\"1.00\",\"horario\":\"2020-01-01T00:00:00Z\"},"
+        + "{\"endToEndId\":\"" + E2E + "\",\"txid\":\"" + TXID + "\",\"valor\":\"110.00\",\"horario\":\"2020-01-01T00:00:00Z\"}]}";
+    ProviderWebhookEvent ev = provider.parseWebhook(body.getBytes(StandardCharsets.UTF_8));
+    assertThat(ev.received()).extracting(ReceivedPix::endToEndId).containsExactly(E2E);
+    assertThat(ev.txidByEndToEndId()).containsOnlyKeys(E2E);
+  }
+
+  @Test void cobWithoutValorIsUnknown() {
+    server.stubFor(get("/v2/cob/" + TXID).willReturn(okJson("{\"txid\":\"" + TXID + "\",\"status\":\"ATIVA\"}")));
+    assertThatThrownBy(() -> provider.findCharge(CREDS, TXID)).isInstanceOfSatisfying(ProviderException.class,
+        e -> assertThat(e.code()).isEqualTo(ProviderException.Code.UNKNOWN));
+  }
+
   @Test void parseWebhookWithoutPixIsRejected() {
     assertThatThrownBy(() -> provider.parseWebhook("{}".getBytes())).isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> provider.parseWebhook("not json".getBytes())).isInstanceOf(IllegalArgumentException.class);

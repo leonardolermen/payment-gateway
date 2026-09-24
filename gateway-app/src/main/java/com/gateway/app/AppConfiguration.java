@@ -1,8 +1,10 @@
 package com.gateway.app;
 
+import java.time.Clock;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
@@ -22,6 +24,9 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @EntityScan("com.barrier.webhookdelivery.repository")
 @EnableJpaRepositories("com.barrier.webhookdelivery.repository")
 public class AppConfiguration {
+  /** The app owns the one Clock; modules (providers today) only inject it. */
+  @Bean Clock clock() { return Clock.systemUTC(); }
+
   /** Same "gateway" prefix as MerchantsProperties; each record binds only the fields it declares. */
   @ConfigurationProperties(prefix = "gateway")
   public record AppProperties(String adminKey, RateLimit rateLimit) {
