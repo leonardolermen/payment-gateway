@@ -88,4 +88,44 @@ class MerchantsIntegrationTest {
     assertThat(credentials.list(m.id())).hasSize(1);
     assertThat(credentials.decrypt(m.id(), Provider.ITAU, ApiKeyEnvironment.LIVE)).contains("v2".getBytes());
   }
+
+  @Test
+  void expiredRotatedKeyNoLongerCountsTowardsTheCap() {
+    Merchant m = merchants.create("Store F");
+    ApiKey.Issued old = apiKeys.issue(m.id(), ApiKeyEnvironment.LIVE);
+    apiKeys.issue(m.id(), ApiKeyEnvironment.LIVE);
+    apiKeys.rotate(m.id(), ApiKeyEnvironment.LIVE);
+    // 3 rows now: two within the overlap window plus the new one — still over the cap.
+    assertThatThrownBy(() -> apiKeys.issue(m.id(), ApiKeyEnvironment.LIVE))
+        .isInstanceOf(DomainException.class).extracting("code").isEqualTo("API_KEY_LIMIT");
+
+    jdbc.update("UPDATE merchants.api_keys SET expires_at = now() - interval '1 hour' WHERE merchant_id = ? AND expires_at IS NOT NULL", m.id().value());
+    assertThat(apiKeys.authenticate(old.plainKey().reveal())).isEmpty();
+    assertThat(apiKeys.issue(m.id(), ApiKeyEnvironment.LIVE)).isNotNull();
+  }
+
+  @Test
+  void rotatedKeyWithinOverlapStillCountsTowardsTheCap() {
+    Merchant m = merchants.create("Store G");
+    apiKeys.issue(m.id(), ApiKeyEnvironment.TEST);
+    apiKeys.rotate(m.id(), ApiKeyEnvironment.TEST);
+    assertThatThrownBy(() -> apiKeys.issue(m.id(), ApiKeyEnvironment.TEST))
+        .isInstanceOf(DomainException.class).extracting("code").isEqualTo("API_KEY_LIMIT");
+  }
+
+  @Test
+  void liveAndTestCiphertextsCannotBeSwapped() {
+    Merchant m = merchants.create("Store H");
+    credentials.store(m.id(), Provider.ITAU, ApiKeyEnvironment.LIVE, "live-secret".getBytes());
+    credentials.store(m.id(), Provider.ITAU, ApiKeyEnvironment.TEST, "test-secret".getBytes());
+    // Swap every encrypted column between the two rows of the same merchant.
+    jdbc.update("""
+        UPDATE merchants.provider_credentials a SET nonce = b.nonce, ciphertext = b.ciphertext,
+               encrypted_dek = b.encrypted_dek, dek_nonce = b.dek_nonce
+        FROM merchants.provider_credentials b
+        WHERE a.merchant_id = ? AND b.merchant_id = a.merchant_id AND a.provider = b.provider AND a.environment <> b.environment
+        """, m.id().value());
+    assertThatThrownBy(() -> credentials.decrypt(m.id(), Provider.ITAU, ApiKeyEnvironment.LIVE)).isInstanceOf(SecurityException.class);
+    assertThatThrownBy(() -> credentials.decrypt(m.id(), Provider.ITAU, ApiKeyEnvironment.TEST)).isInstanceOf(SecurityException.class);
+  }
 }

@@ -8,6 +8,8 @@ public record Merchant(MerchantId id, String name, MerchantStatus status, Instan
     if (name == null || name.isBlank()) throw new IllegalArgumentException("name is required");
   }
   public static Merchant create(String name) {
+    // Checked before trim(): an admin POST with {} used to reach here with null and NPE into a 500.
+    if (name == null || name.isBlank()) throw new IllegalArgumentException("name is required");
     Instant now = Instant.now();
     return new Merchant(MerchantId.next(), name.trim(), MerchantStatus.ACTIVE, now, now);
   }

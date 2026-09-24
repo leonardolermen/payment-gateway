@@ -20,15 +20,22 @@ public class ProviderCredentialService {
 
   @Transactional
   public ProviderCredential store(MerchantId m, Provider p, ApiKeyEnvironment e, byte[] plaintext) {
-    Encrypted enc = cipher.encrypt(plaintext, m.value());
+    Encrypted enc = cipher.encrypt(plaintext, aad(m, p, e));
     ProviderCredential cred = repo.find(m, p, e).map(x -> x.withPayload(enc)).orElseGet(() -> ProviderCredential.create(m, p, e, enc));
     return repo.save(cred);
   }
 
   @Transactional(readOnly = true)
   public Optional<byte[]> decrypt(MerchantId m, Provider p, ApiKeyEnvironment e) {
-    return repo.find(m, p, e).filter(ProviderCredential::active).map(c -> cipher.decrypt(c.payload(), m.value()));
+    return repo.find(m, p, e).filter(ProviderCredential::active).map(c -> cipher.decrypt(c.payload(), aad(m, p, e)));
   }
+
+  /**
+   * Binds the ciphertext to the whole row key, not just the merchant: with merchant-only AAD a LIVE
+   * row swapped with the same merchant's TEST row decrypted fine, so TEST code could end up holding
+   * LIVE bank credentials. A mismatch throws {@link SecurityException} from the cipher.
+   */
+  private static String aad(MerchantId m, Provider p, ApiKeyEnvironment e) { return m.value() + "|" + p + "|" + e; }
 
   @Transactional(readOnly = true)
   public List<ProviderCredential> list(MerchantId m) { return repo.findByMerchant(m); }

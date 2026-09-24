@@ -28,7 +28,11 @@ public class ApiKeyService {
   /** At most two active: that is what overlap rotation needs, and anything beyond is a forgotten key. */
   @Transactional
   public ApiKey.Issued issue(MerchantId merchantId, ApiKeyEnvironment environment) {
-    if (repo.findActiveByMerchantAndEnvironment(merchantId, environment).size() >= MAX_ACTIVE) {
+    // Counts only keys that still authenticate: a rotated key stays active=true with an expiresAt,
+    // and counting it after it expired blocked issue() forever once a merchant had rotated.
+    Instant now = Instant.now();
+    long valid = repo.findActiveByMerchantAndEnvironment(merchantId, environment).stream().filter(k -> k.isValid(now)).count();
+    if (valid >= MAX_ACTIVE) {
       throw new DomainException("API_KEY_LIMIT", "there are already " + MAX_ACTIVE + " active keys in " + environment + "; revoke or rotate");
     }
     ApiKey.Issued issued = ApiKey.issue(merchantId, environment, props.apiKeyPepper());
