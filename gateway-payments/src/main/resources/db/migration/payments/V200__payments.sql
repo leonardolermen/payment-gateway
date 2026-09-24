@@ -1,6 +1,13 @@
 -- payments module (spec §9). Money is BIGINT cents; the state machine lives in code, the columns only store it.
 -- txid is the payment id (ULID): it is what lets a retry after a timeout ask the bank "does this charge exist?".
 
+-- Explicit, because Flyway runs every migration with search_path = the FIRST of spring.flyway.schemas.
+-- The payments module's own tests list only "payments", so unqualified names landed right there; the
+-- app lists "merchants,payments", and these tables were created in merchants (Hibernate's validate
+-- then failed with "missing table [payments.idempotency_keys]"). Safe to edit: V200 has never been
+-- applied outside a throwaway test container.
+SET search_path TO payments;
+
 CREATE TABLE payments (
     id                     CHAR(26)     PRIMARY KEY,
     merchant_id            CHAR(26)     NOT NULL,
