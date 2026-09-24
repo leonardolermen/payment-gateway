@@ -9,7 +9,7 @@ The older product `itau-ep9-gtw-pix-recebimentos-ext-v2` is being decommissioned
 | environment | base URL |
 |---|---|
 | production | `https://pix-pj.api.itau.com/regulatorio-pix/v2` |
-| sandbox (portal-hosted) | `https://sandbox.devportal.itau.com.br/itau-ep9-api-regulatorio-pix-v2-externo/v2` (needs "criar credenciais" in the portal; not enabled on our account yet) |
+| sandbox (portal-hosted) | `https://sandbox.devportal.itau.com.br/itau-ep9-api-regulatorio-pix-v2-externo/v2` - token from `https://sandbox.devportal.itau.com.br/api/oauth/jwt` (see below); credentials created in the portal on 2026-09-24 |
 
 Certificate chain and IP ranges are being rotated until 2026-09-15 (portal notice `certificados-apis-expiracao-2026`): the truststore must carry Itaú's new Root/Intermediate CA. Leaf certs need not be pinned.
 
@@ -27,7 +27,20 @@ grant_type=client_credentials&client_id=<client_id>&client_secret=<client_secret
 
 Every API call: `Authorization: Bearer <access_token>` + header `x-itau-apikey: <uuid>` (required; regex `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`) + optional `x-itau-correlationID: <uuid>` (audit trail; we send our correlation id as a UUID). The security scheme in the OpenAPI is `APIGatewaySTSAuthorizer` with scopes `cob.write`, `cob.read`, `pix.read`, `pix.write`, `webhook.read`, `webhook.write`, …
 
-Credential issuance (done by the merchant, out of band): generate RSA key pair → send public key to the Itaú operations analyst → receive encrypted client id / temporary token / session key by e-mail → decrypt, build CSR (`CN=<client_id>`), `POST https://sts.itau.com.br/seguranca/v1/certificado/solicitacao` with the temporary token → response carries the signed certificate and the **client_secret shown once**. Renewal: `POST https://sts.itau.com.br/seguranca/v1/certificado/renovacao`.
+### Sandbox authentication (different from production)
+
+The portal-hosted sandbox does **not** use STS/mTLS. The portal's own page (JS chunk of the API reference tab, read 2026-09-24) does:
+
+```
+POST https://sandbox.devportal.itau.com.br/api/oauth/jwt
+Content-Type: application/x-www-form-urlencoded
+grant_type=client_credentials&client_id=<sandbox client_id>&client_secret=<sandbox client_secret>
+-> { "access_token": "<jwt>", "expires_in": <seconds> }
+```
+
+The sandbox `client_id`/`client_secret` are created per account in the portal ("criar credenciais"), then the API calls go to the sandbox base URL with `Authorization: Bearer <access_token>`. No certificate; no `x-itau-apikey` requirement is documented (send it when present). Consequence for the gateway: the `TEST` credential is `{client_id, client_secret, pix_key}` (+ optional `x_itau_apikey`); certificate and private key are required only for `LIVE`.
+
+Credential issuance for production (done by the merchant, out of band): generate RSA key pair → send public key to the Itaú operations analyst → receive encrypted client id / temporary token / session key by e-mail → decrypt, build CSR (`CN=<client_id>`), `POST https://sts.itau.com.br/seguranca/v1/certificado/solicitacao` with the temporary token → response carries the signed certificate and the **client_secret shown once**. Renewal: `POST https://sts.itau.com.br/seguranca/v1/certificado/renovacao`.
 
 So a merchant's Itaú credential = `{ client_id, client_secret, x_itau_apikey, certificate (PEM), private_key (PEM) }` — five values, all stored encrypted in `provider_credentials`.
 
@@ -61,7 +74,7 @@ Charge status: `ATIVA`, `CONCLUIDA`, `REMOVIDA_PELO_USUARIO_RECEBEDOR`, `REMOVID
 
 ## What this means for the gateway (Plan B)
 
-1. No fake provider. `TEST` environment = Itaú sandbox base URL with the merchant's sandbox credentials; without credentials the call fails with `PROVIDER_CREDENTIALS_MISSING`.
+1. No fake provider. `TEST` environment = Itaú sandbox base URL with the merchant's sandbox credentials (plain OAuth at `/api/oauth/jwt`, no mTLS); without credentials the call fails with `PROVIDER_CREDENTIALS_MISSING`.
 2. Tests never hit the network: WireMock serves fixtures copied from this OpenAPI's examples; every request we build is validated against the OpenAPI schema.
 3. Refund is asynchronous: `Refund` goes `REQUESTED → PROCESSING → COMPLETED | FAILED`, closed by the refund-status webhook or by polling `GET …/devolucao/{id}`.
 4. Inbound webhook needs mTLS client-cert validation against Itaú's CA at the edge.
