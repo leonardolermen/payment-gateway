@@ -11,7 +11,9 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * The only point in the gateway that talks to webhook-delivery. Business modules (plans B and C)
- * emit through here from the outbox relay — never from the request thread, because delivery is
+ * cannot call this: they cannot import {@code com.gateway.app} (ArchUnit {@code nobodyImportsApp}).
+ * The outbox relay, which lives in {@code app}, is what calls {@link #emit}, reading each module's
+ * outbox through that module's own interface. Never from the request thread, because delivery is
  * asynchronous by construction and the library does not deliver on accept either.
  */
 @Component
