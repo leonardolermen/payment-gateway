@@ -21,6 +21,7 @@ public class MerchantRepositoryImpl implements MerchantRepository {
     entity.id = merchant.id().value();
     entity.name = merchant.name();
     entity.status = merchant.status().name();
+    entity.inboundWebhookToken = merchant.inboundWebhookToken();
     entity.createdAt = merchant.createdAt();
     entity.updatedAt = merchant.updatedAt();
     return toDomain(jpa.save(entity));
@@ -29,7 +30,9 @@ public class MerchantRepositoryImpl implements MerchantRepository {
   @Override public Optional<Merchant> findById(MerchantId id) { return jpa.findById(id.value()).map(MerchantRepositoryImpl::toDomain); }
   @Override public List<Merchant> findAll() { return jpa.findAll().stream().map(MerchantRepositoryImpl::toDomain).toList(); }
 
+  @Override public Optional<Merchant> findByInboundWebhookToken(String token) { return jpa.findByInboundWebhookToken(token).map(MerchantRepositoryImpl::toDomain); }
+
   private static Merchant toDomain(MerchantEntity e) {
-    return new Merchant(new MerchantId(e.id), e.name, MerchantStatus.valueOf(e.status), e.createdAt, e.updatedAt);
+    return Merchant.rehydrate(new MerchantId(e.id), e.name, MerchantStatus.valueOf(e.status), e.inboundWebhookToken, e.createdAt, e.updatedAt);
   }
 }
