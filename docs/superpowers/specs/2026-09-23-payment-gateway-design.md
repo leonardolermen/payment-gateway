@@ -1,4 +1,4 @@
-# Pix Gateway — design
+# Payment Gateway — design
 
 Data: 2026-09-23. Status: aprovado em conversa, aguardando revisão do texto.
 
@@ -113,7 +113,7 @@ usuário o baixa e commita; até lá vale o do Bacen, que o Itaú segue.
   limit (Redis só com mais de uma instância).
 
 ```
-pix-gateway/
+payment-gateway/
   gateway-kernel/     tipos sem dependência: Money (long centavos + BRL), Ids (ULID), Clock, Result,
                       e as interfaces publicadas entre módulos (PaymentGateway, CredentialLookup)
   gateway-merchants/  Merchant, ApiKey (hash), ProviderCredential (cifrada), MerchantWebhook
