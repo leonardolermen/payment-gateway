@@ -11,6 +11,7 @@ import com.gateway.payments.jobs.persistence.JobRepository;
 import com.gateway.payments.jobs.persistence.JobRepositoryImpl;
 import com.gateway.payments.outbox.persistence.OutboxRepository;
 import com.gateway.payments.outbox.persistence.OutboxRepositoryImpl;
+import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepositoryImpl;
 import com.gateway.payments.payment.ExpirationService;
 import com.gateway.payments.payment.PaymentEvents;
 import com.gateway.payments.payment.PaymentService;
@@ -57,7 +58,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
   JobRepositoryImpl.class,
   WebhookInboxRepositoryImpl.class,
   ProviderRequestRepositoryImpl.class,
-  ReconciliationDivergenceRepositoryImpl.class
+  ReconciliationDivergenceRepositoryImpl.class,
+  BoletoNumberRepositoryImpl.class
 })
 @EnableConfigurationProperties(PaymentsProperties.class)
 public class PaymentsConfiguration {
