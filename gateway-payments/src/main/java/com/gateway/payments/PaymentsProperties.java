@@ -21,7 +21,13 @@ public record PaymentsProperties(
     Duration stuckCreatedAfter,
     int refundPollMaxAttempts,
     Duration refundNotFoundGrace,
-    Duration reconcileLease) {
+    Duration reconcileLease,
+    Duration boletoPollEvery,
+    int boletoPollMaxAttempts,
+    Duration boletoPollGraceAfterLimit,
+    int boletoDefaultDueInDays,
+    int boletoDefaultPaymentLimitDays,
+    int boletoMaxPaymentLimitDays) {
 
   public PaymentsProperties {
     if (defaultExpiresInSeconds <= 0) defaultExpiresInSeconds = 3600;
@@ -43,9 +49,21 @@ public record PaymentsProperties(
     // RECONCILE walks up to 1000 payments with a bank call per merchant, each with a 30 s timeout;
     // the 2 min jobLease let a second worker reclaim a run still in progress.
     if (reconcileLease == null) reconcileLease = Duration.ofMinutes(10);
+    // A barcode payment clears in D+1; six hours keeps the merchant within the same business day
+    // without hammering an API that charges per query (spec 2026-09-25 §7, §10).
+    if (boletoPollEvery == null) boletoPollEvery = Duration.ofHours(6);
+    // 10 years (the bank's maximum limit date) / 6 h = 14 610 polls; the date check in the service
+    // is what actually stops a poll, this cap only keeps a runaway job from living forever.
+    if (boletoPollMaxAttempts <= 0) boletoPollMaxAttempts = 15000;
+    // Two days after the limit date: a payment made at the last minute of the last day is credited
+    // by the bank on the next business day.
+    if (boletoPollGraceAfterLimit == null) boletoPollGraceAfterLimit = Duration.ofDays(2);
+    if (boletoDefaultDueInDays <= 0) boletoDefaultDueInDays = 3;
+    if (boletoDefaultPaymentLimitDays <= 0) boletoDefaultPaymentLimitDays = 30;
+    if (boletoMaxPaymentLimitDays <= 0) boletoMaxPaymentLimitDays = 3650;
   }
 
   public static PaymentsProperties defaults() {
-    return new PaymentsProperties(0, null, null, null, null, 0, null, null, null, 0, null, null);
+    return new PaymentsProperties(0, null, null, null, null, 0, null, null, null, 0, null, null, null, 0, null, 0, 0, 0);
   }
 }

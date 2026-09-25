@@ -76,6 +76,50 @@ curl -s -XPUT localhost:8080/v1/admin/merchants/<id>/providers/ITAU/credentials 
 Never put real credential values in a command you keep, log, or paste anywhere other than the running
 request — the `<...>` placeholders above stay placeholders.
 
+### Bolecode (boleto with Pix)
+
+`POST /v1/payments` with `"method": "BOLECODE"` issues a registered boleto **and** a Pix QR in one call
+(Itaú `POST /boletos-pix`). The payer chooses: the QR settles at once and arrives by the Pix webhook; the
+barcode clears in D+1 and is found by a poll of Itaú's boleto query every 6 hours (there is no boleto
+webhook in this version — see DECISOES). The response carries both:
+
+```json
+{
+  "id": "…", "status": "PENDING", "method": "BOLECODE",
+  "boleto": {"linha_digitavel": "…47 digits", "codigo_barras": "…44 digits", "due_date": "2026-10-01",
+             "payment_limit_date": "2026-10-31", "paid_via": null},
+  "pix": {"txid": "BL…", "copia_e_cola": "…", "location": null, "end_to_end_id": null},
+  "expires_at": "2026-11-01T02:59:59Z"
+}
+```
+
+Request: `customer` is required and complete — `name`, `document` (CPF 11 digits or CNPJ 14 digits) and
+`address{street, district, city, state (UF), zip (8 digits)}`; a missing field is `422 CUSTOMER_REQUIRED`
+naming it. `due_date` defaults to today + 3 days (São Paulo) and must not be in the past; `payment_limit_days`
+defaults to 30 (max 3650). `expires_in` is Pix-only: a Bolecode expires at the end of its payment limit date,
+never at the due date (a late boleto still pays, with the bank's interest rules out of scope).
+
+`payment.completed` says how it was paid: `boleto.paid_via` is `PIX` or `BOLETO`. `POST …/cancel` does the
+bank's baixa; if the bank already shows the boleto paid, the payment completes and the cancel answers
+`409 ALREADY_PAID`. `POST …/refunds` on a payment settled by boleto is `422 REFUND_NOT_SUPPORTED` (the bank has
+no refund for a boleto); one settled by the QR refunds like any Pix.
+
+The credential needs the boleto account. Add to the `ITAU` payload (TEST or LIVE):
+
+```json
+{ "client_id": "...", "client_secret": "...", "pix_key": "...",
+  "beneficiary_id": "<agencia 4 + conta 7 + DAC 1>", "wallet_code": "109", "species_code": "01" }
+```
+
+`wallet_code` and `species_code` default to `109`/`01` when omitted; without `beneficiary_id` a Bolecode is
+refused with `422 PROVIDER_CREDENTIALS_MISSING` before anything is written. Nosso número is allocated by the
+gateway, sequential per merchant from `00000001`.
+
+Divergences a boleto can open (`reconciliation_divergences`, for a human): `AMOUNT_MISMATCH` (bank paid a
+different amount), `DOUBLE_PAYMENT` (paid by QR and by barcode), `BOLETO_REJECTED`, `CANCELED_AT_BANK` (a baixa
+done outside the gateway), `NOT_FOUND_AT_BANK` (a second empty query, not necessarily the next one), `PIX_TXID_UNCONFIRMED` (a boleto
+adopted from the query whose derived Pix txid the bank does not know).
+
 ### Registering the inbound webhook at Itaú
 
 `GET /v1/admin/merchants/<id>` returns `inbound_webhook_url`, built from `gateway.webhooks.mtls.public-host`
@@ -128,6 +172,10 @@ key values.
 - **Refund polling.** A refund not yet resolved by the webhook is polled every 5 minutes for up to 288
   attempts (24 h); if it is still unresolved after that, it is marked `FAILED` and raised as a
   reconciliation divergence rather than left open indefinitely.
+- **Boleto polling.** A `POLL_BOLETO` job per Bolecode asks Itaú's boleto query every 6 hours
+  (`gateway.payments.boleto-poll-every`) until the payment limit date plus 2 days; paid completes the payment
+  with `paid_via = BOLETO`, anything the gateway cannot act on becomes a divergence. Reconciliation runs the same
+  check for every `PENDING` Bolecode older than `reconciliation-min-age`.
 
 ### Sandbox
 

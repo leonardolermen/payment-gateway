@@ -27,9 +27,11 @@ public class ErrorHandler {
     return problem(HttpStatus.NOT_FOUND, e.code(), e.getMessage());
   }
 
+  /** ALREADY_PAID is a conflict, not a validation error: the cancel lost to the payer and the resource moved to COMPLETED. */
   @ExceptionHandler(DomainException.class)
   public ProblemDetail domainError(DomainException e) {
-    return problem(HttpStatus.UNPROCESSABLE_ENTITY, e.code(), e.getMessage());
+    HttpStatus status = "ALREADY_PAID".equals(e.code()) ? HttpStatus.CONFLICT : HttpStatus.UNPROCESSABLE_ENTITY;
+    return problem(status, e.code(), e.getMessage());
   }
 
   @ExceptionHandler(IllegalArgumentException.class)

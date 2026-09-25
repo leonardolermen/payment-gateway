@@ -132,3 +132,78 @@ txid que o banco devolve (`PaymentService.adoptPending`) e não o que enviou; em
 um txid diferente do enviado deveria ser resposta inválida, porque a recuperação por timeout consulta o
 banco pelo id do pagamento. Fica como pendência pequena. Diagramas de `docs/architecture.md` reduzidos a
 cinco figuras de alto nível: as anteriores listavam serviços e tabelas e ninguém conseguia ler.
+
+## 2026-09-25 — Bolecode: polling da consulta de detalhe em vez de webhook de boleto
+Rejeitado: o webhook de boleto (Boletos v3). Motivo: exige que o gateway exponha um servidor OAuth2 client
+credentials para o banco pegar token, e o payload da notificação não consta no OpenAPI — só entra com
+homologação. O `POLL_BOLETO` consulta `GET /boletos` a cada 6 h até a data limite + 2 dias; a reconciliação
+faz a mesma pergunta para todo `PENDING` com mais de `reconciliation-min-age`. Custo: até 6 h de atraso para
+saber de um pagamento em código de barras, que já compensa em D+1. Custo se errado: nenhum dinheiro perdido,
+só latência; o webhook pode entrar depois sem mudar o modelo (o polling vira rede de segurança).
+
+## 2026-09-25 — Bolecode expira pela data limite, não pelo vencimento
+Rejeitado: expirar no `due_date`. Motivo: boleto vencido paga (com juros, fora de escopo); expirar no vencimento
+cancelaria cobranças que ainda entram. `expires_at` é 23:59:59 America/Sao_Paulo da `payment_limit_date`; a
+expiração pergunta ao banco antes e não manda baixa (após a data limite o banco recusa sozinho). Custo se
+errado: um pagamento no último dia, creditado no dia útil seguinte — coberto pelos 2 dias de folga do poll e
+por `EXPIRED → COMPLETED` via `PROVIDER_POLL`/`RECONCILIATION`.
+
+## 2026-09-25 — Nosso número sequencial por merchant, alocado com o CREATED
+Rejeitado: derivar do ULID (não cabe em 8 dígitos); um contador em memória. Motivo: `boleto_numbers` com
+`INSERT … ON CONFLICT DO UPDATE … RETURNING` na mesma transação do `CREATED` — dois threads nunca repetem, um
+rollback devolve o número. Reutilização (45 dias após baixa/liquidação) não é tratada: 10^8 por merchant.
+Custo se errado: um número repetido é 4xx do banco na emissão, não dinheiro.
+
+Pendência aberta, fora deste plano: o contador é por merchant, mas o banco exige nosso número único por CONTA
+Itaú (`beneficiary_id`). Dois merchants apontando para a mesma conta Itaú podem alocar o mesmo nosso número e
+colidir na emissão — não é bug de concorrência do gateway, é o escopo do contador estar um nível abaixo do que
+o banco exige. Custo se errado: rejeição 4xx na emissão para o segundo merchant a usar aquele número; nenhum
+dinheiro em risco. Decisão de produto pendente: contador por conta compartilhado entre merchants, ou uma
+conta Itaú por merchant.
+
+## 2026-09-25 — Sem devolução por boleto
+Rejeitado: fingir a devolução com uma transferência. Motivo: a API não tem devolução de boleto; uma
+transferência seria dinheiro saindo por um caminho que o gateway não controla nem concilia. `paid_via = BOLETO`
+→ `422 REFUND_NOT_SUPPORTED`; pago pelo QR devolve como Pix. Custo se errado: o merchant resolve fora do gateway,
+como já faz hoje para qualquer boleto.
+
+## 2026-09-25 — O id da baixa e o txid do Pix vêm da fórmula do OpenAPI, não do UUID
+Registrado: a spec dizia `cancel(idBoletoIndividual)` e `txid = BL + agência + 00 + conta + carteira + 0000000 +
+nosso número`. O OpenAPI da cash_management define `id_boleto` como agência+conta+DAC+carteira+nosso número
+(23 chars, `minLength 23`), e o da emissão define o txid como `BL` + agência(4) + conta(7) + carteira(3) +
+nosso número(15). O código segue o JSON para reconstruir o id da baixa; o txid armazenado no pagamento é o
+nosso (`payment.id()`), não o derivado — a fórmula derivada só entra para recuperar uma resposta de emissão
+perdida, confirmada com `GET /cob/{txid}` antes de valer (divergência `PIX_TXID_UNCONFIRMED` se não bater; um
+eco do banco que discorda vira WARN em `adoptPending`, não falha dura). Custo se errado: um cancelamento 404 no
+banco (visível em `provider_requests`) e uma divergência — nunca um pagamento casado errado, porque o webhook
+Pix casa pelo txid que o banco devolveu na emissão.
+
+## 2026-09-25 — Índice de unicidade do txid é por merchant, não global
+Registrado: `uq_payments_provider_txid` (V203) é `(merchant_id, provider, details->'pix'->>'txid')`, não só
+`(provider, txid)`. Motivo: o banco deriva txids de Bolecode da conta, e o sandbox compartilhado devolve txids
+enlatados dos próprios exemplos — um índice global colidiria entre merchants de teste na mesma conta sandbox.
+Custo se errado (índice global): inserção de pagamento falhando por colisão entre merchants que nunca
+deveriam competir pelo mesmo txid.
+
+
+## 2026-09-25 — Timeout na emissão sem boleto na consulta deixa CREATED, não FAILED
+Rejeitado: marcar `FAILED` na hora, como o Pix faz. Motivo: a emissão responde 202 "operação em andamento";
+uma consulta vazia um segundo depois não prova nada. O `sweepStuckCreated` pergunta de novo após
+`stuck-created-after` e decide (adota ou falha). Custo: o merchant recebe 422 `PROVIDER_TIMEOUT` e precisa
+consultar por `reference` antes de tentar com outra chave — o mesmo protocolo do 409 `IN_PROGRESS`. Custo se
+errado (falhar na hora): um boleto emitido e pagável que o gateway chamou de falho.
+
+## 2026-09-25 — Correção: qual txid cada trilho guarda (a entrada de hoje sobre a fórmula estava invertida)
+Registrado: a entrada "O id da baixa e o txid do Pix vêm da fórmula do OpenAPI, não do UUID", escrita mais
+cedo hoje, descreveu a regra ao contrário. A regra correta, conferida em `PaymentService.java`: no trilho
+**Pix puro**, `adoptPending` guarda o txid **nosso** (`p.id()`) e só emite WARN quando o banco ecoa outro
+(desde o commit `548df4b`) — nunca adota o do banco. No trilho **Bolecode**, `adoptPendingBolecode` guarda o
+txid **do banco** (`issued.pixTxid()`, vindo da resposta da emissão), porque esse txid é derivado da conta
+pelo banco e o gateway não pode escolher o dele; a fórmula derivada (`BoletoProvider.pixTxidFor`) só entra
+para *recuperar* esse txid quando a resposta da emissão se perdeu (202/timeout), confirmada com
+`GET /cob/{txid}` antes de valer — confirmação vazia ou divergente abre `PIX_TXID_UNCONFIRMED` em vez de
+adotar sem checar. `docs/providers/itau/NOTES.md` foi corrigido para refletir isto nas duas seções (Pix e
+Bolecode). Custo se errado (a versão invertida, publicada por engano): alguém lendo a NOTES concluiria que
+o Bolecode guarda `payment.id()` como o Pix, e um mismatch de txid no Bolecode seria tratado como aviso
+inofensivo em vez do sinal real de que o `nosso_numero`/conta não bateram — o tipo de erro que
+`PIX_TXID_UNCONFIRMED` existe para pegar.

@@ -1,8 +1,11 @@
 package com.gateway.payments.jobs;
 
+import com.gateway.kernel.provider.ProviderException;
 import com.gateway.payments.PaymentsProperties;
 import com.gateway.payments.inbox.WebhookInboxService;
+import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.ExpirationService;
+import com.gateway.payments.payment.boleto.BoletoPollingService;
 import com.gateway.payments.reconciliation.ReconciliationService;
 import com.gateway.payments.refund.RefundPollingService;
 import com.gateway.payments.refund.RefundService;
@@ -32,6 +35,7 @@ public class JobRunner {
   private final WebhookInboxService inbox;
   private final ExpirationService expiration;
   private final RefundPollingService polling;
+  private final BoletoPollingService boletoPolling;
   private final RefundService refunds;
   private final ReconciliationService reconciliation;
   private final PaymentsProperties props;
@@ -43,6 +47,7 @@ public class JobRunner {
       WebhookInboxService inbox,
       ExpirationService expiration,
       RefundPollingService polling,
+      BoletoPollingService boletoPolling,
       RefundService refunds,
       ReconciliationService reconciliation,
       PaymentsProperties props,
@@ -52,6 +57,7 @@ public class JobRunner {
     this.inbox = inbox;
     this.expiration = expiration;
     this.polling = polling;
+    this.boletoPolling = boletoPolling;
     this.refunds = refunds;
     this.reconciliation = reconciliation;
     this.props = props;
@@ -74,10 +80,10 @@ public class JobRunner {
       Job next;
       try {
         boolean done = run(job, now);
-        next = done ? job.done() : retry(job, now, "not settled yet");
+        next = done ? job.done() : retry(job, now, "not settled yet", false);
       } catch (RuntimeException e) {
         log.warn("job {} {} for {} failed (attempt {})", job.type(), job.id(), job.refId(), job.attempts() + 1, e);
-        next = retry(job, now, truncate(e.getClass().getSimpleName() + ": " + e.getMessage()));
+        next = retry(job, now, truncate(describe(e)), true);
       }
       if (job.type() == JobType.POLL_REFUND && "DEAD".equals(next.status())) {
         try {
@@ -116,17 +122,24 @@ public class JobRunner {
         reconciliation.reconcileAll(now);
         yield true;
       }
+      case POLL_BOLETO -> boletoPolling.check(job.refId(), EventSource.PROVIDER_POLL);
     };
   }
 
   /**
    * POLL_REFUND polls every 5 minutes for {@code refundPollMaxAttempts} (288 = 24 h): exponential
    * backoff with 8 attempts gave up after about 4 h, while the bank may take a day to settle a
-   * devolucao. Everything else backs off exponentially up to {@code jobMaxAttempts}.
+   * devolucao. POLL_BOLETO looks again every {@code boletoPollEvery} (6 h) while the bank says
+   * open; a failure (bank unreachable) backs off like any job but never waits longer than the poll
+   * period itself. Everything else backs off exponentially up to {@code jobMaxAttempts}.
    */
-  private Job retry(Job job, Instant now, String error) {
+  private Job retry(Job job, Instant now, String error, boolean failed) {
     if (job.type() == JobType.POLL_REFUND) {
       return job.reschedule(now.plus(RefundService.POLL_EVERY), error, props.refundPollMaxAttempts());
+    }
+    if (job.type() == JobType.POLL_BOLETO) {
+      Duration wait = failed && backoff(job.attempts()).compareTo(props.boletoPollEvery()) < 0 ? backoff(job.attempts()) : props.boletoPollEvery();
+      return job.reschedule(now.plus(wait), error, props.boletoPollMaxAttempts());
     }
     return job.reschedule(now.plus(backoff(job.attempts())), error, props.jobMaxAttempts());
   }
@@ -139,6 +152,17 @@ public class JobRunner {
     if (attempts >= 11) return MAX_BACKOFF; // 2^11 min > 24 h, and avoids shifting into overflow
     Duration d = Duration.ofMinutes(1L << attempts);
     return d.compareTo(MAX_BACKOFF) > 0 ? MAX_BACKOFF : d;
+  }
+
+  /**
+   * A provider's message alone ("down", "Bad Gateway") does not say whether support should wait or
+   * call the bank; the code (UNAVAILABLE, AUTH, ...) is what they triage last_error by.
+   */
+  private static String describe(RuntimeException e) {
+    if (e instanceof ProviderException pe) {
+      return "ProviderException " + pe.code() + ": " + pe.getMessage();
+    }
+    return e.getClass().getSimpleName() + ": " + e.getMessage();
   }
 
   private static String truncate(String s) {

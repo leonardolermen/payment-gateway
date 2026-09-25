@@ -32,8 +32,19 @@ interface PaymentJpaRepository extends JpaRepository<PaymentEntity, String> {
   java.util.List<PaymentEntity> findByStatusInAndCreatedAtAfter(
       @Param("statuses") Collection<String> statuses, @Param("after") Instant after, Limit limit);
 
+  @Query("SELECT p FROM PaymentEntity p WHERE p.method = :method AND p.status IN :statuses AND p.createdAt > :after ORDER BY p.createdAt ASC")
+  java.util.List<PaymentEntity> findByMethodAndStatusInAndCreatedAtAfter(
+      @Param("method") String method, @Param("statuses") Collection<String> statuses, @Param("after") Instant after, Limit limit);
+
   @Query("SELECT p FROM PaymentEntity p WHERE p.merchantId = :merchantId AND (:cursorId IS NULL OR p.id < :cursorId) ORDER BY p.id DESC")
   java.util.List<PaymentEntity> findByMerchant(@Param("merchantId") String merchantId, @Param("cursorId") String cursorId, Limit limit);
+
+  /**
+   * Native: the txid lives inside jsonb and the unique index (V203) is on this exact expression.
+   * Provider first because the index is (provider, txid); the merchant is checked by the caller.
+   */
+  @Query(value = "SELECT * FROM payments.payments WHERE provider = :provider AND details->'pix'->>'txid' = :txid", nativeQuery = true)
+  Optional<PaymentEntity> findByProviderAndTxid(@Param("provider") String provider, @Param("txid") String txid);
 
   /**
    * The optimistic-lock write itself: {@code WHERE version = :expectedVersion}, {@code expected}

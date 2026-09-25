@@ -17,7 +17,7 @@ class ItauCredentialsTest {
     assertThat(c.clientSecret().reveal()).isEqualTo("s3cr3t");
     assertThat(c.apiKey()).isEqualTo("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
     assertThat(c.pixKey()).isEqualTo("60701190000104");
-    assertThat(c.toString()).doesNotContain("s3cr3t").doesNotContain("MIIE");
+    assertThat(c.toString()).doesNotContain("s3cr3t").doesNotContain("MIIE").doesNotContain("aaaaaaaa-bbbb").contains("apiKey=***");
   }
 
   @Test void missingFieldNamesTheField() {
@@ -27,7 +27,7 @@ class ItauCredentialsTest {
 
   @Test void apiKeyMustMatchItauRegex() {
     assertThatThrownBy(() -> ItauCredentials.parse(JSON.replace("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "not-a-uuid").getBytes()))
-        .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("x_itau_apikey");
+        .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("x_itau_apikey").hasMessageNotContaining("not-a-uuid");
   }
 
   @Test void sandboxShapeHasNoCertificate() {
@@ -54,5 +54,44 @@ class ItauCredentialsTest {
   @Test void blankPrivateKeyCountsAsMissing() {
     assertThatThrownBy(() -> ItauCredentials.parse(JSON.replace("-----BEGIN PRIVATE KEY-----\\nMIIE\\n-----END PRIVATE KEY-----", "  ").getBytes()))
         .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("without private_key_pem");
+  }
+
+  static final String WITH_BOLETO = "{\"client_id\":\"sbx-id\",\"client_secret\":\"sbx-secret\",\"pix_key\":\"60701190000104\","
+      + "\"beneficiary_id\":\"150000052061\",\"wallet_code\":\"109\",\"species_code\":\"01\"}";
+
+  @Test void parsesTheBoletoFields() {
+    ItauCredentials c = ItauCredentials.parse(WITH_BOLETO.getBytes());
+    assertThat(c.beneficiaryId()).isEqualTo("150000052061");
+    assertThat(c.walletCode()).isEqualTo("109");
+    assertThat(c.speciesCode()).isEqualTo("01");
+    assertThat(c.hasBeneficiary()).isTrue();
+    c.requireBoletoShape();
+    assertThat(c.toString()).doesNotContain("150000052061").contains("beneficiaryId=***");
+  }
+
+  @Test void walletAndSpeciesDefaultWhenAbsent() {
+    ItauCredentials c = ItauCredentials.parse(WITH_BOLETO.replace(",\"wallet_code\":\"109\",\"species_code\":\"01\"", "").getBytes());
+    assertThat(c.walletCode()).isEqualTo("109");
+    assertThat(c.speciesCode()).isEqualTo("01");
+  }
+
+  @Test void pixOnlyCredentialHasNoBeneficiaryAndSaysSo() {
+    ItauCredentials c = ItauCredentials.parse("{\"client_id\":\"sbx-id\",\"client_secret\":\"sbx-secret\",\"pix_key\":\"60701190000104\"}".getBytes());
+    assertThat(c.hasBeneficiary()).isFalse();
+    assertThatThrownBy(c::requireBoletoShape).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("beneficiary_id");
+  }
+
+  @Test void boletoFieldsAreValidatedByRegex() {
+    assertThatThrownBy(() -> ItauCredentials.parse(WITH_BOLETO.replace("150000052061", "1500000520").getBytes()))
+        .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("beneficiary_id");
+    assertThatThrownBy(() -> ItauCredentials.parse(WITH_BOLETO.replace("\"109\"", "\"1090\"").getBytes()))
+        .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("wallet_code");
+    assertThatThrownBy(() -> ItauCredentials.parse(WITH_BOLETO.replace("\"01\"", "\"1\"").getBytes()))
+        .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("species_code");
+  }
+
+  @Test void beneficiaryChangesTheFingerprint() {
+    assertThat(ItauCredentials.parse(WITH_BOLETO.getBytes()).fingerprint())
+        .isNotEqualTo(ItauCredentials.parse(WITH_BOLETO.replace("150000052061", "150000052062").getBytes()).fingerprint());
   }
 }

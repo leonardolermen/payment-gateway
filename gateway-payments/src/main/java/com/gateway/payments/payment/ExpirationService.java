@@ -3,6 +3,9 @@ package com.gateway.payments.payment;
 import com.gateway.payments.PaymentsProperties;
 import com.gateway.payments.provider.ProviderGateway;
 
+import com.gateway.kernel.provider.boleto.BoletoProvider;
+import com.gateway.kernel.provider.boleto.BoletoSituation;
+import com.gateway.kernel.provider.boleto.BoletoStatus;
 import com.gateway.kernel.provider.pix.Charge;
 import com.gateway.kernel.provider.pix.ChargeStatus;
 import com.gateway.kernel.provider.ProviderException;
@@ -72,6 +75,28 @@ public class ExpirationService {
     for (Payment p : payments.findByStatusCreatedBefore(PaymentStatus.CREATED, now.minus(props.stuckCreatedAfter()), BATCH)) {
       try {
         ProviderGateway.Resolved r = providers.resolve(p.merchantId(), p.environment(), p.provider());
+        if (p.method() == PaymentMethod.BOLECODE) {
+          // Same idea as Pix, with the query: the number is ours, so the bank can say whether the
+          // issue landed. Empty after stuckCreatedAfter (the bank's 202 long past) is FAILED.
+          BoletoProvider boleto = r.boleto().orElseThrow();
+          String nn = p.boleto().nossoNumero();
+          Optional<BoletoStatus> atBank = providers.call(p.id(), "findBoleto", r, x -> boleto.find(x.credentials(), nn));
+          if (atBank.isEmpty()) {
+            paymentService.markFailed(p.id(), "PROVIDER_TIMEOUT", EventSource.SYSTEM);
+          } else {
+            paymentService.adoptBolecodeFromStatus(p.id(), r, atBank.get(), EventSource.SYSTEM);
+            if (atBank.get().paid()) {
+              paymentService.settleBoleto(p.merchantId(), p.id(), atBank.get(), EventSource.RECONCILIATION);
+            }
+          }
+          // Counted from the row, not assumed: every branch above may be a no-op (markFailed and the
+          // adoption both leave a payment that is no longer CREATED alone), and counting those made
+          // the sweep report work it did not do.
+          if (payments.findById(p.id()).map(x -> x.status() != PaymentStatus.CREATED).orElse(false)) {
+            changed++;
+          }
+          continue;
+        }
         Optional<Charge> atBank = providers.call(p.id(), "findCharge", r, x -> x.provider().findCharge(x.credentials(), p.id()));
         if (atBank.isEmpty()) {
           paymentService.markFailed(p.id(), "PROVIDER_TIMEOUT", EventSource.SYSTEM);
@@ -97,6 +122,9 @@ public class ExpirationService {
       return false;
     }
     ProviderGateway.Resolved r = providers.resolve(p.merchantId(), p.environment(), p.provider());
+    if (p.method() == PaymentMethod.BOLECODE) {
+      return expireBolecode(p, r);
+    }
     Optional<Charge> atBank = providers.call(p.id(), "findCharge", r, x -> x.provider().findCharge(x.credentials(), p.id()));
     if (atBank.isPresent() && atBank.get().status() == ChargeStatus.COMPLETED) {
       if (atBank.get().firstPix().isEmpty()) {
@@ -120,11 +148,34 @@ public class ExpirationService {
         }
       }
     }
+    return markExpired(paymentId);
+  }
+
+  /**
+   * A Bolecode expires on its payment limit date (spec 2026-09-25 §7, §10): after it the bank refuses
+   * both the barcode and the QR, so no baixa is sent — it would only add a call that can fail. The
+   * query still runs first: a payment made on the last day is credited on the next business day.
+   */
+  private boolean expireBolecode(Payment p, ProviderGateway.Resolved r) {
+    BoletoProvider boleto = r.boleto().orElseThrow();
+    String nn = p.boleto().nossoNumero();
+    Optional<BoletoStatus> atBank = providers.call(p.id(), "findBoleto", r, x -> boleto.find(x.credentials(), nn));
+    if (atBank.isPresent() && atBank.get().paid()) {
+      return paymentService.settleBoleto(p.merchantId(), p.id(), atBank.get(), EventSource.RECONCILIATION) == PaymentService.Settlement.COMPLETED;
+    }
+    if (atBank.isPresent() && atBank.get().situation() == BoletoSituation.AWAITING_CREDIT) {
+      log.info("boleto {} of payment {} awaiting credit at the bank; not expiring yet", nn, p.id());
+      return false;
+    }
+    return markExpired(p.id());
+  }
+
+  private boolean markExpired(String paymentId) {
     return Boolean.TRUE.equals(
         tx.execute(s -> {
           Payment loaded = payments.findById(paymentId).orElseThrow();
           if (loaded.status() != PaymentStatus.PENDING) {
-            return false; // the webhook got there while we were asking the bank
+            return false; // a webhook or a poll got there while we were asking the bank
           }
           Payment saved = payments.save(loaded, List.of(loaded.markExpired(EventSource.EXPIRATION_JOB)));
           events.emit(saved.merchantId(), "payment.expired", saved);

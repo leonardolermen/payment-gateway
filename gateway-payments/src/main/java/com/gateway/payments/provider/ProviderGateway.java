@@ -3,12 +3,14 @@ package com.gateway.payments.provider;
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.provider.CredentialLookup;
+import com.gateway.kernel.provider.boleto.BoletoProvider;
 import com.gateway.kernel.provider.pix.PixProvider;
 import com.gateway.kernel.provider.ProviderCredentials;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.payments.provider.persistence.ProviderRequestRepository;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import org.slf4j.Logger;
@@ -27,25 +29,29 @@ public class ProviderGateway {
   /** The operations that create a resource at the bank answer 201 (PUT /cob, PUT /devolucao). */
   private static final Set<String> CREATING = Set.of("createCharge", "requestRefund");
 
-  public record Resolved(PixProvider provider, ProviderCredentials credentials) {}
+  /** {@code boleto} is empty for a provider without a boleto product (none today, but the contract allows it). */
+  public record Resolved(PixProvider provider, Optional<BoletoProvider> boleto, ProviderCredentials credentials) {}
 
   private final List<PixProvider> providers;
+  private final List<BoletoProvider> boletoProviders;
   private final CredentialLookup credentials;
   private final ProviderRequestRepository requests;
 
-  public ProviderGateway(List<PixProvider> providers, CredentialLookup credentials, ProviderRequestRepository requests) {
+  public ProviderGateway(List<PixProvider> providers, List<BoletoProvider> boletoProviders, CredentialLookup credentials, ProviderRequestRepository requests) {
     this.providers = providers;
+    this.boletoProviders = boletoProviders;
     this.credentials = credentials;
     this.requests = requests;
   }
 
   public Resolved resolve(MerchantId merchantId, ProviderEnvironment env, String provider) {
     PixProvider p = provider(provider);
+    Optional<BoletoProvider> b = boletoProviders.stream().filter(x -> x.id().equalsIgnoreCase(provider)).findFirst();
     ProviderCredentials c =
         credentials
             .find(merchantId, provider, env)
             .orElseThrow(() -> new DomainException("PROVIDER_CREDENTIALS_MISSING", "no " + provider + " " + env + " credentials for this merchant"));
-    return new Resolved(p, c);
+    return new Resolved(p, b, c);
   }
 
   /** Parsing a webhook needs no credential — the inbox must not fail because one was rotated. */

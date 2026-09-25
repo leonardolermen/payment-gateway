@@ -1,0 +1,36 @@
+{
+  "etapa_processo_boleto": "efetivacao",
+  "beneficiario": {
+    "id_beneficiario": "150000052061"
+  },
+  "dado_boleto": {
+    "descricao_instrumento_cobranca": "boleto_pix",
+    "tipo_boleto": "a vista",
+    "codigo_carteira": "109",
+    "codigo_especie": "01",
+    "valor_total_titulo": "1234.56",
+    "pagador": {
+      "pessoa": {
+        "nome_pessoa": "João da Silva",
+        "tipo_pessoa": {
+          "codigo_tipo_pessoa": "F",
+          "numero_cadastro_pessoa_fisica": "12345678901"
+        }
+      },
+      "endereco": {
+        "nome_logradouro": "Rua das Flores",
+        "nome_bairro": "Centro",
+        "nome_cidade": "São Paulo",
+        "sigla_UF": "SP",
+        "numero_CEP": "01310100"
+      }
+    },
+    "dados_individuais_boleto": [
+      {
+        "numero_nosso_numero": "12345678",
+        "data_vencimento": "2026-12-31",
+        "valor_titulo": "1234.56"
+      }
+    ]
+  }
+}

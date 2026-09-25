@@ -1,0 +1,260 @@
+{
+  "data": [
+    {
+      "id_boleto": "b1ff5cc0-8a9c-497e-b983-738904c23389",
+      "beneficiario": {
+        "id_beneficiario": "150000052061",
+        "nome_cobranca": "Antônio Coutinho",
+        "tipo_pessoa": {
+          "codigo_tipo_pessoa": "F",
+          "numero_cadastro_pessoa_fisica": "12345678901"
+        },
+        "endereco": {
+          "nome_logradouro": "Rua Dona Ana Neri, 368",
+          "nome_bairro": "Mooca",
+          "nome_cidade": "São Paulo",
+          "sigla_UF": "SP",
+          "numero_CEP": "12345678"
+        }
+      },
+      "dado_boleto": {
+        "descricao_instrumento_cobranca": "boleto",
+        "forma_envio": "postagem",
+        "tipo_boleto": "a vista",
+        "pagador": {
+          "pessoa": {
+            "nome_pessoa": "João Silva",
+            "tipo_pessoa": {
+              "codigo_tipo_pessoa": "F",
+              "numero_cadastro_pessoa_fisica": "33378996846"
+            }
+          },
+          "endereco": {
+            "nome_logradouro": "Av do Estado, 5533",
+            "nome_bairro": "Mooca",
+            "nome_cidade": "São Paulo",
+            "sigla_UF": "SP",
+            "numero_CEP": "12345678"
+          }
+        },
+        "qrcode_pix": {
+          "emv": "00020101021226860014BR.GOV.BCB.PIX2564spi-h.itau.com.br/pix/qr/v1/c3d189b4-c859-4218-b9de-b44594755a2e5204000053039865802BR5924PMDXA da Silva Einstein6009SAO PAULO62070503***63045E66",
+          "imagem_base64": "iVBORw0KGgoAAAANSUhEUgAAAPoAAAD6AQAAAACgl2eQAAAC3ElEQVR4Xu2XQW7kMAwEpY+I///FPkX6iLxVVJDxzCHYQ4Z7GcFwbKkCMGSz6bTr5/Wnve68rA9w1gc46wOc9W/AbK3vuNaOPTrX2i2Wm4XA4prheeuzQY2Y3c1KIF8Jk1tnm9fdz2YpMEfsWBxcZGm3Ef8B2I0CcUiqOMjU1QJcRIlYPJujk6rcLATU53pdr6p+Pf9lIJfNYq04IsgRX9tVwLRCMxRqa220MVqQt4SqALo2slto2qZ/2Mi+FQLTFOEZl62jcrGRZsyFwMY9kexEtF9G1s3e+BZMAcBJM0dcJ0vAYTMVAiQJlRCg/bpzuFw2sT/KAKRqfTgaVImz0FdvxSoAHKjLzjE7+ll3qjxMrADgDANVsSbMvtVHbkEWAEaJVEyOZTNV2b8eVQEaxwhd9HKULSfcMHmFgJ3Txfy8sVihhG7NWwCQHgS7jJAOppEN1F+rBAhnd3QSF7eTpCDSKASyb1VpRjuMkb1b41QAJok+cb57Yra6Y6YQ4Gyxv50kKjYFvLJgZcBlSMNJxgPAeZgPMy8AzE7Lubp8UMTG+yhWCUBiTA2jBdFSOhV7M5ACgCpZJEIUI0fpH2wWApcfdn7pYB49u9hvnuvRvAXAUq7aRjDLTJv3ZQLrAL6qsjI6iMnSzShWVAJskioLZWj7fOakgAoBYsTDESwe3q1aesi9ed8OoJBuWGHGwoRdKviWyfcDGQ83vrz7l6NTtvtf8X6AV1xjOdJ44uS07qN5CwB9W6Uq1CxWPt2CLAC2xrHyzu5SxUMz+y5WBXBaxWAbSQrH2VbBhQBVWQKONGbZpY08mXkB4EIfTekaKBkbz9P//YAREVbX1dUuM21oYd/FKgCUiBz56UZrgP3+sVcB4BsGeYqlVPpzsYqAedwb2ZixTN6jWEUABppDRBsFA9ye1wHJ2L328UrNAD9X881AVsaumYZIscJ/0u3pOuCn9QHO+gBnfYCzfgH4C2GVFDHlHIBpAAAAAElFTkSuQmCC"
+        },
+        "codigo_carteira": "156",
+        "dados_individuais_boleto": [
+          {
+            "situacao_geral_boleto": "Em Aberto",
+            "numero_nosso_numero": "12345678",
+            "dac_titulo": "2",
+            "data_vencimento": "2020-04-10",
+            "valor_titulo": "1000.00",
+            "texto_seu_numero": "1234567890",
+            "codigo_barras": "34197810500000000101560002190541500052061000",
+            "numero_linha_digitavel": "34191560090219054150400520610007781050000000010",
+            "data_limite_pagamento": "2020-10-15",
+            "identificador_boleto_mercado": "12345678901234567890"
+          }
+        ],
+        "rateio_credito": [
+          {
+            "codigo_tipo_empresa_conglomerado": "1",
+            "codigo_empresa_conglomerado ": "1",
+            "numero_agencia": "1",
+            "numero_conta_corrente ": "0012345",
+            "numero_digito_verificador_conta_corrente": "1",
+            "valor_rateio": "100.00",
+            "percentual_rateio": "0.00",
+            "rateio_credito_por_percentual": false,
+            "rateio_sobre_valor_liquido": false,
+            "cpmf": false
+          },
+          {
+            "codigo_tipo_empresa_conglomerado": "1",
+            "codigo_empresa_conglomerado ": "1",
+            "numero_agencia": "3",
+            "numero_conta_corrente ": "0044444",
+            "numero_digito_verificador_conta_corrente": "1",
+            "valor_rateio": "0.00",
+            "percentual_rateio": "10.00",
+            "rateio_credito_por_percentual": true,
+            "rateio_sobre_valor_liquido": true,
+            "cpmf": false
+          }
+        ],
+        "codigo_especie": "95",
+        "descricao_especie": "Duplicata de venda Mercantil por Indicacao",
+        "codigo_aceite": "S",
+        "data_emissao": "2020-02-02",
+        "valor_abatimento": "50.00",
+        "juros": {
+          "codigo_tipo_juros": "02",
+          "quantidade_dias_juros": 1,
+          "percentual_juros": "2.00000"
+        },
+        "multa": {
+          "codigo_tipo_multa": "02",
+          "quantidade_dias_multa": 1,
+          "percentual_multa": "2.00000"
+        }
+      }
+    },
+    {
+      "id_boleto": "05d6489c-0dce-4467-b8ea-0f6bfd3bf039",
+      "beneficiario": {
+        "id_beneficiario": "000000000000",
+        "nome_cobranca": "NOME RDZD",
+        "tipo_pessoa": {
+          "codigo_tipo_pessoa": "J",
+          "numero_cadastro_nacional_pessoa_juridica": "00000000000000"
+        },
+        "endereco": {
+          "nome_logradouro": "AV SAGITARIO",
+          "nome_bairro": "SITIO TAMBORE A",
+          "nome_cidade": "SAO PAULO",
+          "sigla_UF": "SP",
+          "numero_CEP": "06473073"
+        }
+      },
+      "dado_boleto": {
+        "descricao_instrumento_cobranca": "boleto",
+        "forma_envio": "postagem",
+        "tipo_boleto": "a vista",
+        "quantidade_parcelas": 0,
+        "pagador": {
+          "pessoa": {
+            "nome_pessoa": "João Silva",
+            "tipo_pessoa": {
+              "codigo_tipo_pessoa": "F",
+              "numero_cadastro_pessoa_fisica": "00000000011"
+            }
+          },
+          "endereco": {
+            "nome_logradouro": "Av do Estado, 5533",
+            "nome_bairro": "Mooca",
+            "nome_cidade": "São Paulo",
+            "sigla_UF": "SP",
+            "numero_CEP": "01034010"
+          }
+        },
+        "sacador_avalista": {
+          "pessoa": {
+            "nome_pessoa": "Tais Silva",
+            "tipo_pessoa": {
+              "codigo_tipo_pessoa": "F",
+              "numero_cadastro_pessoa_fisica": "00000000000"
+            }
+          },
+          "endereco": {
+            "nome_logradouro": "Av do Estado, 5533",
+            "nome_bairro": "Mooca",
+            "nome_cidade": "São Paulo",
+            "sigla_UF": "SP",
+            "numero_CEP": "01034010"
+          }
+        },
+        "codigo_carteira": "109",
+        "dados_individuais_boleto": [
+          {
+            "situacao_geral_boleto": "Em Aberto",
+            "status_vencimento": "A vencer",
+            "numero_nosso_numero": "00000000",
+            "dac_titulo": "1",
+            "data_vencimento": "2020-08-06",
+            "valor_titulo": "2100.00",
+            "texto_seu_numero": "123456aby",
+            "codigo_barras": "34195833900002100001560004386391500052061000",
+            "numero_linha_digitavel": "34191560090438639150400520610007583390000210000",
+            "data_limite_pagamento": "2030-08-06",
+            "identificador_boleto_mercado": "09876543210987654321",
+            "mensagens_cobranca": [
+              {
+                "mensagem": "APÓS O VENCIMENTO COBRAR JUROS DE......... 0,55% AO MÊS"
+              },
+              {
+                "mensagem": "APÓS O VENCIMENTO COBRAR MULTA DE......... 0,05%"
+              },
+              {
+                "mensagem": "ATÉ 10.07.2020 CONCEDER DESCONTO DE 0,60%"
+              },
+              {
+                "mensagem": "CONCEDER ABATIMENTO DE.................... R$ 15,10"
+              }
+            ]
+          }
+        ],
+        "codigo_especie": "95",
+        "descricao_especie": "DMI - Duplicata de venda Mercantil por Indicacao",
+        "codigo_aceite": "S",
+        "data_emissao": "2020-07-09",
+        "pagamento_parcial": false,
+        "quantidade_maximo_parcial": 0,
+        "codigo_tipo_vencimento": 3,
+        "texto_uso_beneficiario": "AB&C",
+        "pagamentos_cobranca": [
+          {
+            "numero_agencia_recebedora": "1234",
+            "data_inclusao_pagamento": "2020-01-20",
+            "valor_pago_total_cobranca": "2100.00",
+            "codigo_instituicao_financeira_pagamento": "314",
+            "descricao_canal_pagamento": "BANKFONE",
+            "descricao_meio_pagamento": "DÉBITO EM CONTA"
+          }
+        ],
+        "baixa": {
+          "data_inclusao_alteracao_baixa": "2020-01-01",
+          "motivo_baixa": "Baixa por ter sido liquidado"
+        },
+        "historico": [
+          {
+            "data": "2020-08-10",
+            "operacao": "BAIXAR",
+            "comandado_por": "999999999"
+          },
+          {
+            "data": "2020-08-08",
+            "operacao": "PAGAMENTO REJEITADO",
+            "comandado_por": "SISTEMA",
+            "motivo": "5 - Agencia inválida"
+          },
+          {
+            "data": "2020-08-07",
+            "operacao": "ALTERACAO VALOR TITULO",
+            "comandado_por": "002315157",
+            "conteudo_anterior": "150.00",
+            "conteudo_atual": "450.00"
+          },
+          {
+            "data": "2020-05-08",
+            "operacao": "ALTERACAO DADOS BENEFICIARIO FINAL",
+            "comandado_por": "012300414",
+            "detalhe": [
+              {
+                "descricao": "ALTERACAO CPF/CNPJ SACADOR AVALISTA",
+                "conteudo_anterior": "00000000000",
+                "conteudo_atual": "00000000001"
+              },
+              {
+                "descricao": "ALTERACAO NOME SACADOR AVALISTA",
+                "conteudo_anterior": "Sacador Teste",
+                "conteudo_atual": "Tais Silva"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "pagination": {
+    "links": {
+      "first": "https://apigateway-int.mbi.cloud.ihf/cash_management/v2/boletos/id_beneficiario=150000052061&id_instrucao_cobranca=1&nome_pagador=MARC",
+      "last": "https://apigateway-int.mbi.cloud.ihf/cash_management/v2/boletos/id_beneficiario=150000052061&id_instrucao_cobranca=1&nome_pagador=MARC&page=2",
+      "previous": "",
+      "next": "https://apigateway-int.mbi.cloud.ihf/cash_management/v2/boletos/id_beneficiario=150000052061&id_instrucao_cobranca=1&nome_pagador=MARC&page=1"
+    },
+    "page": 0,
+    "total_pages": 3,
+    "total_elements": 6,
+    "page_size": 2
+  }
+}

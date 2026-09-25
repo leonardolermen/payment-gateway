@@ -20,4 +20,9 @@ public class ServiceTestConfig {
   InMemoryCredentialLookup credentialLookup() {
     return new InMemoryCredentialLookup();
   }
+
+  @Bean
+  RecordingBoletoProvider recordingBoletoProvider(MutableClock clock, RecordingPixProvider pix) {
+    return new RecordingBoletoProvider(clock, pix);
+  }
 }

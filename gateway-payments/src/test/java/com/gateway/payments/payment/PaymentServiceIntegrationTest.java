@@ -183,4 +183,24 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
     Payment p = paymentService.createCharge(new PaymentService.CreateCharge(merchant, ProviderEnvironment.TEST, Money.brl(200), null, null, null, 600));
     assertThat(p.expiresAt()).isEqualTo(clock.instant().plus(Duration.ofSeconds(600)));
   }
+
+  /**
+   * Regression: the stored txid was the one the bank echoed, and Itau's sandbox echoes a fixed one,
+   * so settleFromWebhook (which looks up by stored txid) answered UNKNOWN_PAYMENT for a paid charge.
+   */
+  @Test
+  void theStoredPixTxidIsOursEvenWhenTheBankEchoesAnother() {
+    bank.echoNextCreateTxid("7978c0c97ea847e78e8849634473c1f1");
+    Payment p = newCharge(1500);
+    assertThat(p.pix().txid()).isEqualTo(p.id());
+    assertThat(payments.findById(p.id()).orElseThrow().pix().txid()).isEqualTo(p.id());
+
+    String e2e = "E" + com.gateway.kernel.ids.Ulid.next();
+    bank.markPaid(p.id(), e2e, Money.brl(1500));
+    PaymentService.Settlement outcome =
+        paymentService.settleFromWebhook(merchant, p.id(), new com.gateway.kernel.provider.pix.ReceivedPix(e2e, Money.brl(1500), clock.instant(), "payer"));
+
+    assertThat(outcome).isEqualTo(PaymentService.Settlement.COMPLETED);
+    assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.COMPLETED);
+  }
 }

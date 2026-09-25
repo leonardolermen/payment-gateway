@@ -1,13 +1,13 @@
 package com.gateway.payments.payment.persistence;
 
-import com.gateway.payments.payment.pix.PixDetailsJson;
-
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.money.Money;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
+import com.gateway.payments.payment.PaymentDetailsJson;
 import com.gateway.payments.payment.PaymentEvent;
+import com.gateway.payments.payment.PaymentMethod;
 import com.gateway.payments.payment.PaymentStatus;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -25,8 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class PaymentRepositoryImpl implements PaymentRepository {
-  private static final String METHOD_PIX = "PIX";
-
   private final PaymentJpaRepository jpa;
   private final PaymentEventJpaRepository eventsJpa;
 
@@ -49,7 +47,7 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   public Payment save(Payment p, List<PaymentEvent> newEvents) {
     long newVersion = p.version();
     long expectedVersion = newVersion - newEvents.size();
-    String details = PixDetailsJson.write(p.pix());
+    String details = PaymentDetailsJson.write(p.pix(), p.boleto());
 
     if (expectedVersion == 0) {
       PaymentEntity e = new PaymentEntity();
@@ -57,7 +55,7 @@ public class PaymentRepositoryImpl implements PaymentRepository {
       e.merchantId = p.merchantId().value();
       e.environment = p.environment().name();
       e.provider = p.provider();
-      e.method = METHOD_PIX;
+      e.method = p.method().name();
       e.status = p.status().name();
       e.amount = p.amount().cents();
       e.currency = p.amount().currency();
@@ -113,6 +111,11 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   }
 
   @Override
+  public Optional<Payment> findByMerchantAndTxid(MerchantId merchantId, String provider, String txid) {
+    return jpa.findByProviderAndTxid(provider, txid).filter(e -> e.merchantId.equals(merchantId.value())).map(PaymentRepositoryImpl::toDomain);
+  }
+
+  @Override
   public List<Payment> listByMerchant(MerchantId merchantId, int limit, String cursorId) {
     return jpa.findByMerchant(merchantId.value(), cursorId, Limit.of(limit)).stream().map(PaymentRepositoryImpl::toDomain).toList();
   }
@@ -125,6 +128,12 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   @Override
   public List<Payment> findPendingOlderThan(Instant expiresBefore, int limit) {
     return jpa.findPendingOlderThan(expiresBefore, Limit.of(limit)).stream().map(PaymentRepositoryImpl::toDomain).toList();
+  }
+
+  @Override
+  public List<Payment> findByMethodAndStatusIn(com.gateway.payments.payment.PaymentMethod method, Set<PaymentStatus> statuses, Instant createdAfter, int limit) {
+    Set<String> names = statuses.stream().map(Enum::name).collect(Collectors.toSet());
+    return jpa.findByMethodAndStatusInAndCreatedAtAfter(method.name(), names, createdAfter, Limit.of(limit)).stream().map(PaymentRepositoryImpl::toDomain).toList();
   }
 
   @Override
@@ -175,12 +184,14 @@ public class PaymentRepositoryImpl implements PaymentRepository {
         new MerchantId(e.merchantId),
         ProviderEnvironment.valueOf(e.environment),
         e.provider,
+        PaymentMethod.valueOf(e.method),
         PaymentStatus.valueOf(e.status),
         new Money(e.amount, e.currency),
         e.reference,
         e.description,
         e.customerDocumentHash,
-        PixDetailsJson.read(e.details),
+        PaymentDetailsJson.readPix(e.details),
+        PaymentDetailsJson.readBoleto(e.details),
         e.expiresAt,
         e.paidAt,
         e.paidAmount == null ? null : new Money(e.paidAmount, e.currency),
