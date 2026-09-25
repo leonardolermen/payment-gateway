@@ -5,7 +5,7 @@ import com.gateway.app.api.payment.dto.CreatePaymentRequest;
 import com.gateway.app.api.payment.dto.PaymentEventResponse;
 import com.gateway.app.api.payment.dto.PaymentResponse;
 import com.gateway.app.security.MerchantContext;
-import com.gateway.kernel.money.Money;
+import com.gateway.payments.payment.create.CreatePaymentCommand;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.merchants.domain.ApiKeyEnvironment;
 import com.gateway.payments.payment.Payment;
@@ -36,21 +36,13 @@ public class PaymentsController {
   public PaymentsController(PaymentService payments) { this.payments = payments; }
 
   @PostMapping
-  public ResponseEntity<PaymentResponse> create(@RequestBody CreatePaymentRequest req) {
-    req.validate();
-    MerchantContext.Current who = MerchantContext.current();
-    ProviderEnvironment env = providerEnvironment(who.environment());
-    Money amount = new Money(req.amount(), req.currency());
+  public ResponseEntity<PaymentResponse> create(@RequestBody CreatePaymentRequest request) {
+    request.validate();
 
-    Payment payment =
-        req.isBolecode()
-            ? payments.createBolecode(new PaymentService.CreateBolecode(
-                who.merchantId(), env, amount, req.reference(), req.description(), req.payer(), req.dueDate(), req.paymentLimitDays()))
+    MerchantContext.Current caller = MerchantContext.current();
+    CreatePaymentCommand command = request.toCommand(caller.merchantId(), providerEnvironment(caller.environment()));
 
-            : payments.createCharge(new PaymentService.CreateCharge(
-                who.merchantId(), env, amount, req.reference(), req.description(), req.customer() == null ? null : req.customer().document(), req.expiresIn()));
-
-    return withResource(HttpStatus.CREATED, payment);
+    return withResource(HttpStatus.CREATED, payments.create(command));
   }
 
   @GetMapping("/{id}")

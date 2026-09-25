@@ -10,6 +10,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import tools.jackson.databind.exc.InvalidTypeIdException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -37,6 +39,35 @@ public class ErrorHandler {
   @ExceptionHandler(IllegalArgumentException.class)
   public ProblemDetail invalidRequest(IllegalArgumentException e) {
     return problem(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e.getMessage());
+  }
+
+  /**
+   * A body Jackson could not read. The type id is the one case with a message of its own, because
+   * "method must be PIX or BOLECODE" is what this API has always answered and an error message is
+   * contract — the create body became polymorphic on {@code method}, so an unknown one now fails in the
+   * deserialiser instead of in a validate().
+   *
+   * <p>Everything else gets a fixed detail: Jackson's own text carries class names and a slice of the
+   * body, which are ours to read in the log and not the merchant's.
+   */
+  @ExceptionHandler(HttpMessageNotReadableException.class)
+  public ProblemDetail unreadableBody(HttpMessageNotReadableException e) {
+    if (unknownTypeId(e)) {
+      return problem(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "method must be PIX or BOLECODE");
+    }
+
+    log.info("unreadable request body: {}", Masker.mask(e.getMessage()));
+    return problem(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "the request body could not be read");
+  }
+
+  private static boolean unknownTypeId(HttpMessageNotReadableException e) {
+    for (Throwable cause = e.getCause(); cause != null; cause = cause.getCause()) {
+      if (cause instanceof InvalidTypeIdException) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /** Thrown by {@code MerchantContext.current()} when there is no authenticated merchant on the request. */
