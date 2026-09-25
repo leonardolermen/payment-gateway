@@ -1,5 +1,7 @@
 package com.gateway.payments.support;
 
+import com.gateway.payments.payment.create.CreateBolecodePayment;
+import com.gateway.payments.payment.create.CreatePixPayment;
 import com.gateway.payments.payment.PaymentService;
 
 import com.gateway.kernel.ids.MerchantId;
@@ -44,8 +46,8 @@ public abstract class ServiceIntegrationTestBase {
   }
 
   protected Payment newCharge(long cents) {
-    return paymentService.createCharge(
-        new PaymentService.CreateCharge(merchant, ProviderEnvironment.TEST, Money.brl(cents), "order-1", "a test charge", "123.456.789-09", null));
+    return paymentService.create(
+        new CreatePixPayment(merchant, ProviderEnvironment.TEST, Money.brl(cents), "order-1", "a test charge", "123.456.789-09", null));
   }
 
   protected static PayerData payer() {
@@ -54,8 +56,8 @@ public abstract class ServiceIntegrationTestBase {
   }
 
   protected Payment newBolecode(long cents) {
-    return paymentService.createBolecode(
-        new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(cents), "order-1", "Pedido 1", payer(), null, null));
+    return paymentService.create(
+        new CreateBolecodePayment(merchant, ProviderEnvironment.TEST, Money.brl(cents), "order-1", "Pedido 1", payer(), null, null));
   }
 
   protected List<String> outboxTypes(String aggregateId) {

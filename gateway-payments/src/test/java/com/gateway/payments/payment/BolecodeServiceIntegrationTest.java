@@ -1,5 +1,6 @@
 package com.gateway.payments.payment;
 
+import com.gateway.payments.payment.create.CreateBolecodePayment;
 import com.gateway.kernel.payment.PaymentMethod;
 import static org.assertj.core.api.Assertions.*;
 
@@ -62,7 +63,7 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
   @Test
   void explicitDueDateAndLimitDaysAreHonoured() {
     LocalDate due = BoletoDates.today(clock).plusDays(10);
-    Payment p = paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, payer(), due, 5));
+    Payment p = paymentService.create(new CreateBolecodePayment(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, payer(), due, 5));
     assertThat(p.boleto().dueDate()).isEqualTo(due);
     assertThat(p.boleto().paymentLimitDate()).isEqualTo(due.plusDays(5));
   }
@@ -70,9 +71,9 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
   @Test
   void dueDateInThePastAndAbsurdLimitAreRefused() {
     LocalDate yesterday = BoletoDates.today(clock).minusDays(1);
-    assertThatThrownBy(() -> paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, payer(), yesterday, null)))
+    assertThatThrownBy(() -> paymentService.create(new CreateBolecodePayment(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, payer(), yesterday, null)))
         .isInstanceOf(DomainException.class).extracting(e -> ((DomainException) e).code()).isEqualTo("INVALID_DUE_DATE");
-    assertThatThrownBy(() -> paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, payer(), null, 3651)))
+    assertThatThrownBy(() -> paymentService.create(new CreateBolecodePayment(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, payer(), null, 3651)))
         .isInstanceOf(DomainException.class).extracting(e -> ((DomainException) e).code()).isEqualTo("INVALID_PAYMENT_LIMIT");
     assertThat(jdbc.queryForObject("SELECT count(*) FROM payments.payments WHERE merchant_id = ?", Long.class, merchant.value())).isZero();
   }
@@ -80,18 +81,18 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
   @Test
   void incompletePayerIsRefusedNamingTheField() {
     PayerData noZip = new PayerData("Joao", "12345678901", new PayerData.AddressData("Rua A", "Centro", "Sao Paulo", "SP", null));
-    assertThatThrownBy(() -> paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, noZip, null, null)))
+    assertThatThrownBy(() -> paymentService.create(new CreateBolecodePayment(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, noZip, null, null)))
         .isInstanceOfSatisfying(DomainException.class, e -> {
           assertThat(e.code()).isEqualTo("CUSTOMER_REQUIRED");
           assertThat(e.getMessage()).contains("customer.address.zip");
         });
-    assertThatThrownBy(() -> paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, null, null, null)))
+    assertThatThrownBy(() -> paymentService.create(new CreateBolecodePayment(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, null, null, null)))
         .isInstanceOfSatisfying(DomainException.class, e -> assertThat(e.getMessage()).contains("customer"));
     PayerData badDoc = new PayerData("Joao", "123", new PayerData.AddressData("Rua A", "Centro", "Sao Paulo", "SP", "01310100"));
-    assertThatThrownBy(() -> paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, badDoc, null, null)))
+    assertThatThrownBy(() -> paymentService.create(new CreateBolecodePayment(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, badDoc, null, null)))
         .isInstanceOfSatisfying(DomainException.class, e -> assertThat(e.getMessage()).contains("customer.document"));
     PayerData badState = new PayerData("Joao", "12345678901", new PayerData.AddressData("Rua A", "Centro", "Sao Paulo", "SPX", "01310100"));
-    assertThatThrownBy(() -> paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, badState, null, null)))
+    assertThatThrownBy(() -> paymentService.create(new CreateBolecodePayment(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, badState, null, null)))
         .isInstanceOfSatisfying(DomainException.class, e -> assertThat(e.getMessage()).contains("customer.address.state"));
     assertThat(boletos.callsFor(merchant, "00000001")).isEmpty();
   }
@@ -151,7 +152,7 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
 
   @Test
   void missingCredentialsFailsBeforeCallingTheBank() {
-    assertThatThrownBy(() -> paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.LIVE, Money.brl(100), null, null, payer(), null, null)))
+    assertThatThrownBy(() -> paymentService.create(new CreateBolecodePayment(merchant, ProviderEnvironment.LIVE, Money.brl(100), null, null, payer(), null, null)))
         .isInstanceOf(DomainException.class).extracting(e -> ((DomainException) e).code()).isEqualTo("PROVIDER_CREDENTIALS_MISSING");
     assertThat(jdbc.queryForObject("SELECT count(*) FROM payments.payments WHERE merchant_id = ?", Long.class, merchant.value())).isZero();
   }
@@ -228,7 +229,7 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
   void aLowercaseStateIsNormalizedNotRefused() {
     PayerData lower = new PayerData("Joao", "12345678901", new PayerData.AddressData("Rua A", "Centro", "Sao Paulo", "sp", "01310-100"));
     assertThat(PayerFactory.from(lower).address().state().value()).isEqualTo("SP");
-    Payment p = paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, lower, null, null));
+    Payment p = paymentService.create(new CreateBolecodePayment(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, lower, null, null));
     assertThat(p.status()).isEqualTo(PaymentStatus.PENDING);
   }
 }

@@ -1,5 +1,6 @@
 package com.gateway.payments.payment.boleto;
 
+import com.gateway.payments.payment.create.CreateBolecodePayment;
 import static org.assertj.core.api.Assertions.*;
 
 import com.gateway.kernel.money.Money;
@@ -180,7 +181,7 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
 
   @Test
   void stopsAfterTheLimitDatePlusTheGrace() {
-    Payment p = paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, payer(), BoletoDates.today(clock), 0));
+    Payment p = paymentService.create(new CreateBolecodePayment(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, payer(), BoletoDates.today(clock), 0));
     assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isFalse();
     clock.advance(Duration.ofDays(3));
     assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isTrue();
@@ -237,7 +238,7 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
 
   @Test
   void theCanceledPollStopsOnlyAfterTheLimitDatePlusTheGrace() {
-    Payment p = paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, payer(), BoletoDates.today(clock), 0));
+    Payment p = paymentService.create(new CreateBolecodePayment(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, payer(), BoletoDates.today(clock), 0));
     paymentService.cancel(merchant, p.id());
     assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isFalse();
     clock.advance(Duration.ofDays(3));

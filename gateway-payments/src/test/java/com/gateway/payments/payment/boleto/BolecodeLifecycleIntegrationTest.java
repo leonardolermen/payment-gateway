@@ -1,5 +1,6 @@
 package com.gateway.payments.payment.boleto;
 
+import com.gateway.payments.payment.create.CreateBolecodePayment;
 import static org.assertj.core.api.Assertions.*;
 
 import com.gateway.kernel.errors.DomainException;
@@ -116,12 +117,12 @@ class BolecodeLifecycleIntegrationTest extends ServiceIntegrationTestBase {
   // --- expiration on the limit date ---
 
   private Payment bolecodeExpiringToday() {
-    return paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(12990), null, null, payer(), BoletoDates.today(clock), 0));
+    return paymentService.create(new CreateBolecodePayment(merchant, ProviderEnvironment.TEST, Money.brl(12990), null, null, payer(), BoletoDates.today(clock), 0));
   }
 
   @Test
   void expirationWaitsForTheLimitDateNotTheDueDate() {
-    Payment p = paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, payer(), BoletoDates.today(clock), 5));
+    Payment p = paymentService.create(new CreateBolecodePayment(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, payer(), BoletoDates.today(clock), 5));
     clock.advance(Duration.ofDays(2));
     assertThat(expiration.expireOne(p.id(), clock.instant())).isFalse();
     assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.PENDING);

@@ -1,5 +1,7 @@
 package com.gateway.payments.payment;
 
+import com.gateway.payments.payment.create.CreatePixPayment;
+import com.gateway.payments.payment.create.CustomerDocumentHash;
 import com.gateway.payments.support.ServiceIntegrationTestBase;
 
 import static org.assertj.core.api.Assertions.*;
@@ -49,9 +51,9 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
 
   @Test
   void customerDocumentIsHashedFromDigitsOnly() {
-    assertThat(PaymentService.hashDocument("123.456.789-09")).isEqualTo(PaymentService.hashDocument("12345678909"));
-    assertThat(PaymentService.hashDocument(null)).isNull();
-    assertThat(PaymentService.hashDocument("--")).isNull();
+    assertThat(CustomerDocumentHash.of("123.456.789-09")).isEqualTo(CustomerDocumentHash.of("12345678909"));
+    assertThat(CustomerDocumentHash.of(null)).isNull();
+    assertThat(CustomerDocumentHash.of("--")).isNull();
   }
 
   @Test
@@ -59,8 +61,8 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
     long before = jdbc.queryForObject("SELECT count(*) FROM payments.payments WHERE merchant_id = ?", Long.class, merchant.value());
 
     assertThatThrownBy(
-            () -> paymentService.createCharge(
-                new PaymentService.CreateCharge(merchant, ProviderEnvironment.LIVE, Money.brl(100), null, null, null, null)))
+            () -> paymentService.create(
+                new CreatePixPayment(merchant, ProviderEnvironment.LIVE, Money.brl(100), null, null, null, null)))
         .isInstanceOf(DomainException.class)
         .extracting(e -> ((DomainException) e).code())
         .isEqualTo("PROVIDER_CREDENTIALS_MISSING");
@@ -171,7 +173,7 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
   void listIsScopedToTheMerchant() {
     Payment mine = newCharge(100);
     MerchantId other = MerchantId.next();
-    paymentService.createCharge(new PaymentService.CreateCharge(other, ProviderEnvironment.TEST, Money.brl(200), null, null, null, 600));
+    paymentService.create(new CreatePixPayment(other, ProviderEnvironment.TEST, Money.brl(200), null, null, null, 600));
 
     assertThat(paymentService.list(merchant, 10, null)).extracting(Payment::id).containsExactly(mine.id());
     assertThatThrownBy(() -> paymentService.get(other, mine.id())).isInstanceOf(DomainException.class);
@@ -180,7 +182,7 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
 
   @Test
   void explicitExpiryIsHonoured() {
-    Payment p = paymentService.createCharge(new PaymentService.CreateCharge(merchant, ProviderEnvironment.TEST, Money.brl(200), null, null, null, 600));
+    Payment p = paymentService.create(new CreatePixPayment(merchant, ProviderEnvironment.TEST, Money.brl(200), null, null, null, 600));
     assertThat(p.expiresAt()).isEqualTo(clock.instant().plus(Duration.ofSeconds(600)));
   }
 

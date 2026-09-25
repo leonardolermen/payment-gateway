@@ -16,6 +16,15 @@ import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepositoryImp
 import com.gateway.payments.payment.ExpirationService;
 import com.gateway.payments.payment.PaymentEvents;
 import com.gateway.payments.payment.PaymentService;
+import com.gateway.payments.payment.create.BolecodeFromQuery;
+import com.gateway.payments.payment.create.BolecodePaymentFlow;
+import com.gateway.payments.payment.create.CreateFailures;
+import com.gateway.payments.payment.create.PaymentDraftFactory;
+import com.gateway.payments.payment.create.PaymentFlow;
+import com.gateway.payments.payment.create.PaymentFlows;
+import com.gateway.payments.payment.create.PendingAdoption;
+import com.gateway.payments.payment.create.PixPaymentFlow;
+import com.gateway.payments.reconciliation.Divergences;
 import com.gateway.payments.payment.persistence.PaymentRepository;
 import com.gateway.payments.payment.persistence.PaymentRepositoryImpl;
 import com.gateway.payments.provider.ProviderGateway;
@@ -94,11 +103,69 @@ public class PaymentsConfiguration {
     return new IdempotencyService(keys, props, clock);
   }
 
+  /** The one adapter from Spring's template to the port the create collaborators take. */
+  @Bean
+  UnitOfWork unitOfWork(TransactionTemplate paymentsTransactionTemplate) {
+    return new TransactionalRunner(paymentsTransactionTemplate);
+  }
+
+  @Bean
+  Divergences divergences(ReconciliationDivergenceRepository divergences, Clock clock) {
+    return new Divergences(divergences, clock);
+  }
+
+  @Bean
+  PaymentDraftFactory paymentDraftFactory(
+      PaymentRepository payments, BoletoNumberRepository boletoNumbers, UnitOfWork unitOfWork, Clock clock) {
+    return new PaymentDraftFactory(payments, boletoNumbers, unitOfWork, clock);
+  }
+
+  @Bean
+  PendingAdoption pendingAdoption(
+      PaymentRepository payments, JobRepository jobs, PaymentEvents events, Divergences divergences,
+      PaymentsProperties props, UnitOfWork unitOfWork, Clock clock) {
+    return new PendingAdoption(payments, jobs, events, divergences, props, unitOfWork, clock);
+  }
+
+  @Bean
+  BolecodeFromQuery bolecodeFromQuery(PaymentRepository payments, ProviderGateway providers, PendingAdoption adoption) {
+    return new BolecodeFromQuery(payments, providers, adoption);
+  }
+
+  @Bean
+  CreateFailures createFailures(
+      PaymentRepository payments, PaymentEvents events, ProviderGateway providers, UnitOfWork unitOfWork) {
+    return new CreateFailures(payments, events, providers, unitOfWork);
+  }
+
+  @Bean
+  PixPaymentFlow pixPaymentFlow(
+      ProviderGateway providers, PaymentDraftFactory drafts, PendingAdoption adoption, CreateFailures failures,
+      PaymentsProperties props) {
+    return new PixPaymentFlow(providers, drafts, adoption, failures, props);
+  }
+
+  @Bean
+  BolecodePaymentFlow bolecodePaymentFlow(
+      ProviderGateway providers, PaymentDraftFactory drafts, PendingAdoption adoption, BolecodeFromQuery fromQuery,
+      CreateFailures failures, PaymentsProperties props, Clock clock) {
+    return new BolecodePaymentFlow(providers, drafts, adoption, fromQuery, failures, props, clock);
+  }
+
+  /** A list, so a method added without its flow fails the startup instead of a merchant's first request. */
+  @Bean
+  PaymentFlows paymentFlows(List<PaymentFlow> flows) {
+    return new PaymentFlows(flows);
+  }
+
   @Bean
   PaymentService paymentService(
-      PaymentRepository payments, ReconciliationDivergenceRepository divergences, JobRepository jobs, BoletoNumberRepository boletoNumbers,
-      ProviderGateway providers, PaymentEvents events, PaymentsProperties props, TransactionTemplate paymentsTransactionTemplate, Clock clock) {
-    return new PaymentService(payments, divergences, jobs, boletoNumbers, providers, events, props, paymentsTransactionTemplate, clock);
+      PaymentRepository payments, Divergences divergences, ProviderGateway providers, PaymentEvents events,
+      PaymentFlows flows, PendingAdoption adoption, BolecodeFromQuery bolecodeFromQuery, CreateFailures failures,
+      PaymentsProperties props, TransactionTemplate paymentsTransactionTemplate, Clock clock) {
+    return new PaymentService(
+        payments, divergences, providers, events, flows, adoption, bolecodeFromQuery, failures, props,
+        paymentsTransactionTemplate, clock);
   }
 
   @Bean

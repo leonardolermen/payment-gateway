@@ -2,7 +2,13 @@ package com.gateway.payments.payment;
 
 import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.payments.PaymentsProperties;
+import com.gateway.payments.payment.create.BolecodeFromQuery;
+import com.gateway.payments.payment.create.CreateFailures;
+import com.gateway.payments.payment.create.CreatePaymentCommand;
+import com.gateway.payments.payment.create.PaymentFlows;
+import com.gateway.payments.payment.create.PendingAdoption;
 import com.gateway.payments.provider.ProviderErrors;
+import com.gateway.payments.reconciliation.Divergences;
 import com.gateway.payments.provider.ProviderGateway;
 import com.gateway.payments.provider.ProviderGateway.ResolvedProvider;
 
@@ -10,39 +16,24 @@ import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.money.Money;
-import com.gateway.kernel.provider.boleto.BoletoIssueRequest;
 import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
 import com.gateway.kernel.provider.boleto.BoletoStatus;
 import com.gateway.kernel.provider.boleto.IssuedBoleto;
-import com.gateway.kernel.party.Payer;
-import com.gateway.payments.payment.create.PayerData;
-import com.gateway.payments.payment.create.PayerFactory;
 import com.gateway.kernel.provider.pix.Charge;
 import com.gateway.kernel.provider.pix.PixIssueRequest;
 import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.kernel.provider.pix.ChargeStatus;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.provider.ProviderException;
-import com.gateway.payments.jobs.Job;
 import com.gateway.payments.payment.boleto.BoletoDates;
-import com.gateway.payments.payment.boleto.BoletoDetails;
 import com.gateway.payments.payment.boleto.PaidVia;
-import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepository;
 import com.gateway.payments.payment.pix.PixDetails;
-import com.gateway.payments.jobs.persistence.JobRepository;
 import com.gateway.payments.payment.persistence.PaymentRepository;
-import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceRepository;
-import com.gateway.payments.reconciliation.ReconciliationDivergence;
-import com.gateway.kernel.ids.Ulid;
 import com.gateway.kernel.provider.pix.ReceivedPix;
 import java.util.Objects;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -60,293 +51,76 @@ public class PaymentService {
   /** Plan B has one bank. The provider is resolved by name so a second one is a config change. */
   public static final String PROVIDER = "ITAU";
 
-  public record CreateCharge(
-      MerchantId merchantId,
-      ProviderEnvironment env,
-      Money amount,
-      String reference,
-      String description,
-      String customerDocument,
-      Integer expiresInSeconds) {}
-
-  public record CreateBolecode(
-      MerchantId merchantId, ProviderEnvironment env, Money amount, String reference, String description,
-      PayerData payer, LocalDate dueDate, Integer paymentLimitDays) {}
 
   private final PaymentRepository payments;
-  private final ReconciliationDivergenceRepository divergences;
-  private final JobRepository jobs;
-  private final BoletoNumberRepository boletoNumbers;
+  private final Divergences divergences;
   private final ProviderGateway providers;
   private final PaymentEvents events;
+  private final PaymentFlows flows;
+  private final PendingAdoption adoption;
+  private final BolecodeFromQuery bolecodeFromQuery;
+  private final CreateFailures failures;
   private final PaymentsProperties props;
   private final TransactionTemplate tx;
   private final Clock clock;
 
   public PaymentService(
       PaymentRepository payments,
-      ReconciliationDivergenceRepository divergences,
-      JobRepository jobs,
-      BoletoNumberRepository boletoNumbers,
+      Divergences divergences,
       ProviderGateway providers,
       PaymentEvents events,
+      PaymentFlows flows,
+      PendingAdoption adoption,
+      BolecodeFromQuery bolecodeFromQuery,
+      CreateFailures failures,
       PaymentsProperties props,
       TransactionTemplate tx,
       Clock clock) {
     this.payments = payments;
     this.divergences = divergences;
-    this.jobs = jobs;
-    this.boletoNumbers = boletoNumbers;
     this.providers = providers;
     this.events = events;
+    this.flows = flows;
+    this.adoption = adoption;
+    this.bolecodeFromQuery = bolecodeFromQuery;
+    this.failures = failures;
     this.props = props;
     this.tx = tx;
     this.clock = clock;
   }
 
-  public Payment createCharge(CreateCharge cmd) {
-    // Fails fast, before a row exists: a merchant with no credential has nothing to clean up.
-    ResolvedProvider<PixMethodProvider> resolved = providers.resolvePix(cmd.merchantId(), cmd.env(), PROVIDER);
-    int expires = cmd.expiresInSeconds() == null ? props.defaultExpiresInSeconds() : cmd.expiresInSeconds();
-    Payment payment =
-        tx.execute(s -> {
-          Payment p =
-              Payment.create(
-                  cmd.merchantId(), cmd.env(), PROVIDER, cmd.amount(), cmd.reference(), cmd.description(), hashDocument(cmd.customerDocument()), expires, clock);
-          return payments.save(p, List.of(p.createdEvent()));
-        });
-
-    Charge charge;
-    try {
-      charge =
-          providers.call(
-              payment.id(),
-              "createCharge",
-              resolved,
-              target -> target.provider().issue(
-                  target.credentials(),
-                  new PixIssueRequest(payment.id(), cmd.amount(), expires, cmd.customerDocument(), null, cmd.description())));
-    } catch (ProviderException e) {
-      boolean mayHaveLanded = e.code() == ProviderException.Code.TIMEOUT || e.code() == ProviderException.Code.UNAVAILABLE;
-      if (!mayHaveLanded) {
-        boolean declined = e.code() == ProviderException.Code.INVALID || e.code() == ProviderException.Code.DECLINED;
-        throw fail(payment.id(), declined ? "PROVIDER_DECLINED" : "PROVIDER_UNAVAILABLE", e, null);
-      }
-      // The PUT may have landed: a timeout, and equally a 503/504 from a gateway in front of the
-      // bank, says nothing about whether the charge was created. The txid is ours, so we ask
-      // before deciding (spec section 3.2) instead of failing a charge the payer may be looking at.
-      String code = e.code() == ProviderException.Code.TIMEOUT ? "PROVIDER_TIMEOUT" : "PROVIDER_UNAVAILABLE";
-      Optional<Charge> existing;
-      try {
-        existing =
-            providers.call(payment.id(), "findCharge", resolved, target -> target.provider().find(target.credentials(), payment.id()));
-      } catch (ProviderException again) {
-        throw fail(payment.id(), code, again, resolved);
-      }
-      if (existing.isEmpty()) {
-        throw fail(payment.id(), code, e, resolved);
-      }
-      charge = existing.get();
-    }
-    return adoptPending(payment.id(), charge, expires, EventSource.API);
+  /**
+   * Creating a payment is the method's business: {@link PaymentFlows} holds one flow per method and each
+   * owns its create end to end. This service keeps the rest of the lifecycle.
+   */
+  public Payment create(CreatePaymentCommand command) {
+    return flows.forMethod(command.method()).create(command);
   }
 
   /**
-   * CREATED -> PENDING with the bank's charge details, plus the expire job and the outbox row. A
-   * payment no longer CREATED is returned as is: the stuck-CREATED sweeper and a slow createCharge
-   * can race to adopt the same charge, and the loser must not fail on PENDING -> PENDING.
+   * CREATED -> PENDING with the bank's charge details. Reached from here by the stuck-CREATED sweeper;
+   * the flow calls {@link PendingAdoption} directly.
    */
-  Payment adoptPending(String paymentId, Charge accepted, int fallbackExpires, EventSource by) {
-    return tx.execute(s -> {
-      Payment p = payments.findById(paymentId).orElseThrow();
-      if (p.status() != PaymentStatus.CREATED) {
-        return p;
-      }
-      int bankExpiry = accepted.expiresInSeconds() > 0 ? accepted.expiresInSeconds() : fallbackExpires;
-      // A Pix txid is ours: we PUT /cob/{payment id}. Storing the echoed one broke settleFromWebhook
-      // (it looks up by stored txid) against Itau's sandbox mock, whose PUT /cob always answers
-      // txid 7978c0c97ea847e78e8849634473c1f1; production echoes ours, so a mismatch is only logged.
-      if (accepted.txid() != null && !accepted.txid().equals(p.id())) {
-        log.warn("bank echoed txid {} for payment {}; keeping ours", accepted.txid(), p.id());
-      }
-      PaymentEvent ev =
-          p.markPending(
-              new PixDetails(p.id(), accepted.pixCopiaECola(), accepted.location(), null), clock.instant().plusSeconds(bankExpiry), by);
-      Payment saved = payments.save(p, List.of(ev));
-      if (!jobs.enqueue(Job.expireAt(saved.id(), saved.expiresAt().plus(props.expirationGrace()), clock))) {
-        log.debug("expire job for payment {} was already queued", saved.id());
-      }
-      events.emit(saved.merchantId(), "payment.pending", saved);
-      return saved;
-    });
+  public Payment adoptPending(String paymentId, Charge accepted, int fallbackExpires, EventSource by) {
+    return adoption.adoptPix(paymentId, accepted, fallbackExpires, by);
   }
 
+  /** CREATED -> PENDING with both sides and both jobs. Reached from here by the boleto poll. */
+  public Payment adoptPendingBolecode(String paymentId, IssuedBoleto issued, EventSource by) {
+    return adoption.adoptBolecode(paymentId, issued, by);
+  }
   /**
-   * Spec 2026-09-25 §7. Order matters: credentials (incl. beneficiary) and payer are checked before
-   * a row exists; the number is reserved in the same transaction as CREATED; the bank call runs
-   * outside any transaction; PENDING lands with both sides and both jobs.
-   *
-   * <p>On TIMEOUT/UNAVAILABLE/202 the query decides: found → adopted; not found → the payment stays
-   * CREATED and the caller gets PROVIDER_TIMEOUT. Unlike Pix, it is NOT failed on the spot: the
-   * bank's 202 means "operação em andamento", so an empty query a second later proves nothing.
-   * ExpirationService.sweepStuckCreated asks again after stuckCreatedAfter and decides.
+   * The issue's answer was lost; the query has the boleto's identity but not the Pix side. See
+   * {@link BolecodeFromQuery}, which the sweeper reaches through here.
    */
-  public Payment createBolecode(CreateBolecode cmd) {
-    ResolvedProvider<BoletoMethodProvider> resolved = providers.resolveBoleto(cmd.merchantId(), cmd.env(), PROVIDER);
-    try {
-      resolved.provider().requireIssueCredentials(resolved.credentials());
-    } catch (ProviderException e) {
-      if (e.code() == ProviderException.Code.CREDENTIALS_INCOMPLETE) {
-        throw new DomainException("PROVIDER_CREDENTIALS_MISSING", "the " + PROVIDER + " " + cmd.env() + " credential is missing " + e.providerType());
-      }
-      throw e;
-    }
-    Payer payer = PayerFactory.from(cmd.payer());
-    LocalDate today = BoletoDates.today(clock);
-    LocalDate due = cmd.dueDate() == null ? today.plusDays(props.boletoDefaultDueInDays()) : cmd.dueDate();
-    if (due.isBefore(today)) throw new DomainException("INVALID_DUE_DATE", "due_date must be today or later (America/Sao_Paulo)");
-    int limitDays = cmd.paymentLimitDays() == null ? props.boletoDefaultPaymentLimitDays() : cmd.paymentLimitDays();
-    if (limitDays < 0 || limitDays > props.boletoMaxPaymentLimitDays()) {
-      throw new DomainException("INVALID_PAYMENT_LIMIT", "payment_limit_days must be between 0 and " + props.boletoMaxPaymentLimitDays());
-    }
-    LocalDate limit = due.plusDays(limitDays);
-
-    Payment payment =
-        tx.execute(s -> {
-          String nossoNumero = boletoNumbers.next(cmd.merchantId());
-          BoletoDetails details = new BoletoDetails(nossoNumero, null, null, null, due, limit, null);
-          Payment p = Payment.createBolecode(cmd.merchantId(), cmd.env(), PROVIDER, cmd.amount(), cmd.reference(), cmd.description(),
-              hashDocument(payer.document().digits()), details, BoletoDates.endOfDay(limit), clock);
-          return payments.save(p, List.of(p.createdEvent()));
-        });
-    String nossoNumero = payment.boleto().nossoNumero();
-    BoletoIssueRequest request = new BoletoIssueRequest(nossoNumero, cmd.amount(), due, limit, payer, cmd.description());
-
-    IssuedBoleto issued;
-    try {
-      issued =
-          providers.call(payment.id(), "issueBoleto", resolved, target -> target.provider().issue(target.credentials(), request));
-    } catch (ProviderException e) {
-      // CONFLICT on the issue is the bank saying "this nosso número already exists" (ruling R4): the
-      // number is ours and reserved before the call, so it can only be our own earlier attempt that
-      // landed. Failing it would leave a payable boleto behind a FAILED payment; the query adopts it.
-      boolean mayHaveLanded = e.code() == ProviderException.Code.TIMEOUT || e.code() == ProviderException.Code.UNAVAILABLE
-          || e.code() == ProviderException.Code.CONFLICT;
-      if (!mayHaveLanded) {
-        boolean declined = e.code() == ProviderException.Code.INVALID || e.code() == ProviderException.Code.DECLINED;
-        throw fail(payment.id(), declined ? "PROVIDER_DECLINED" : "PROVIDER_UNAVAILABLE", e, null);
-      }
-      String code = e.code() == ProviderException.Code.TIMEOUT ? "PROVIDER_TIMEOUT" : "PROVIDER_UNAVAILABLE";
-      Optional<BoletoStatus> existing;
-      try {
-        existing =
-            providers.call(payment.id(), "findBoleto", resolved, target -> target.provider().find(target.credentials(), nossoNumero));
-      } catch (ProviderException again) {
-        throw ProviderErrors.toDomain(code, again, log, "issueBoleto", payment.id());
-      }
-      if (existing.isEmpty()) {
-        log.warn("boleto {} for payment {} not at the bank after {}; left CREATED for the sweeper", nossoNumero, payment.id(), e.code());
-        throw ProviderErrors.toDomain(code, e, log, "issueBoleto", payment.id());
-      }
-      try {
-        return adoptBolecodeFromStatus(payment.id(), resolved, existing.get(), EventSource.API);
-      } catch (ProviderException again) {
-        // The boleto exists but GET /cob itself failed (bank unreachable), so nothing is known about
-        // the txid yet. This is not the "bank does not know the txid" case: that one is adopted and
-        // flagged PIX_TXID_UNCONFIRMED inside adoptBolecodeFromStatus (ruling R1). Here the payment
-        // stays CREATED and the sweeper asks again after stuckCreatedAfter. Translated here, not inside
-        // adoptBolecodeFromStatus, so the sweeper still sees the raw failure and retries.
-        throw ProviderErrors.toDomain(code, again, log, "confirmBoletoTxid", payment.id());
-      }
-    }
-    return adoptPendingBolecode(payment.id(), issued, EventSource.API);
-  }
-
-  /** CREATED -> PENDING with both sides, the expire job (limit date's end of day + grace) and the poll job (+boletoPollEvery), plus the outbox row. */
-  Payment adoptPendingBolecode(String paymentId, IssuedBoleto issued, EventSource by) {
-    return adoptPendingBolecode(paymentId, issued, by, null);
-  }
-
-  /** {@code unconfirmedDetail} non-null opens PIX_TXID_UNCONFIRMED in the same transaction, and only if this call made the transition. */
-  private Payment adoptPendingBolecode(String paymentId, IssuedBoleto issued, EventSource by, String unconfirmedDetail) {
-    return tx.execute(s -> {
-      Payment p = payments.findById(paymentId).orElseThrow();
-      if (p.status() != PaymentStatus.CREATED) {
-        // The sweeper and a slow create may race to adopt the same boleto; the loser must not fail,
-        // and must not flag a txid it did not adopt: the winner's own confirmation is what counts.
-        return p;
-      }
-      BoletoDetails details = p.boleto().withIssued(issued.idBoletoIndividual(), issued.linhaDigitavel(), issued.codigoBarras(), issued.paymentLimitDate());
-      PixDetails pix = new PixDetails(issued.pixTxid(), issued.pixCopiaECola(), null, null);
-      Payment saved = payments.save(p, List.of(p.markPendingBolecode(pix, details, BoletoDates.endOfDay(details.paymentLimitDate()), by)));
-      if (!jobs.enqueue(Job.expireAt(saved.id(), saved.expiresAt().plus(props.expirationGrace()), clock))) {
-        log.debug("expire job for payment {} was already queued", saved.id());
-      }
-      if (!jobs.enqueue(Job.pollBoleto(saved.id(), clock.instant().plus(props.boletoPollEvery()), clock))) {
-        log.debug("poll job for payment {} was already queued", saved.id());
-      }
-      events.emit(saved.merchantId(), "payment.pending", saved);
-      if (unconfirmedDetail != null) {
-        openDivergence(saved, "PIX_TXID_UNCONFIRMED", unconfirmedDetail);
-      }
-      return saved;
-    });
-  }
-
-  /**
-   * The issue's answer was lost; the query has the boleto's identity but not the Pix side. The txid
-   * follows the bank's documented formula (BoletoProvider.pixTxidFor) and is confirmed with
-   * GET /cob/{txid}, which also yields the EMV; if the bank does not know that txid, the query's
-   * own qrcode_pix.emv is used and a divergence records that the formula did not match.
-   */
-  Payment adoptBolecodeFromStatus(
+  public Payment adoptBolecodeFromStatus(
       String paymentId, ResolvedProvider<BoletoMethodProvider> resolved, BoletoStatus status, EventSource by) {
-    Payment p = payments.findById(paymentId).orElseThrow();
-    String nossoNumero = p.boleto().nossoNumero();
-    String txid = resolved.provider().pixTxidFor(resolved.credentials(), nossoNumero);
-
-    // The Pix side of the same charge, through the Pix door: the boleto product does not read /cob.
-    ResolvedProvider<PixMethodProvider> pixSide = providers.resolvePix(p.merchantId(), p.environment(), p.provider());
-    Optional<Charge> charge =
-        providers.call(paymentId, "findCharge", pixSide, target -> target.provider().find(target.credentials(), txid));
-    String emv = charge.map(Charge::pixCopiaECola).orElse(status.pixCopiaECola());
-    // Ruling R1: an unconfirmed txid is still ADOPTED, and flagged. Refusing would leave a boleto the
-    // bank issued in CREATED, and the sweeper would later fail it while it is payable; the poll
-    // settles by nosso número, so the txid only matters for the Pix webhook match and refunds.
-    String unconfirmed = charge.isEmpty() ? "GET /cob/" + txid + " empty while adopting boleto " + nossoNumero + " from the query" : null;
-    return adoptPendingBolecode(paymentId,
-        new IssuedBoleto(status.idBoletoIndividual(), status.linhaDigitavel(), status.codigoBarras(), status.paymentLimitDate(), txid, emv, null), by, unconfirmed);
-  }
-
-  /**
-   * Marks the payment FAILED (with its event and outbox row) and returns the exception to throw.
-   * With {@code resolved} set (the charge's fate is unknown), also asks the bank to remove the
-   * charge, best effort: if the PUT did land after all, a QR we reported as failed must not stay
-   * payable.
-   */
-  private DomainException fail(
-      String paymentId, String code, ProviderException cause, ResolvedProvider<PixMethodProvider> resolved) {
-    if (resolved != null) {
-      try {
-        providers.run(paymentId, "cancelCharge", resolved, target -> target.provider().cancel(target.credentials(), paymentId));
-      } catch (RuntimeException ignored) {
-        // NOT_FOUND is the expected answer; anything else is left to reconciliation.
-      }
-    }
-    markFailed(paymentId, code, EventSource.API);
-    return ProviderErrors.toDomain(code, cause, log, "createCharge", paymentId);
+    return bolecodeFromQuery.adopt(paymentId, resolved, status, by);
   }
 
   /** CREATED -> FAILED with event and outbox row; a payment no longer CREATED is left alone. */
-  void markFailed(String paymentId, String code, EventSource by) {
-    tx.executeWithoutResult(s -> {
-      Payment p = payments.findById(paymentId).orElseThrow();
-      if (p.status() != PaymentStatus.CREATED) {
-        return;
-      }
-      Payment saved = payments.save(p, List.of(p.markFailed(code, by)));
-      events.emit(saved.merchantId(), "payment.failed", saved);
-    });
+  public void markFailed(String paymentId, String code, EventSource by) {
+    failures.markFailed(paymentId, code, by);
   }
 
   public Payment get(MerchantId merchantId, String id) {
@@ -632,23 +406,7 @@ public class PaymentService {
    * unique index, V201), not a scan of every OPEN row.
    */
   public boolean openDivergence(Payment p, String providerStatus, String detail) {
-    String trimmed = detail.length() <= 500 ? detail : detail.substring(0, 500);
-    return divergences.openIfAbsent(new ReconciliationDivergence(Ulid.next(), p.id(), p.status().name(), providerStatus, trimmed, "OPEN", clock.instant()));
-  }
-
-  /**
-   * SHA-256 hex of the document's digits only, so "123.456.789-09" and "12345678909" search as the
-   * same customer. The document itself is never stored in plan B.
-   */
-  static String hashDocument(String document) {
-    if (document == null) return null;
-    String digits = document.replaceAll("\\D", "");
-    if (digits.isEmpty()) return null;
-    try {
-      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(digits.getBytes(StandardCharsets.US_ASCII)));
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("SHA-256 not available", e);
-    }
+    return divergences.open(p, providerStatus, detail);
   }
 }
 
