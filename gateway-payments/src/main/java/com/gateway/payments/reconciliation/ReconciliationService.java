@@ -1,8 +1,10 @@
 package com.gateway.payments.reconciliation;
 
+import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.payments.PaymentsProperties;
 import com.gateway.payments.payment.PaymentService;
 import com.gateway.payments.provider.ProviderGateway;
+import com.gateway.payments.provider.ProviderGateway.ResolvedProvider;
 
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.provider.pix.Charge;
@@ -115,8 +117,9 @@ public class ReconciliationService {
 
   /** Returns how many payments were completed or got a new divergence. */
   public int reconcile(MerchantId merchantId, ProviderEnvironment env, Instant from, Instant to) {
-    ProviderGateway.Resolved r = providers.resolve(merchantId, env, PaymentService.PROVIDER);
-    List<Charge> charges = providers.call(null, "listCharges", r, x -> x.provider().listCharges(x.credentials(), from, to));
+    ResolvedProvider<PixMethodProvider> resolved = providers.resolvePix(merchantId, env, PaymentService.PROVIDER);
+    List<Charge> charges =
+        providers.call(null, "listCharges", resolved, target -> target.provider().listCharges(target.credentials(), from, to));
     int changed = 0;
     for (Charge charge : charges) {
       Optional<Payment> found = payments.findByMerchantAndTxid(merchantId, PaymentService.PROVIDER, charge.txid());

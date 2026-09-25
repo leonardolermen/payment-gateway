@@ -4,6 +4,7 @@ import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.payments.PaymentsProperties;
 import com.gateway.payments.provider.ProviderErrors;
 import com.gateway.payments.provider.ProviderGateway;
+import com.gateway.payments.provider.ProviderGateway.ResolvedProvider;
 
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.errors.NotFoundException;
@@ -11,11 +12,13 @@ import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.money.Money;
 import com.gateway.kernel.provider.boleto.Address;
 import com.gateway.kernel.provider.boleto.BoletoIssueRequest;
-import com.gateway.kernel.provider.boleto.BoletoProvider;
+import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
 import com.gateway.kernel.provider.boleto.BoletoStatus;
 import com.gateway.kernel.provider.boleto.IssuedBoleto;
 import com.gateway.kernel.provider.boleto.Payer;
 import com.gateway.kernel.provider.pix.Charge;
+import com.gateway.kernel.provider.pix.PixIssueRequest;
+import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.kernel.provider.pix.ChargeStatus;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.provider.ProviderException;
@@ -128,7 +131,7 @@ public class PaymentService {
 
   public Payment createCharge(CreateCharge cmd) {
     // Fails fast, before a row exists: a merchant with no credential has nothing to clean up.
-    ProviderGateway.Resolved r = providers.resolve(cmd.merchantId(), cmd.env(), PROVIDER);
+    ResolvedProvider<PixMethodProvider> resolved = providers.resolvePix(cmd.merchantId(), cmd.env(), PROVIDER);
     int expires = cmd.expiresInSeconds() == null ? props.defaultExpiresInSeconds() : cmd.expiresInSeconds();
     Payment payment =
         tx.execute(s -> {
@@ -144,8 +147,10 @@ public class PaymentService {
           providers.call(
               payment.id(),
               "createCharge",
-              r,
-              x -> x.provider().createCharge(x.credentials(), payment.id(), cmd.amount(), expires, cmd.customerDocument(), null, cmd.description()));
+              resolved,
+              target -> target.provider().issue(
+                  target.credentials(),
+                  new PixIssueRequest(payment.id(), cmd.amount(), expires, cmd.customerDocument(), null, cmd.description())));
     } catch (ProviderException e) {
       boolean mayHaveLanded = e.code() == ProviderException.Code.TIMEOUT || e.code() == ProviderException.Code.UNAVAILABLE;
       if (!mayHaveLanded) {
@@ -158,12 +163,13 @@ public class PaymentService {
       String code = e.code() == ProviderException.Code.TIMEOUT ? "PROVIDER_TIMEOUT" : "PROVIDER_UNAVAILABLE";
       Optional<Charge> existing;
       try {
-        existing = providers.call(payment.id(), "findCharge", r, x -> x.provider().findCharge(x.credentials(), payment.id()));
+        existing =
+            providers.call(payment.id(), "findCharge", resolved, target -> target.provider().find(target.credentials(), payment.id()));
       } catch (ProviderException again) {
-        throw fail(payment.id(), code, again, r);
+        throw fail(payment.id(), code, again, resolved);
       }
       if (existing.isEmpty()) {
-        throw fail(payment.id(), code, e, r);
+        throw fail(payment.id(), code, e, resolved);
       }
       charge = existing.get();
     }
@@ -211,10 +217,9 @@ public class PaymentService {
    * ExpirationService.sweepStuckCreated asks again after stuckCreatedAfter and decides.
    */
   public Payment createBolecode(CreateBolecode cmd) {
-    ProviderGateway.Resolved r = providers.resolve(cmd.merchantId(), cmd.env(), PROVIDER);
-    BoletoProvider boleto = r.boleto().orElseThrow(() -> new DomainException("METHOD_NOT_SUPPORTED", PROVIDER + " has no boleto product"));
+    ResolvedProvider<BoletoMethodProvider> resolved = providers.resolveBoleto(cmd.merchantId(), cmd.env(), PROVIDER);
     try {
-      boleto.requireIssueCredentials(r.credentials());
+      resolved.provider().requireIssueCredentials(resolved.credentials());
     } catch (ProviderException e) {
       if (e.code() == ProviderException.Code.CREDENTIALS_INCOMPLETE) {
         throw new DomainException("PROVIDER_CREDENTIALS_MISSING", "the " + PROVIDER + " " + cmd.env() + " credential is missing " + e.providerType());
@@ -244,7 +249,8 @@ public class PaymentService {
 
     IssuedBoleto issued;
     try {
-      issued = providers.call(payment.id(), "issueBoleto", r, x -> boleto.issue(x.credentials(), request));
+      issued =
+          providers.call(payment.id(), "issueBoleto", resolved, target -> target.provider().issue(target.credentials(), request));
     } catch (ProviderException e) {
       // CONFLICT on the issue is the bank saying "this nosso número already exists" (ruling R4): the
       // number is ours and reserved before the call, so it can only be our own earlier attempt that
@@ -258,7 +264,8 @@ public class PaymentService {
       String code = e.code() == ProviderException.Code.TIMEOUT ? "PROVIDER_TIMEOUT" : "PROVIDER_UNAVAILABLE";
       Optional<BoletoStatus> existing;
       try {
-        existing = providers.call(payment.id(), "findBoleto", r, x -> boleto.find(x.credentials(), nossoNumero));
+        existing =
+            providers.call(payment.id(), "findBoleto", resolved, target -> target.provider().find(target.credentials(), nossoNumero));
       } catch (ProviderException again) {
         throw ProviderErrors.toDomain(code, again, log, "issueBoleto", payment.id());
       }
@@ -267,7 +274,7 @@ public class PaymentService {
         throw ProviderErrors.toDomain(code, e, log, "issueBoleto", payment.id());
       }
       try {
-        return adoptBolecodeFromStatus(payment.id(), r, existing.get(), EventSource.API);
+        return adoptBolecodeFromStatus(payment.id(), resolved, existing.get(), EventSource.API);
       } catch (ProviderException again) {
         // The boleto exists but GET /cob itself failed (bank unreachable), so nothing is known about
         // the txid yet. This is not the "bank does not know the txid" case: that one is adopted and
@@ -317,11 +324,16 @@ public class PaymentService {
    * GET /cob/{txid}, which also yields the EMV; if the bank does not know that txid, the query's
    * own qrcode_pix.emv is used and a divergence records that the formula did not match.
    */
-  Payment adoptBolecodeFromStatus(String paymentId, ProviderGateway.Resolved r, BoletoStatus status, EventSource by) {
+  Payment adoptBolecodeFromStatus(
+      String paymentId, ResolvedProvider<BoletoMethodProvider> resolved, BoletoStatus status, EventSource by) {
     Payment p = payments.findById(paymentId).orElseThrow();
     String nossoNumero = p.boleto().nossoNumero();
-    String txid = r.boleto().orElseThrow().pixTxidFor(r.credentials(), nossoNumero);
-    Optional<Charge> charge = providers.call(paymentId, "findCharge", r, x -> x.provider().findCharge(x.credentials(), txid));
+    String txid = resolved.provider().pixTxidFor(resolved.credentials(), nossoNumero);
+
+    // The Pix side of the same charge, through the Pix door: the boleto product does not read /cob.
+    ResolvedProvider<PixMethodProvider> pixSide = providers.resolvePix(p.merchantId(), p.environment(), p.provider());
+    Optional<Charge> charge =
+        providers.call(paymentId, "findCharge", pixSide, target -> target.provider().find(target.credentials(), txid));
     String emv = charge.map(Charge::pixCopiaECola).orElse(status.pixCopiaECola());
     // Ruling R1: an unconfirmed txid is still ADOPTED, and flagged. Refusing would leave a boleto the
     // bank issued in CREATED, and the sweeper would later fail it while it is payable; the poll
@@ -333,13 +345,15 @@ public class PaymentService {
 
   /**
    * Marks the payment FAILED (with its event and outbox row) and returns the exception to throw.
-   * With {@code r} set (the charge's fate is unknown), also asks the bank to remove the charge,
-   * best effort: if the PUT did land after all, a QR we reported as failed must not stay payable.
+   * With {@code resolved} set (the charge's fate is unknown), also asks the bank to remove the
+   * charge, best effort: if the PUT did land after all, a QR we reported as failed must not stay
+   * payable.
    */
-  private DomainException fail(String paymentId, String code, ProviderException cause, ProviderGateway.Resolved r) {
-    if (r != null) {
+  private DomainException fail(
+      String paymentId, String code, ProviderException cause, ResolvedProvider<PixMethodProvider> resolved) {
+    if (resolved != null) {
       try {
-        providers.run(paymentId, "cancelCharge", r, x -> x.provider().cancelCharge(x.credentials(), paymentId));
+        providers.run(paymentId, "cancelCharge", resolved, target -> target.provider().cancel(target.credentials(), paymentId));
       } catch (RuntimeException ignored) {
         // NOT_FOUND is the expected answer; anything else is left to reconciliation.
       }
@@ -385,12 +399,12 @@ public class PaymentService {
     if (current.status() != PaymentStatus.PENDING) {
       throw new DomainException("INVALID_STATE", "only a pending payment can be canceled, this one is " + current.status());
     }
-    ProviderGateway.Resolved r = providers.resolve(merchantId, current.environment(), current.provider());
     if (current.method() == PaymentMethod.BOLECODE) {
-      cancelBoletoAtBank(current, r);
+      cancelBoletoAtBank(current, providers.resolveBoleto(merchantId, current.environment(), current.provider()));
     } else {
+      ResolvedProvider<PixMethodProvider> resolved = providers.resolvePix(merchantId, current.environment(), current.provider());
       try {
-        providers.run(id, "cancelCharge", r, x -> x.provider().cancelCharge(x.credentials(), id));
+        providers.run(id, "cancelCharge", resolved, target -> target.provider().cancel(target.credentials(), id));
       } catch (ProviderException e) {
         // The bank refuses to remove a charge that is no longer ATIVA — most likely it was just paid
         // and the webhook is on its way. Cancelling here would contradict the bank.
@@ -418,18 +432,17 @@ public class PaymentService {
    * it was paid between the two calls, so the query is asked once more and decides. The QR dies
    * with the boleto (product docs); if it does not, expiration covers it.
    */
-  private void cancelBoletoAtBank(Payment p, ProviderGateway.Resolved r) {
-    BoletoProvider boleto = r.boleto().orElseThrow(() -> new DomainException("METHOD_NOT_SUPPORTED", PROVIDER + " has no boleto product"));
+  private void cancelBoletoAtBank(Payment p, ResolvedProvider<BoletoMethodProvider> resolved) {
     String nn = p.boleto().nossoNumero();
-    Optional<BoletoStatus> before = findBoletoForCancel(p, r, boleto, nn);
+    Optional<BoletoStatus> before = findBoletoForCancel(p, resolved, nn);
     if (before.isPresent() && before.get().paid()) {
       throw alreadyPaid(p, before.get());
     }
     try {
-      providers.run(p.id(), "cancelBoleto", r, x -> boleto.cancel(x.credentials(), nn));
+      providers.run(p.id(), "cancelBoleto", resolved, target -> target.provider().cancel(target.credentials(), nn));
     } catch (ProviderException e) {
       if (e.code() == ProviderException.Code.CONFLICT) {
-        Optional<BoletoStatus> after = findBoletoForCancel(p, r, boleto, nn);
+        Optional<BoletoStatus> after = findBoletoForCancel(p, resolved, nn);
         if (after.isPresent() && after.get().paid()) {
           throw alreadyPaid(p, after.get());
         }
@@ -446,9 +459,9 @@ public class PaymentService {
    * A request caller: a timeout or a 503 on the query must reach the merchant as PROVIDER_*, not as
    * a raw ProviderException (a 500), and the payment stays PENDING because nothing was decided.
    */
-  private Optional<BoletoStatus> findBoletoForCancel(Payment p, ProviderGateway.Resolved r, BoletoProvider boleto, String nn) {
+  private Optional<BoletoStatus> findBoletoForCancel(Payment p, ResolvedProvider<BoletoMethodProvider> resolved, String nn) {
     try {
-      return providers.call(p.id(), "findBoleto", r, x -> boleto.find(x.credentials(), nn));
+      return providers.call(p.id(), "findBoleto", resolved, target -> target.provider().find(target.credentials(), nn));
     } catch (ProviderException e) {
       throw ProviderErrors.toDomain("PROVIDER_UNAVAILABLE", e, log, "findBoleto", p.id());
     }
@@ -541,8 +554,9 @@ public class PaymentService {
     if (p.status() == PaymentStatus.CREATED) {
       throw new IllegalStateException("pix for payment " + p.id() + " still in " + p.status());
     }
-    ProviderGateway.Resolved r = providers.resolve(merchantId, p.environment(), p.provider());
-    Optional<Charge> atBank = providers.call(p.id(), "findCharge", r, x -> x.provider().findCharge(x.credentials(), p.pix().txid()));
+    ResolvedProvider<PixMethodProvider> resolved = providers.resolvePix(merchantId, p.environment(), p.provider());
+    Optional<Charge> atBank =
+        providers.call(p.id(), "findCharge", resolved, target -> target.provider().find(target.credentials(), p.pix().txid()));
     Optional<ReceivedPix> confirmed =
         atBank
             .filter(c -> c.status() == ChargeStatus.COMPLETED && c.received() != null)

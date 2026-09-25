@@ -31,8 +31,8 @@ import com.gateway.payments.refund.persistence.RefundRepository;
 import com.gateway.payments.refund.persistence.RefundRepositoryImpl;
 
 import com.gateway.kernel.provider.CredentialLookup;
-import com.gateway.kernel.provider.boleto.BoletoProvider;
-import com.gateway.kernel.provider.pix.PixProvider;
+import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
+import com.gateway.kernel.provider.pix.PixMethodProvider;
 import java.time.Clock;
 import java.util.List;
 import org.springframework.beans.factory.ObjectProvider;
@@ -67,7 +67,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 })
 @EnableConfigurationProperties(PaymentsProperties.class)
 public class PaymentsConfiguration {
-  // PixProvider, CredentialLookup and Clock come from the context, never from here: the app wires
+  // PixMethodProvider, CredentialLookup and Clock come from the context, never from here: the app wires
   // the real bank (gateway-providers) and the merchants' credential store; tests wire in-memory
   // implementations of the same kernel interfaces. A default here would let a missing provider
   // go unnoticed until the first charge.
@@ -82,9 +82,10 @@ public class PaymentsConfiguration {
     return new PaymentEvents(outbox, clock);
   }
 
-  /** ObjectProvider: a context without any BoletoProvider (the payments tests before Task 9's support existed) must still start. */
+  /** ObjectProvider: a context without any BoletoMethodProvider (the payments tests before Task 9's support existed) must still start. */
   @Bean
-  ProviderGateway providerGateway(List<PixProvider> providers, ObjectProvider<BoletoProvider> boletoProviders, CredentialLookup credentials, ProviderRequestRepository requests) {
+  ProviderGateway providerGateway(List<PixMethodProvider> providers, ObjectProvider<BoletoMethodProvider> boletoProviders,
+      CredentialLookup credentials, ProviderRequestRepository requests) {
     return new ProviderGateway(providers, boletoProviders.orderedStream().toList(), credentials, requests);
   }
 

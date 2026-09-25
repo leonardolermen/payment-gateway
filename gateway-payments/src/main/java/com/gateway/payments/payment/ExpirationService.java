@@ -4,11 +4,13 @@ import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.payments.PaymentsProperties;
 import com.gateway.payments.provider.ProviderGateway;
 
-import com.gateway.kernel.provider.boleto.BoletoProvider;
+import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
 import com.gateway.kernel.provider.boleto.BoletoSituation;
 import com.gateway.kernel.provider.boleto.BoletoStatus;
 import com.gateway.kernel.provider.pix.Charge;
 import com.gateway.kernel.provider.pix.ChargeStatus;
+import com.gateway.kernel.provider.pix.PixMethodProvider;
+import com.gateway.payments.provider.ProviderGateway.ResolvedProvider;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.payments.payment.persistence.PaymentRepository;
 import java.time.Instant;
@@ -75,17 +77,17 @@ public class ExpirationService {
     int changed = 0;
     for (Payment p : payments.findByStatusCreatedBefore(PaymentStatus.CREATED, now.minus(props.stuckCreatedAfter()), BATCH)) {
       try {
-        ProviderGateway.Resolved r = providers.resolve(p.merchantId(), p.environment(), p.provider());
         if (p.method() == PaymentMethod.BOLECODE) {
           // Same idea as Pix, with the query: the number is ours, so the bank can say whether the
           // issue landed. Empty after stuckCreatedAfter (the bank's 202 long past) is FAILED.
-          BoletoProvider boleto = r.boleto().orElseThrow();
+          ResolvedProvider<BoletoMethodProvider> resolved = providers.resolveBoleto(p.merchantId(), p.environment(), p.provider());
           String nn = p.boleto().nossoNumero();
-          Optional<BoletoStatus> atBank = providers.call(p.id(), "findBoleto", r, x -> boleto.find(x.credentials(), nn));
+          Optional<BoletoStatus> atBank =
+              providers.call(p.id(), "findBoleto", resolved, target -> target.provider().find(target.credentials(), nn));
           if (atBank.isEmpty()) {
             paymentService.markFailed(p.id(), "PROVIDER_TIMEOUT", EventSource.SYSTEM);
           } else {
-            paymentService.adoptBolecodeFromStatus(p.id(), r, atBank.get(), EventSource.SYSTEM);
+            paymentService.adoptBolecodeFromStatus(p.id(), resolved, atBank.get(), EventSource.SYSTEM);
             if (atBank.get().paid()) {
               paymentService.settleBoleto(p.merchantId(), p.id(), atBank.get(), EventSource.RECONCILIATION);
             }
@@ -98,7 +100,10 @@ public class ExpirationService {
           }
           continue;
         }
-        Optional<Charge> atBank = providers.call(p.id(), "findCharge", r, x -> x.provider().findCharge(x.credentials(), p.id()));
+        ResolvedProvider<PixMethodProvider> resolved = providers.resolvePix(p.merchantId(), p.environment(), p.provider());
+        Optional<Charge> atBank =
+            providers.call(p.id(), "findCharge", resolved, target -> target.provider().find(target.credentials(), p.id()));
+
         if (atBank.isEmpty()) {
           paymentService.markFailed(p.id(), "PROVIDER_TIMEOUT", EventSource.SYSTEM);
         } else {
@@ -122,11 +127,13 @@ public class ExpirationService {
     if (p == null || p.status() != PaymentStatus.PENDING || p.expiresAt().plus(props.expirationGrace()).isAfter(now)) {
       return false;
     }
-    ProviderGateway.Resolved r = providers.resolve(p.merchantId(), p.environment(), p.provider());
     if (p.method() == PaymentMethod.BOLECODE) {
-      return expireBolecode(p, r);
+      return expireBolecode(p, providers.resolveBoleto(p.merchantId(), p.environment(), p.provider()));
     }
-    Optional<Charge> atBank = providers.call(p.id(), "findCharge", r, x -> x.provider().findCharge(x.credentials(), p.id()));
+
+    ResolvedProvider<PixMethodProvider> resolved = providers.resolvePix(p.merchantId(), p.environment(), p.provider());
+    Optional<Charge> atBank =
+        providers.call(p.id(), "findCharge", resolved, target -> target.provider().find(target.credentials(), p.id()));
     if (atBank.isPresent() && atBank.get().status() == ChargeStatus.COMPLETED) {
       if (atBank.get().firstPix().isEmpty()) {
         // Paid, but without the pix[] that says by whom and how much: we cannot complete it, and
@@ -142,7 +149,7 @@ public class ExpirationService {
       try {
         // Best effort: the bank expires the QR on its own clock anyway; removing it just closes
         // the window between our expiry and the bank's.
-        providers.run(p.id(), "cancelCharge", r, x -> x.provider().cancelCharge(x.credentials(), p.id()));
+        providers.run(p.id(), "cancelCharge", resolved, target -> target.provider().cancel(target.credentials(), p.id()));
       } catch (ProviderException e) {
         if (e.code() != ProviderException.Code.INVALID && e.code() != ProviderException.Code.NOT_FOUND) {
           log.info("could not remove expired charge {} at the bank: {}", p.id(), e.getMessage());
@@ -157,10 +164,10 @@ public class ExpirationService {
    * both the barcode and the QR, so no baixa is sent — it would only add a call that can fail. The
    * query still runs first: a payment made on the last day is credited on the next business day.
    */
-  private boolean expireBolecode(Payment p, ProviderGateway.Resolved r) {
-    BoletoProvider boleto = r.boleto().orElseThrow();
+  private boolean expireBolecode(Payment p, ResolvedProvider<BoletoMethodProvider> resolved) {
     String nn = p.boleto().nossoNumero();
-    Optional<BoletoStatus> atBank = providers.call(p.id(), "findBoleto", r, x -> boleto.find(x.credentials(), nn));
+    Optional<BoletoStatus> atBank =
+        providers.call(p.id(), "findBoleto", resolved, target -> target.provider().find(target.credentials(), nn));
     if (atBank.isPresent() && atBank.get().paid()) {
       return paymentService.settleBoleto(p.merchantId(), p.id(), atBank.get(), EventSource.RECONCILIATION) == PaymentService.Settlement.COMPLETED;
     }

@@ -4,7 +4,8 @@ import com.gateway.kernel.money.Money;
 import com.gateway.kernel.provider.ProviderCredentials;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.kernel.provider.boleto.BoletoIssueRequest;
-import com.gateway.kernel.provider.boleto.BoletoProvider;
+import com.gateway.kernel.payment.PaymentMethod;
+import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
 import com.gateway.kernel.provider.boleto.BoletoSituation;
 import com.gateway.kernel.provider.boleto.BoletoStatus;
 import com.gateway.kernel.provider.boleto.IssuedBoleto;
@@ -27,7 +28,7 @@ import java.nio.charset.StandardCharsets;
  * only (never a product provider, never leaves src/test). Issuing also registers the Pix side of the
  * Bolecode in {@link RecordingPixProvider}, the way the bank creates both at once.
  */
-public class RecordingBoletoProvider implements BoletoProvider {
+public class RecordingBoletoProvider implements BoletoMethodProvider {
   /** The account when no credential is given: agência 1500, conta 0000520, DAC 6 — the same shape ItauBoletoProvider derives from. */
   static final String BENEFICIARY = "150000052061";
   private static final Pattern BENEFICIARY_ID = Pattern.compile("\"beneficiary_id\":\"([0-9]{12})\"");
@@ -52,6 +53,8 @@ public class RecordingBoletoProvider implements BoletoProvider {
   }
 
   @Override public String id() { return "ITAU"; }
+
+  @Override public PaymentMethod method() { return PaymentMethod.BOLECODE; }
 
   public void failNextIssueWith(ProviderException e) { this.failNextIssue = e; }
 

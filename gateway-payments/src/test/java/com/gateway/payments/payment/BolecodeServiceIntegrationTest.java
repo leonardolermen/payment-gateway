@@ -218,8 +218,8 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
     boletos.skipNextPixRegistration(); // GET /cob on the derived txid will be empty
     Payment p = newBolecode(700);
     assertThat(p.status()).isEqualTo(PaymentStatus.PENDING);
-    var r = providers.resolve(merchant, ProviderEnvironment.TEST, PaymentService.PROVIDER);
-    Payment again = paymentService.adoptBolecodeFromStatus(p.id(), r, boletos.status("00000001"), EventSource.SYSTEM);
+    var resolved = providers.resolveBoleto(merchant, ProviderEnvironment.TEST, PaymentService.PROVIDER);
+    Payment again = paymentService.adoptBolecodeFromStatus(p.id(), resolved, boletos.status("00000001"), EventSource.SYSTEM);
     assertThat(again.status()).isEqualTo(PaymentStatus.PENDING);
     assertThat(jdbc.queryForObject("SELECT count(*) FROM payments.reconciliation_divergences WHERE payment_id = ?", Long.class, p.id())).isZero();
   }

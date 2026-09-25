@@ -1,5 +1,6 @@
 package com.gateway.payments.payment;
 
+import com.gateway.kernel.provider.pix.PixIssueRequest;
 import com.gateway.payments.jobs.JobRunner;
 import com.gateway.payments.reconciliation.ReconciliationService;
 import com.gateway.payments.support.ServiceIntegrationTestBase;
@@ -221,7 +222,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
   @Test
   void stuckCreatedWithAnActiveChargeIsAdopted() {
     Payment p = stuckCreated();
-    bank.createCharge(null, p.id(), Money.brl(1000), 3600, null, null, null);
+    bank.issue(null, new PixIssueRequest(p.id(), Money.brl(1000), 3600, null, null, null));
     clock.advance(Duration.ofMinutes(11));
 
     expiration.sweepStuckCreated(clock.instant());
@@ -237,7 +238,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
   @Test
   void stuckCreatedAlreadyPaidIsAdoptedThenCompleted() {
     Payment p = stuckCreated();
-    bank.createCharge(null, p.id(), Money.brl(1000), 3600, null, null, null);
+    bank.issue(null, new PixIssueRequest(p.id(), Money.brl(1000), 3600, null, null, null));
     bank.markPaid(p.id(), "E2E" + p.id(), Money.brl(1000));
     clock.advance(Duration.ofMinutes(11));
 

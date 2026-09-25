@@ -3,7 +3,9 @@ package com.gateway.payments.support;
 import com.gateway.kernel.money.Money;
 import com.gateway.kernel.provider.pix.Charge;
 import com.gateway.kernel.provider.pix.ChargeStatus;
-import com.gateway.kernel.provider.pix.PixProvider;
+import com.gateway.kernel.payment.PaymentMethod;
+import com.gateway.kernel.provider.pix.PixIssueRequest;
+import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.kernel.provider.ProviderCredentials;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.kernel.provider.ProviderWebhookEvent;
@@ -30,7 +32,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <p>The Spring context is shared between test classes, so every call is recorded as
  * {@code op:key} and assertions filter by the test's own txid instead of resetting shared state.
  */
-public class RecordingPixProvider implements PixProvider {
+public class RecordingPixProvider implements PixMethodProvider {
   private final Clock clock;
   private final Map<String, Charge> charges = new ConcurrentHashMap<>();
   private final Map<String, RefundResult> refunds = new ConcurrentHashMap<>();
@@ -50,6 +52,15 @@ public class RecordingPixProvider implements PixProvider {
   public String id() {
     return "ITAU";
   }
+
+  @Override
+  public PaymentMethod method() {
+    return PaymentMethod.PIX;
+  }
+
+  /** The double has no credential to inspect: what it exercises is the flow, not the credential shape. */
+  @Override
+  public void requireIssueCredentials(ProviderCredentials c) {}
 
   public void failNextCreateWith(ProviderException e) {
     this.failNextCreate = e;
@@ -110,8 +121,11 @@ public class RecordingPixProvider implements PixProvider {
   }
 
   @Override
-  public Charge createCharge(
-      ProviderCredentials c, String txid, Money amount, int expiresInSeconds, String payerDocument, String payerName, String description) {
+  public Charge issue(ProviderCredentials c, PixIssueRequest request) {
+    String txid = request.txid();
+    Money amount = request.amount();
+    int expiresInSeconds = request.expiresInSeconds();
+
     calls.add("createCharge:" + txid);
     ProviderException fail = failNextCreate;
     if (fail != null) {
@@ -135,7 +149,7 @@ public class RecordingPixProvider implements PixProvider {
   }
 
   @Override
-  public Optional<Charge> findCharge(ProviderCredentials c, String txid) {
+  public Optional<Charge> find(ProviderCredentials c, String txid) {
     calls.add("findCharge:" + txid);
     ProviderException fail = failFind.remove(txid);
     if (fail != null) {
@@ -145,7 +159,7 @@ public class RecordingPixProvider implements PixProvider {
   }
 
   @Override
-  public void cancelCharge(ProviderCredentials c, String txid) {
+  public void cancel(ProviderCredentials c, String txid) {
     calls.add("cancelCharge:" + txid);
     Charge charge = charges.get(txid);
     if (charge == null) {

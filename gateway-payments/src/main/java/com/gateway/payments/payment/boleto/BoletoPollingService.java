@@ -1,9 +1,10 @@
 package com.gateway.payments.payment.boleto;
 
-import com.gateway.kernel.provider.boleto.BoletoProvider;
+import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
 import com.gateway.kernel.provider.boleto.BoletoStatus;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.kernel.provider.pix.ChargeStatus;
+import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.kernel.provider.pix.ReceivedPix;
 import com.gateway.payments.PaymentsProperties;
 import com.gateway.payments.payment.EventSource;
@@ -13,6 +14,7 @@ import com.gateway.payments.payment.PaymentService;
 import com.gateway.payments.payment.PaymentStatus;
 import com.gateway.payments.payment.persistence.PaymentRepository;
 import com.gateway.payments.provider.ProviderGateway;
+import com.gateway.payments.provider.ProviderGateway.ResolvedProvider;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -57,10 +59,10 @@ public class BoletoPollingService {
     if (p.status() == PaymentStatus.CREATED) {
       return true; // CREATED is the stuck-CREATED sweeper's business, not the poll's
     }
-    ProviderGateway.Resolved r = providers.resolve(p.merchantId(), p.environment(), p.provider());
-    BoletoProvider boleto = r.boleto().orElseThrow();
+    ResolvedProvider<BoletoMethodProvider> resolved = providers.resolveBoleto(p.merchantId(), p.environment(), p.provider());
     String nn = p.boleto().nossoNumero();
-    Optional<BoletoStatus> atBank = providers.call(p.id(), "findBoleto", r, x -> boleto.find(x.credentials(), nn));
+    Optional<BoletoStatus> atBank =
+        providers.call(p.id(), "findBoleto", resolved, target -> target.provider().find(target.credentials(), nn));
     if (p.status() == PaymentStatus.CANCELED || p.status() == PaymentStatus.FAILED) {
       return gaveUp(p, nn, atBank, by);
     }
@@ -79,7 +81,7 @@ public class BoletoPollingService {
     return switch (status.situation()) {
       case OPEN, AWAITING_CREDIT -> pastWindow(p);
       case PAID, SETTLED, CREDITED -> {
-        settlePaid(p, r, status, by);
+        settlePaid(p, status, by);
         yield true;
       }
       case PAYMENT_REJECTED -> {
@@ -126,11 +128,13 @@ public class BoletoPollingService {
    * (refunds and the later webhook's duplicate check work as usual); without it, settleBoleto still
    * completes via PIX with the endToEndId unknown.
    */
-  private void settlePaid(Payment p, ProviderGateway.Resolved r, BoletoStatus status, EventSource by) {
+  private void settlePaid(Payment p, BoletoStatus status, EventSource by) {
     if (PaymentService.isPixChannel(status.paidChannel()) && p.pix() != null && p.pix().txid() != null) {
       Optional<ReceivedPix> pix = Optional.empty();
       try {
-        pix = providers.call(p.id(), "findCharge", r, x -> x.provider().findCharge(x.credentials(), p.pix().txid()))
+        // The Pix side of the same charge, through the Pix door: one bank, two products.
+        ResolvedProvider<PixMethodProvider> pixSide = providers.resolvePix(p.merchantId(), p.environment(), p.provider());
+        pix = providers.call(p.id(), "findCharge", pixSide, target -> target.provider().find(target.credentials(), p.pix().txid()))
             .filter(c -> c.status() == ChargeStatus.COMPLETED)
             .flatMap(c -> c.firstPix());
       } catch (ProviderException e) {

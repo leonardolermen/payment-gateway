@@ -1,8 +1,10 @@
 package com.gateway.payments.refund;
 
+import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.kernel.provider.pix.RefundStatus;
 import com.gateway.payments.PaymentsProperties;
 import com.gateway.payments.provider.ProviderGateway;
+import com.gateway.payments.provider.ProviderGateway.ResolvedProvider;
 
 import com.gateway.kernel.provider.pix.RefundResult;
 import com.gateway.payments.payment.Payment;
@@ -50,9 +52,11 @@ public class RefundPollingService {
       return true;
     }
     Payment payment = payments.findById(refund.paymentId()).orElseThrow();
-    ProviderGateway.Resolved r = providers.resolve(payment.merchantId(), payment.environment(), payment.provider());
+    ResolvedProvider<PixMethodProvider> resolved = providers.resolvePix(payment.merchantId(), payment.environment(), payment.provider());
     Optional<RefundResult> result =
-        providers.call(payment.id(), "findRefund", r, x -> x.provider().findRefund(x.credentials(), payment.pix().endToEndId(), refundId));
+        providers.call(
+            payment.id(), "findRefund", resolved,
+            target -> target.provider().findRefund(target.credentials(), payment.pix().endToEndId(), refundId));
     if (result.isEmpty()) {
       Instant cutoff = refund.createdAt().plus(props.refundNotFoundGrace());
       if (clock.instant().isAfter(cutoff)) {

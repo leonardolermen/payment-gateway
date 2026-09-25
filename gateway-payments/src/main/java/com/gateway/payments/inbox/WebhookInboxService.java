@@ -75,7 +75,7 @@ public class WebhookInboxService {
     }
     ProviderWebhookEvent event;
     try {
-      event = providers.provider(entry.provider()).parseWebhook(entry.rawBody());
+      event = providers.pixProvider(entry.provider()).parseWebhook(entry.rawBody());
     } catch (RuntimeException e) {
       log.warn("unreadable {} webhook {}", entry.provider(), inboxId, e);
       mark(entry, "FAILED", e.getClass().getSimpleName() + ": " + e.getMessage());

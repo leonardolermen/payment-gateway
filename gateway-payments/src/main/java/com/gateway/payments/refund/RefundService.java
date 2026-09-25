@@ -1,11 +1,13 @@
 package com.gateway.payments.refund;
 
+import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.payments.payment.boleto.PaidVia;
 import com.gateway.payments.payment.PaymentEvents;
 import com.gateway.payments.payment.PaymentService;
 import com.gateway.payments.provider.ProviderErrors;
 import com.gateway.payments.provider.ProviderGateway;
+import com.gateway.payments.provider.ProviderGateway.ResolvedProvider;
 
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.errors.NotFoundException;
@@ -82,7 +84,7 @@ public class RefundService {
     if (amountOrNull != null && amountOrNull.isZero()) {
       throw new DomainException("INVALID_AMOUNT", "a refund must be greater than zero");
     }
-    ProviderGateway.Resolved r = providers.resolve(merchantId, payment.environment(), payment.provider());
+    ResolvedProvider<PixMethodProvider> resolved = providers.resolvePix(merchantId, payment.environment(), payment.provider());
 
     Refund refund =
         tx.execute(s -> {
@@ -123,8 +125,9 @@ public class RefundService {
           providers.call(
               paymentId,
               "requestRefund",
-              r,
-              x -> x.provider().requestRefund(x.credentials(), new RefundRequest(payment.pix().endToEndId(), refund.id(), refund.amount())));
+              resolved,
+              target -> target.provider().requestRefund(
+                  target.credentials(), new RefundRequest(payment.pix().endToEndId(), refund.id(), refund.amount())));
     } catch (ProviderException e) {
       if (!definitelyRefused(e.code())) {
         // The refund id is ours, so the PUT is safe to have landed: polling asks the bank for it by
@@ -275,8 +278,11 @@ public class RefundService {
               "webhook for merchant " + merchantId.value() + ", e2eid " + endToEndId + " named refund " + refund.id() + " of another merchant or payment"));
       return false;
     }
-    ProviderGateway.Resolved r = providers.resolve(payment.merchantId(), payment.environment(), payment.provider());
-    Optional<RefundResult> atBank = providers.call(payment.id(), "findRefund", r, x -> x.provider().findRefund(x.credentials(), paymentE2e, refund.id()));
+    ResolvedProvider<PixMethodProvider> resolved = providers.resolvePix(payment.merchantId(), payment.environment(), payment.provider());
+    Optional<RefundResult> atBank =
+        providers.call(
+            payment.id(), "findRefund", resolved,
+            target -> target.provider().findRefund(target.credentials(), paymentE2e, refund.id()));
     if (atBank.isEmpty()) {
       log.warn("webhook refund update for {} not known at the bank; polling decides", refund.id());
       return true;

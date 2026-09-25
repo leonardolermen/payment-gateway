@@ -125,7 +125,7 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
   private Payment completedViaPix(String e2e) {
     Payment p = newBolecode(12990);
     bank.markPaid(p.pix().txid(), e2e, Money.brl(12990));
-    assertThat(paymentService.settle(merchant, p.id(), bank.findCharge(null, p.pix().txid()).orElseThrow().firstPix().orElseThrow(), EventSource.PROVIDER_WEBHOOK))
+    assertThat(paymentService.settle(merchant, p.id(), bank.find(null, p.pix().txid()).orElseThrow().firstPix().orElseThrow(), EventSource.PROVIDER_WEBHOOK))
         .isEqualTo(PaymentService.Settlement.COMPLETED);
     assertThat(payments.findById(p.id()).orElseThrow().boleto().paidVia()).isEqualTo(PaidVia.PIX);
     return p;
@@ -172,7 +172,7 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
   void completedViaPixWithTheBoletoStillOpenIsIgnored() {
     Payment p = newBolecode(12990);
     bank.markPaid(p.pix().txid(), "E2E-QR2", Money.brl(12990));
-    paymentService.settle(merchant, p.id(), bank.findCharge(null, p.pix().txid()).orElseThrow().firstPix().orElseThrow(), EventSource.PROVIDER_WEBHOOK);
+    paymentService.settle(merchant, p.id(), bank.find(null, p.pix().txid()).orElseThrow().firstPix().orElseThrow(), EventSource.PROVIDER_WEBHOOK);
     assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isTrue();
     assertThat(payments.events(p.id()).getLast().type()).isEqualTo("ignored");
     assertThat(divergences(p.id())).isEmpty();
