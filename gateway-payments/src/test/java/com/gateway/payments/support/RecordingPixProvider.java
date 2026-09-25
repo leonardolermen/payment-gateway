@@ -37,6 +37,7 @@ public class RecordingPixProvider implements PixProvider {
   private final List<String> calls = new CopyOnWriteArrayList<>();
   private volatile ProviderException failNextCreate;
   private volatile ProviderException landThenFail;
+  private volatile String echoTxid;
   private volatile RefundStatus nextRefundStatus = RefundStatus.PROCESSING;
   private volatile ProviderException failNextRefund;
   private final Map<String, ProviderException> failFind = new ConcurrentHashMap<>();
@@ -62,6 +63,15 @@ public class RecordingPixProvider implements PixProvider {
   /** The charge is created at the bank, but the caller sees {@code e} (a 503 from a proxy, say). */
   public void landNextCreateThenFailWith(ProviderException e) {
     this.landThenFail = e;
+  }
+
+  /**
+   * The next createCharge answers with {@code txid} instead of the one it was given, as Itau's
+   * sandbox mock does (its PUT /cob always echoes 7978c0c97ea847e78e8849634473c1f1). The charge
+   * stays filed under the txid we sent, because that is what GET /cob/{txid} is asked for.
+   */
+  public void echoNextCreateTxid(String txid) {
+    this.echoTxid = txid;
   }
 
   public void markPaid(String txid, String endToEndId, Money amount) {
@@ -111,6 +121,11 @@ public class RecordingPixProvider implements PixProvider {
     Charge charge =
         new Charge(txid, ChargeStatus.ACTIVE, amount, "00020101021226" + txid, "pix.example/qr/" + txid, clock.instant(), expiresInSeconds, List.of());
     charges.put(txid, charge);
+    String echoed = echoTxid;
+    if (echoed != null) {
+      echoTxid = null;
+      charge = new Charge(echoed, charge.status(), charge.amount(), charge.pixCopiaECola(), charge.location(), charge.createdAt(), charge.expiresInSeconds(), charge.received());
+    }
     ProviderException after = landThenFail;
     if (after != null) {
       landThenFail = null;

@@ -180,9 +180,15 @@ public class PaymentService {
         return p;
       }
       int bankExpiry = accepted.expiresInSeconds() > 0 ? accepted.expiresInSeconds() : fallbackExpires;
+      // A Pix txid is ours: we PUT /cob/{payment id}. Storing the echoed one broke settleFromWebhook
+      // (it looks up by stored txid) against Itau's sandbox mock, whose PUT /cob always answers
+      // txid 7978c0c97ea847e78e8849634473c1f1; production echoes ours, so a mismatch is only logged.
+      if (accepted.txid() != null && !accepted.txid().equals(p.id())) {
+        log.warn("bank echoed txid {} for payment {}; keeping ours", accepted.txid(), p.id());
+      }
       PaymentEvent ev =
           p.markPending(
-              new PixDetails(accepted.txid(), accepted.pixCopiaECola(), accepted.location(), null), clock.instant().plusSeconds(bankExpiry), by);
+              new PixDetails(p.id(), accepted.pixCopiaECola(), accepted.location(), null), clock.instant().plusSeconds(bankExpiry), by);
       Payment saved = payments.save(p, List.of(ev));
       if (!jobs.enqueue(Job.expireAt(saved.id(), saved.expiresAt().plus(props.expirationGrace()), clock))) {
         log.debug("expire job for payment {} was already queued", saved.id());
