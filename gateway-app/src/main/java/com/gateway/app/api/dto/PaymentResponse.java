@@ -1,8 +1,8 @@
 package com.gateway.app.api.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.gateway.payments.domain.Payment;
-import com.gateway.payments.domain.PixDetails;
+import com.gateway.payments.payment.Payment;
+import com.gateway.payments.payment.pix.PixDetails;
 import java.time.Instant;
 
 /**

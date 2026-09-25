@@ -1,5 +1,8 @@
 package com.gateway.kernel.provider;
 
+import com.gateway.kernel.provider.pix.ReceivedPix;
+import com.gateway.kernel.provider.pix.RefundResult;
+
 import java.util.List;
 import java.util.Map;
 

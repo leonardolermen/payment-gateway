@@ -1,5 +1,7 @@
 package com.gateway.app;
 
+import com.gateway.merchants.domain.Merchant;
+
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
@@ -10,7 +12,7 @@ import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.gateway.providers.itau.TestCertificates;
+import com.gateway.providers.itau.auth.TestCertificates;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import java.io.ByteArrayInputStream;
 import java.io.File;

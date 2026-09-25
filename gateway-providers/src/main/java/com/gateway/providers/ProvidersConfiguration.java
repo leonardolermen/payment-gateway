@@ -1,10 +1,10 @@
 package com.gateway.providers;
 
-import com.gateway.kernel.provider.PixProvider;
+import com.gateway.kernel.provider.pix.PixProvider;
 import com.gateway.kernel.provider.ProviderEnvironment;
-import com.gateway.providers.itau.ItauEndpoints;
-import com.gateway.providers.itau.ItauPixProvider;
-import com.gateway.providers.itau.ItauTokenClient;
+import com.gateway.providers.itau.auth.ItauEndpoints;
+import com.gateway.providers.itau.pix.ItauPixProvider;
+import com.gateway.providers.itau.auth.ItauTokenClient;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;

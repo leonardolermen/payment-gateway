@@ -1,8 +1,8 @@
 package com.gateway.app.jobs;
 
-import com.gateway.payments.service.ExpirationService;
-import com.gateway.payments.service.IdempotencyService;
-import com.gateway.payments.service.JobRunner;
+import com.gateway.payments.payment.ExpirationService;
+import com.gateway.payments.idempotency.IdempotencyService;
+import com.gateway.payments.jobs.JobRunner;
 import java.time.Clock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

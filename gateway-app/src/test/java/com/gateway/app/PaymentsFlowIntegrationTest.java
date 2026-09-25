@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.gateway.kernel.ids.MerchantId;
-import com.gateway.payments.service.WebhookInboxService;
+import com.gateway.payments.inbox.WebhookInboxService;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.InputStream;

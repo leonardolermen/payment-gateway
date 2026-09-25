@@ -1,6 +1,6 @@
 package com.gateway.app.api.dto;
 
-import com.gateway.payments.domain.Refund;
+import com.gateway.payments.refund.Refund;
 import java.time.Instant;
 
 public record RefundResponse(String id, String paymentId, long amount, String state, String reason, Instant requestedAt, Instant settledAt) {

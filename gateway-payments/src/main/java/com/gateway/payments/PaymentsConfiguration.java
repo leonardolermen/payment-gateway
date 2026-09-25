@@ -1,9 +1,34 @@
 package com.gateway.payments;
 
+import com.gateway.payments.idempotency.IdempotencyService;
+import com.gateway.payments.idempotency.persistence.IdempotencyRepository;
+import com.gateway.payments.idempotency.persistence.IdempotencyRepositoryImpl;
+import com.gateway.payments.inbox.WebhookInboxService;
+import com.gateway.payments.inbox.persistence.WebhookInboxRepository;
+import com.gateway.payments.inbox.persistence.WebhookInboxRepositoryImpl;
+import com.gateway.payments.jobs.JobRunner;
+import com.gateway.payments.jobs.persistence.JobRepository;
+import com.gateway.payments.jobs.persistence.JobRepositoryImpl;
+import com.gateway.payments.outbox.persistence.OutboxRepository;
+import com.gateway.payments.outbox.persistence.OutboxRepositoryImpl;
+import com.gateway.payments.payment.ExpirationService;
+import com.gateway.payments.payment.PaymentEvents;
+import com.gateway.payments.payment.PaymentService;
+import com.gateway.payments.payment.persistence.PaymentRepository;
+import com.gateway.payments.payment.persistence.PaymentRepositoryImpl;
+import com.gateway.payments.provider.ProviderGateway;
+import com.gateway.payments.provider.persistence.ProviderRequestRepository;
+import com.gateway.payments.provider.persistence.ProviderRequestRepositoryImpl;
+import com.gateway.payments.reconciliation.ReconciliationService;
+import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceRepository;
+import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceRepositoryImpl;
+import com.gateway.payments.refund.RefundPollingService;
+import com.gateway.payments.refund.RefundService;
+import com.gateway.payments.refund.persistence.RefundRepository;
+import com.gateway.payments.refund.persistence.RefundRepositoryImpl;
+
 import com.gateway.kernel.provider.CredentialLookup;
-import com.gateway.kernel.provider.PixProvider;
-import com.gateway.payments.repository.*;
-import com.gateway.payments.service.*;
+import com.gateway.kernel.provider.pix.PixProvider;
 import java.time.Clock;
 import java.util.List;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -22,8 +47,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
  * note in {@code MerchantsConfiguration}).
  */
 @Configuration(proxyBeanMethods = false)
-@EntityScan("com.gateway.payments.repository")
-@EnableJpaRepositories("com.gateway.payments.repository")
+@EntityScan("com.gateway.payments")
+@EnableJpaRepositories("com.gateway.payments")
 @Import({
   PaymentRepositoryImpl.class,
   RefundRepositoryImpl.class,

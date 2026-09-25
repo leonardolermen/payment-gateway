@@ -3,7 +3,7 @@ package com.gateway.app;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.barrier.webhookdelivery.client.HmacSigner;
-import com.gateway.app.webhooks.MerchantEvents;
+import com.gateway.app.outbound.MerchantEvents;
 import com.gateway.kernel.ids.MerchantId;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;

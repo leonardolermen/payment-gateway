@@ -1,5 +1,10 @@
 package com.gateway.merchants.service;
 
+import com.gateway.merchants.domain.ApiKey;
+import com.gateway.merchants.domain.ApiKeyEnvironment;
+import com.gateway.merchants.domain.Merchant;
+import com.gateway.merchants.domain.Provider;
+
 import static org.assertj.core.api.Assertions.*;
 
 import com.gateway.kernel.errors.DomainException;

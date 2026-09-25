@@ -5,7 +5,7 @@ import com.gateway.app.api.admin.dto.ApiKeyIssuedResponse;
 import com.gateway.app.api.admin.dto.MerchantRequest;
 import com.gateway.app.api.admin.dto.MerchantResponse;
 import com.gateway.app.api.admin.dto.ProviderCredentialRequest;
-import com.gateway.app.mtls.WebhookMtlsProperties;
+import com.gateway.app.inbound.mtls.WebhookMtlsProperties;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.merchants.domain.Merchant;
 import com.gateway.merchants.domain.Provider;

@@ -58,8 +58,20 @@ public class ArchitectureTest {
   static final ArchRule jpaEntitiesArePackagePrivate =
       classes().that().areAnnotatedWith(jakarta.persistence.Entity.class).should().bePackagePrivate();
 
+  /**
+   * Packages are by concept (payment, refund, jobs, ...), so "the domain" is no longer a folder. JPA is
+   * confined to the persistence sub-packages, and the plain model types (records, enums, aggregates)
+   * stay free of Spring: only the classes that are wiring by their nature may see it.
+   */
   @ArchTest
-  static final ArchRule domainHasNoSpringOrJpa =
-      noClasses().that().resideInAPackage("..domain..")
-          .should().dependOnClassesThat().resideInAnyPackage("org.springframework..", "jakarta.persistence..");
+  static final ArchRule jpaOnlyInPersistence =
+      noClasses().that().resideOutsideOfPackages("..persistence..", "com.gateway.app..", "com.gateway.merchants.repository..")
+          .should().dependOnClassesThat().resideInAPackage("jakarta.persistence..");
+
+  @ArchTest
+  static final ArchRule modelsHaveNoSpring =
+      noClasses().that().resideInAnyPackage("com.gateway.kernel..", "com.gateway.payments..", "com.gateway.merchants.domain..")
+          .and().resideOutsideOfPackages("..persistence..", "..support..")
+          .and().haveNameNotMatching(".*(Service|Runner|Gateway|Relay|Properties|Configuration|Events)$")
+          .should().dependOnClassesThat().resideInAPackage("org.springframework..");
 }

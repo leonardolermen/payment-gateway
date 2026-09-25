@@ -1,7 +1,7 @@
 package com.gateway.app.api.dto;
 
 import com.fasterxml.jackson.annotation.JsonRawValue;
-import com.gateway.payments.domain.PaymentEvent;
+import com.gateway.payments.payment.PaymentEvent;
 import java.time.Instant;
 
 /** {@code payload} is already JSON (the domain writes it by hand); raw, so it is not re-quoted as a string. */
