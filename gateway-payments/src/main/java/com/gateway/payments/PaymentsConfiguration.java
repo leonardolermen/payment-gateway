@@ -11,6 +11,7 @@ import com.gateway.payments.jobs.persistence.JobRepository;
 import com.gateway.payments.jobs.persistence.JobRepositoryImpl;
 import com.gateway.payments.outbox.persistence.OutboxRepository;
 import com.gateway.payments.outbox.persistence.OutboxRepositoryImpl;
+import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepository;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepositoryImpl;
 import com.gateway.payments.payment.ExpirationService;
 import com.gateway.payments.payment.PaymentEvents;
@@ -29,9 +30,11 @@ import com.gateway.payments.refund.persistence.RefundRepository;
 import com.gateway.payments.refund.persistence.RefundRepositoryImpl;
 
 import com.gateway.kernel.provider.CredentialLookup;
+import com.gateway.kernel.provider.boleto.BoletoProvider;
 import com.gateway.kernel.provider.pix.PixProvider;
 import java.time.Clock;
 import java.util.List;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -78,9 +81,10 @@ public class PaymentsConfiguration {
     return new PaymentEvents(outbox, clock);
   }
 
+  /** ObjectProvider: a context without any BoletoProvider (the payments tests before Task 9's support existed) must still start. */
   @Bean
-  ProviderGateway providerGateway(List<PixProvider> providers, CredentialLookup credentials, ProviderRequestRepository requests) {
-    return new ProviderGateway(providers, credentials, requests);
+  ProviderGateway providerGateway(List<PixProvider> providers, ObjectProvider<BoletoProvider> boletoProviders, CredentialLookup credentials, ProviderRequestRepository requests) {
+    return new ProviderGateway(providers, boletoProviders.orderedStream().toList(), credentials, requests);
   }
 
   @Bean
@@ -90,9 +94,9 @@ public class PaymentsConfiguration {
 
   @Bean
   PaymentService paymentService(
-      PaymentRepository payments, ReconciliationDivergenceRepository divergences, JobRepository jobs, ProviderGateway providers,
-      PaymentEvents events, PaymentsProperties props, TransactionTemplate paymentsTransactionTemplate, Clock clock) {
-    return new PaymentService(payments, divergences, jobs, providers, events, props, paymentsTransactionTemplate, clock);
+      PaymentRepository payments, ReconciliationDivergenceRepository divergences, JobRepository jobs, BoletoNumberRepository boletoNumbers,
+      ProviderGateway providers, PaymentEvents events, PaymentsProperties props, TransactionTemplate paymentsTransactionTemplate, Clock clock) {
+    return new PaymentService(payments, divergences, jobs, boletoNumbers, providers, events, props, paymentsTransactionTemplate, clock);
   }
 
   @Bean

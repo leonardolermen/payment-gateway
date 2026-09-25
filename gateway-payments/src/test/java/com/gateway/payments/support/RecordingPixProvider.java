@@ -193,4 +193,9 @@ public class RecordingPixProvider implements PixProvider {
     }
     return new ProviderWebhookEvent(received, refundUpdates, txids, refundE2e);
   }
+
+  /** A charge the bank created on its own (the Pix side of a Bolecode); findCharge and listCharges see it like any other. */
+  public void register(Charge c) {
+    charges.put(c.txid(), c);
+  }
 }

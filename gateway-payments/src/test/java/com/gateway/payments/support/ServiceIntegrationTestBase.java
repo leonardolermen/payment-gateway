@@ -5,6 +5,8 @@ import com.gateway.payments.payment.PaymentService;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.money.Money;
 import com.gateway.kernel.provider.ProviderEnvironment;
+import com.gateway.kernel.provider.boleto.Address;
+import com.gateway.kernel.provider.boleto.Payer;
 import com.gateway.payments.TestApp;
 import com.gateway.payments.payment.Payment;
 import java.util.List;
@@ -32,6 +34,7 @@ public abstract class ServiceIntegrationTestBase {
   @Autowired protected RecordingPixProvider bank;
   @Autowired protected JdbcTemplate jdbc;
   @Autowired protected PaymentService paymentService;
+  @Autowired protected RecordingBoletoProvider boletos;
 
   protected MerchantId merchant;
 
@@ -44,6 +47,15 @@ public abstract class ServiceIntegrationTestBase {
   protected Payment newCharge(long cents) {
     return paymentService.createCharge(
         new PaymentService.CreateCharge(merchant, ProviderEnvironment.TEST, Money.brl(cents), "order-1", "a test charge", "123.456.789-09", null));
+  }
+
+  protected static Payer payer() {
+    return new Payer("Joao da Silva", "12345678901", new Address("Rua das Flores 10", "Centro", "Sao Paulo", "SP", "01310100"));
+  }
+
+  protected Payment newBolecode(long cents) {
+    return paymentService.createBolecode(
+        new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(cents), "order-1", "Pedido 1", payer(), null, null));
   }
 
   protected List<String> outboxTypes(String aggregateId) {

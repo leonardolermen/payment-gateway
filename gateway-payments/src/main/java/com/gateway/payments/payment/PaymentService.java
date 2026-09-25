@@ -8,11 +8,20 @@ import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.money.Money;
+import com.gateway.kernel.provider.boleto.Address;
+import com.gateway.kernel.provider.boleto.BoletoIssueRequest;
+import com.gateway.kernel.provider.boleto.BoletoProvider;
+import com.gateway.kernel.provider.boleto.BoletoStatus;
+import com.gateway.kernel.provider.boleto.IssuedBoleto;
+import com.gateway.kernel.provider.boleto.Payer;
 import com.gateway.kernel.provider.pix.Charge;
 import com.gateway.kernel.provider.pix.ChargeStatus;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.payments.jobs.Job;
+import com.gateway.payments.payment.boleto.BoletoDates;
+import com.gateway.payments.payment.boleto.BoletoDetails;
+import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepository;
 import com.gateway.payments.payment.pix.PixDetails;
 import com.gateway.payments.jobs.persistence.JobRepository;
 import com.gateway.payments.payment.persistence.PaymentRepository;
@@ -25,9 +34,11 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.LocalDate;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -51,9 +62,39 @@ public class PaymentService {
       String customerDocument,
       Integer expiresInSeconds) {}
 
+  public record CreateBolecode(
+      MerchantId merchantId, ProviderEnvironment env, Money amount, String reference, String description, Payer payer, LocalDate dueDate, Integer paymentLimitDays) {}
+
+  private static final Pattern DIGITS_11_OR_14 = Pattern.compile("\\d{11}|\\d{14}");
+  private static final Pattern UF = Pattern.compile("[A-Z]{2}");
+  private static final Pattern CEP = Pattern.compile("\\d{8}");
+  private static final Pattern HAS_LETTER = Pattern.compile(".*\\p{L}.*");
+
+  /**
+   * A registered boleto needs a complete payer (issue OpenAPI: pessoa and endereco required, every
+   * address line required). Checked here, not at the edge: the 422 names the field in the API's own
+   * spelling and no row exists yet. Returns the payer with digits-only document and zip.
+   */
+  static Payer validatePayer(Payer payer) {
+    if (payer == null) throw new DomainException("CUSTOMER_REQUIRED", "customer is required for a BOLECODE payment");
+    if (payer.name() == null || !HAS_LETTER.matcher(payer.name()).matches()) throw new DomainException("CUSTOMER_REQUIRED", "customer.name is required");
+    String document = payer.document() == null ? "" : payer.document().replaceAll("\\D", "");
+    if (!DIGITS_11_OR_14.matcher(document).matches()) throw new DomainException("CUSTOMER_REQUIRED", "customer.document must be a CPF (11 digits) or CNPJ (14 digits)");
+    Address a = payer.address();
+    if (a == null) throw new DomainException("CUSTOMER_REQUIRED", "customer.address is required");
+    if (a.street() == null || a.street().isBlank()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.street is required");
+    if (a.district() == null || a.district().isBlank()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.district is required");
+    if (a.city() == null || a.city().isBlank()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.city is required");
+    if (a.state() == null || !UF.matcher(a.state()).matches()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.state must be a two-letter UF");
+    String zip = a.zip() == null ? "" : a.zip().replaceAll("\\D", "");
+    if (!CEP.matcher(zip).matches()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.zip must be 8 digits");
+    return new Payer(payer.name(), document, new Address(a.street(), a.district(), a.city(), a.state(), zip));
+  }
+
   private final PaymentRepository payments;
   private final ReconciliationDivergenceRepository divergences;
   private final JobRepository jobs;
+  private final BoletoNumberRepository boletoNumbers;
   private final ProviderGateway providers;
   private final PaymentEvents events;
   private final PaymentsProperties props;
@@ -64,6 +105,7 @@ public class PaymentService {
       PaymentRepository payments,
       ReconciliationDivergenceRepository divergences,
       JobRepository jobs,
+      BoletoNumberRepository boletoNumbers,
       ProviderGateway providers,
       PaymentEvents events,
       PaymentsProperties props,
@@ -72,6 +114,7 @@ public class PaymentService {
     this.payments = payments;
     this.divergences = divergences;
     this.jobs = jobs;
+    this.boletoNumbers = boletoNumbers;
     this.providers = providers;
     this.events = events;
     this.props = props;
@@ -145,6 +188,114 @@ public class PaymentService {
       events.emit(saved.merchantId(), "payment.pending", saved);
       return saved;
     });
+  }
+
+  /**
+   * Spec 2026-09-25 §7. Order matters: credentials (incl. beneficiary) and payer are checked before
+   * a row exists; the number is reserved in the same transaction as CREATED; the bank call runs
+   * outside any transaction; PENDING lands with both sides and both jobs.
+   *
+   * <p>On TIMEOUT/UNAVAILABLE/202 the query decides: found → adopted; not found → the payment stays
+   * CREATED and the caller gets PROVIDER_TIMEOUT. Unlike Pix, it is NOT failed on the spot: the
+   * bank's 202 means "operação em andamento", so an empty query a second later proves nothing.
+   * ExpirationService.sweepStuckCreated asks again after stuckCreatedAfter and decides.
+   */
+  public Payment createBolecode(CreateBolecode cmd) {
+    ProviderGateway.Resolved r = providers.resolve(cmd.merchantId(), cmd.env(), PROVIDER);
+    BoletoProvider boleto = r.boleto().orElseThrow(() -> new DomainException("METHOD_NOT_SUPPORTED", PROVIDER + " has no boleto product"));
+    try {
+      boleto.requireIssueCredentials(r.credentials());
+    } catch (ProviderException e) {
+      if (e.code() == ProviderException.Code.CREDENTIALS_INCOMPLETE) {
+        throw new DomainException("PROVIDER_CREDENTIALS_MISSING", "the " + PROVIDER + " " + cmd.env() + " credential is missing " + e.providerType());
+      }
+      throw e;
+    }
+    Payer payer = validatePayer(cmd.payer());
+    LocalDate today = BoletoDates.today(clock);
+    LocalDate due = cmd.dueDate() == null ? today.plusDays(props.boletoDefaultDueInDays()) : cmd.dueDate();
+    if (due.isBefore(today)) throw new DomainException("INVALID_DUE_DATE", "due_date must be today or later (America/Sao_Paulo)");
+    int limitDays = cmd.paymentLimitDays() == null ? props.boletoDefaultPaymentLimitDays() : cmd.paymentLimitDays();
+    if (limitDays < 0 || limitDays > props.boletoMaxPaymentLimitDays()) {
+      throw new DomainException("INVALID_PAYMENT_LIMIT", "payment_limit_days must be between 0 and " + props.boletoMaxPaymentLimitDays());
+    }
+    LocalDate limit = due.plusDays(limitDays);
+
+    Payment payment =
+        tx.execute(s -> {
+          String nossoNumero = boletoNumbers.next(cmd.merchantId());
+          BoletoDetails details = new BoletoDetails(nossoNumero, null, null, null, due, limit, null);
+          Payment p = Payment.createBolecode(cmd.merchantId(), cmd.env(), PROVIDER, cmd.amount(), cmd.reference(), cmd.description(),
+              hashDocument(payer.document()), details, BoletoDates.endOfDay(limit), clock);
+          return payments.save(p, List.of(p.createdEvent()));
+        });
+    String nossoNumero = payment.boleto().nossoNumero();
+    BoletoIssueRequest request = new BoletoIssueRequest(nossoNumero, cmd.amount(), due, limit, payer, cmd.description());
+
+    IssuedBoleto issued;
+    try {
+      issued = providers.call(payment.id(), "issueBoleto", r, x -> boleto.issue(x.credentials(), request));
+    } catch (ProviderException e) {
+      boolean mayHaveLanded = e.code() == ProviderException.Code.TIMEOUT || e.code() == ProviderException.Code.UNAVAILABLE;
+      if (!mayHaveLanded) {
+        boolean declined = e.code() == ProviderException.Code.INVALID || e.code() == ProviderException.Code.DECLINED;
+        throw fail(payment.id(), declined ? "PROVIDER_DECLINED" : "PROVIDER_UNAVAILABLE", e, null);
+      }
+      String code = e.code() == ProviderException.Code.TIMEOUT ? "PROVIDER_TIMEOUT" : "PROVIDER_UNAVAILABLE";
+      Optional<BoletoStatus> existing;
+      try {
+        existing = providers.call(payment.id(), "findBoleto", r, x -> boleto.find(x.credentials(), nossoNumero));
+      } catch (ProviderException again) {
+        throw ProviderErrors.toDomain(code, again, log, "issueBoleto", payment.id());
+      }
+      if (existing.isEmpty()) {
+        log.warn("boleto {} for payment {} not at the bank after {}; left CREATED for the sweeper", nossoNumero, payment.id(), e.code());
+        throw ProviderErrors.toDomain(code, e, log, "issueBoleto", payment.id());
+      }
+      return adoptBolecodeFromStatus(payment.id(), r, existing.get(), EventSource.API);
+    }
+    return adoptPendingBolecode(payment.id(), issued, EventSource.API);
+  }
+
+  /** CREATED -> PENDING with both sides, the expire job (limit date's end of day + grace) and the poll job (+boletoPollEvery), plus the outbox row. */
+  Payment adoptPendingBolecode(String paymentId, IssuedBoleto issued, EventSource by) {
+    return tx.execute(s -> {
+      Payment p = payments.findById(paymentId).orElseThrow();
+      if (p.status() != PaymentStatus.CREATED) {
+        return p; // the sweeper and a slow create may race to adopt the same boleto; the loser must not fail
+      }
+      BoletoDetails details = p.boleto().withIssued(issued.idBoletoIndividual(), issued.linhaDigitavel(), issued.codigoBarras(), issued.paymentLimitDate());
+      PixDetails pix = new PixDetails(issued.pixTxid(), issued.pixCopiaECola(), null, null);
+      Payment saved = payments.save(p, List.of(p.markPendingBolecode(pix, details, BoletoDates.endOfDay(details.paymentLimitDate()), by)));
+      if (!jobs.enqueue(Job.expireAt(saved.id(), saved.expiresAt().plus(props.expirationGrace()), clock))) {
+        log.debug("expire job for payment {} was already queued", saved.id());
+      }
+      if (!jobs.enqueue(Job.pollBoleto(saved.id(), clock.instant().plus(props.boletoPollEvery()), clock))) {
+        log.debug("poll job for payment {} was already queued", saved.id());
+      }
+      events.emit(saved.merchantId(), "payment.pending", saved);
+      return saved;
+    });
+  }
+
+  /**
+   * The issue's answer was lost; the query has the boleto's identity but not the Pix side. The txid
+   * follows the bank's documented formula (BoletoProvider.pixTxidFor) and is confirmed with
+   * GET /cob/{txid}, which also yields the EMV; if the bank does not know that txid, the query's
+   * own qrcode_pix.emv is used and a divergence records that the formula did not match.
+   */
+  Payment adoptBolecodeFromStatus(String paymentId, ProviderGateway.Resolved r, BoletoStatus status, EventSource by) {
+    Payment p = payments.findById(paymentId).orElseThrow();
+    String nossoNumero = p.boleto().nossoNumero();
+    String txid = r.boleto().orElseThrow().pixTxidFor(r.credentials(), nossoNumero);
+    Optional<Charge> charge = providers.call(paymentId, "findCharge", r, x -> x.provider().findCharge(x.credentials(), txid));
+    String emv = charge.map(Charge::pixCopiaECola).orElse(status.pixCopiaECola());
+    Payment adopted = adoptPendingBolecode(paymentId,
+        new IssuedBoleto(status.idBoletoIndividual(), status.linhaDigitavel(), status.codigoBarras(), status.paymentLimitDate(), txid, emv, null), by);
+    if (charge.isEmpty()) {
+      tx.executeWithoutResult(s -> openDivergence(adopted, "PIX_TXID_UNCONFIRMED", "GET /cob/" + txid + " empty while adopting boleto " + nossoNumero + " from the query"));
+    }
+    return adopted;
   }
 
   /**

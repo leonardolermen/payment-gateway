@@ -5,8 +5,13 @@
 
 UPDATE payments.payments SET details = jsonb_build_object('pix', details) WHERE NOT (details ? 'pix');
 
+-- Unique per merchant, no longer global: the bank derives a Bolecode's BL txid from the account + nosso
+-- numero, and the nosso numero restarts at 1 for every merchant. Two merchants on the same account -- or on
+-- the shared sandbox, whose mock returns a canned txid for every issue (the Pix sandbox already does the
+-- same for cob) -- collide on a global index while being valid per merchant. Every lookup by txid already
+-- filters by merchant (PaymentRepository.findByMerchantAndTxid).
 DROP INDEX payments.uq_payments_provider_txid;
-CREATE UNIQUE INDEX uq_payments_provider_txid ON payments.payments (provider, (details->'pix'->>'txid'));
+CREATE UNIQUE INDEX uq_payments_provider_txid ON payments.payments (merchant_id, provider, (details->'pix'->>'txid'));
 
 DROP INDEX payments.idx_payments_e2eid;
 CREATE INDEX idx_payments_e2eid ON payments.payments ((details->'pix'->>'endToEndId'));
