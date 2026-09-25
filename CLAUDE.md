@@ -43,8 +43,19 @@ afrouxar o ArchUnit para o código passar é a resposta errada.
 ## Pastas
 
 Feature-first em todo módulo, como manda `~/.claude/CLAUDE.md`: pasta com nome de conceito, papel
-técnico só como sub-pasta folha. `gateway-payments` já é assim (`payment/`, `refund/`, `jobs/`,
-`outbox/`, cada um com seu `persistence/`), e `gateway-app` segue o mesmo formato:
+técnico só como sub-pasta folha. Vale nos quatro módulos de negócio:
+
+```
+gateway-merchants/.../merchants/
+  merchant/     Merchant, MerchantStatus, MerchantService  + persistence/
+  apikey/       ApiKey, ApiKeyEnvironment, ApiKeyService    + persistence/
+  credential/   Provider, ProviderCredential, ProviderCredentialService + persistence/
+  crypto/       Encrypted, EnvelopeCipher, MasterKey        (cifrar é um conceito, não um papel)
+  MerchantsConfiguration, MerchantsProperties               (nível do módulo)
+```
+
+`gateway-payments` segue o mesmo (`payment/`, `refund/`, `jobs/`, `outbox/`, `idempotency/`,
+`inbox/`, `reconciliation/`, `provider/`, cada um com seu `persistence/`), e `gateway-app` também:
 
 ```
 gateway-app/.../app/

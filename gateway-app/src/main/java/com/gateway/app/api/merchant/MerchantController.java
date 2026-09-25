@@ -1,8 +1,8 @@
 package com.gateway.app.api.merchant;
 
 import com.gateway.app.security.MerchantContext;
-import com.gateway.merchants.domain.ApiKeyEnvironment;
-import com.gateway.merchants.service.MerchantService;
+import com.gateway.merchants.apikey.ApiKeyEnvironment;
+import com.gateway.merchants.merchant.MerchantService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 

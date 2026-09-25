@@ -1,4 +1,4 @@
-package com.gateway.merchants.domain;
+package com.gateway.merchants.apikey;
 
 import static org.assertj.core.api.Assertions.*;
 import com.gateway.kernel.ids.MerchantId;

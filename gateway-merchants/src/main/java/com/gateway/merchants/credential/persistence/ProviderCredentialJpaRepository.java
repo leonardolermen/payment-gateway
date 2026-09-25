@@ -1,4 +1,4 @@
-package com.gateway.merchants.repository;
+package com.gateway.merchants.credential.persistence;
 
 import java.util.List;
 import java.util.Optional;

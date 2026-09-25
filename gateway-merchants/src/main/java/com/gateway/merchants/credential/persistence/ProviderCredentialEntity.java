@@ -1,4 +1,4 @@
-package com.gateway.merchants.repository;
+package com.gateway.merchants.credential.persistence;
 
 import jakarta.persistence.*;
 import java.time.Instant;

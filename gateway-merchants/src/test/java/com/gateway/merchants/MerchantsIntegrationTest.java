@@ -1,15 +1,18 @@
-package com.gateway.merchants.service;
+package com.gateway.merchants;
 
-import com.gateway.merchants.domain.ApiKey;
-import com.gateway.merchants.domain.ApiKeyEnvironment;
-import com.gateway.merchants.domain.Merchant;
-import com.gateway.merchants.domain.Provider;
+import com.gateway.merchants.apikey.ApiKeyService;
+import com.gateway.merchants.credential.ProviderCredentialService;
+import com.gateway.merchants.merchant.MerchantService;
+import com.gateway.merchants.apikey.ApiKey;
+import com.gateway.merchants.apikey.ApiKeyEnvironment;
+import com.gateway.merchants.merchant.Merchant;
+import com.gateway.merchants.credential.Provider;
 
 import static org.assertj.core.api.Assertions.*;
 
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.merchants.TestApp;
-import com.gateway.merchants.domain.*;
+import com.gateway.merchants.merchant.MerchantStatus;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;

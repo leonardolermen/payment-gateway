@@ -1,8 +1,8 @@
-package com.gateway.merchants.repository;
+package com.gateway.merchants.merchant.persistence;
 
 import com.gateway.kernel.ids.MerchantId;
-import com.gateway.merchants.domain.Merchant;
-import com.gateway.merchants.domain.MerchantStatus;
+import com.gateway.merchants.merchant.Merchant;
+import com.gateway.merchants.merchant.MerchantStatus;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Repository;

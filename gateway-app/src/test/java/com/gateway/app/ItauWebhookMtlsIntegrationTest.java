@@ -1,6 +1,6 @@
 package com.gateway.app;
 
-import com.gateway.merchants.domain.Merchant;
+import com.gateway.merchants.merchant.Merchant;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;

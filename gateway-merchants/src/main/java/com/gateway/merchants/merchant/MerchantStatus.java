@@ -1,3 +1,3 @@
-package com.gateway.merchants.domain;
+package com.gateway.merchants.merchant;
 
 public enum MerchantStatus { ACTIVE, SUSPENDED }

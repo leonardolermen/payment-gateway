@@ -1,8 +1,8 @@
 package com.gateway.app.inbound.pix;
 
 import com.gateway.kernel.errors.NotFoundException;
-import com.gateway.merchants.domain.Merchant;
-import com.gateway.merchants.service.MerchantService;
+import com.gateway.merchants.merchant.Merchant;
+import com.gateway.merchants.merchant.MerchantService;
 import org.springframework.stereotype.Component;
 
 /**

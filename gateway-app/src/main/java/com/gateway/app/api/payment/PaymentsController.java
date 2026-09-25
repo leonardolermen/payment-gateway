@@ -7,7 +7,7 @@ import com.gateway.app.api.payment.dto.PaymentResponse;
 import com.gateway.app.security.MerchantContext;
 import com.gateway.payments.payment.create.CreatePaymentCommand;
 import com.gateway.kernel.provider.ProviderEnvironment;
-import com.gateway.merchants.domain.ApiKeyEnvironment;
+import com.gateway.merchants.apikey.ApiKeyEnvironment;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentService;
 import java.util.List;

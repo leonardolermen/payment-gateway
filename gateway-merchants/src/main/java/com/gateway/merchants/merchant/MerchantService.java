@@ -1,9 +1,9 @@
-package com.gateway.merchants.service;
+package com.gateway.merchants.merchant;
 
 import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.kernel.ids.MerchantId;
-import com.gateway.merchants.domain.Merchant;
-import com.gateway.merchants.repository.MerchantRepository;
+import com.gateway.merchants.merchant.Merchant;
+import com.gateway.merchants.merchant.persistence.MerchantRepository;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.transaction.annotation.Transactional;

@@ -1,9 +1,9 @@
-package com.gateway.merchants.repository;
+package com.gateway.merchants.credential.persistence;
 
 import com.gateway.kernel.ids.MerchantId;
-import com.gateway.merchants.domain.ApiKeyEnvironment;
-import com.gateway.merchants.domain.Provider;
-import com.gateway.merchants.domain.ProviderCredential;
+import com.gateway.merchants.apikey.ApiKeyEnvironment;
+import com.gateway.merchants.credential.Provider;
+import com.gateway.merchants.credential.ProviderCredential;
 import java.util.List;
 import java.util.Optional;
 

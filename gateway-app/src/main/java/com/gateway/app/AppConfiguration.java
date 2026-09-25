@@ -11,11 +11,11 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 /**
  * Deviation from the brief, hit while wiring {@code @Import(MerchantsConfiguration.class)} in this
  * task rather than in Task 6 as the module's docstring anticipated: {@code MerchantsConfiguration}'s
- * own {@code @EntityScan}/{@code @EnableJpaRepositories}, scoped to {@code com.gateway.merchants.repository},
+ * own {@code @EntityScan}/{@code @EnableJpaRepositories}, scoped to the persistence package of each merchants concept,
  * makes Boot skip the package {@code AutoConfigurationPackages} would otherwise register for
  * webhook-delivery ({@code com.barrier.webhookdelivery.repository}) — context refresh failed with
  * {@code NoSuchBeanDefinitionException} for {@code DeliveryJpaRepository}. Scanning only that one
- * package here (not {@code com.gateway.merchants.repository} too — declaring it in both places
+ * package here (not merchants' own persistence packages too — declaring it in both places
  * threw {@code BeanDefinitionOverrideException} for {@code merchantJpaRepository}) fixes it, per the
  * docstring's "Task 6 note".
  */

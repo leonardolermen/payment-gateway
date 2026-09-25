@@ -65,12 +65,12 @@ public class ArchitectureTest {
    */
   @ArchTest
   static final ArchRule jpaOnlyInPersistence =
-      noClasses().that().resideOutsideOfPackages("..persistence..", "com.gateway.app..", "com.gateway.merchants.repository..")
+      noClasses().that().resideOutsideOfPackages("..persistence..", "com.gateway.app..")
           .should().dependOnClassesThat().resideInAPackage("jakarta.persistence..");
 
   @ArchTest
   static final ArchRule modelsHaveNoSpring =
-      noClasses().that().resideInAnyPackage("com.gateway.kernel..", "com.gateway.payments..", "com.gateway.merchants.domain..")
+      noClasses().that().resideInAnyPackage("com.gateway.kernel..", "com.gateway.payments..", "com.gateway.merchants..")
           .and().resideOutsideOfPackages("..persistence..", "..support..")
           .and().haveNameNotMatching(".*(Service|Runner|Gateway|Relay|Properties|Configuration|Events)$")
           .should().dependOnClassesThat().resideInAPackage("org.springframework..");

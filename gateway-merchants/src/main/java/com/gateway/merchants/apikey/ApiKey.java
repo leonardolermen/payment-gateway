@@ -1,4 +1,4 @@
-package com.gateway.merchants.domain;
+package com.gateway.merchants.apikey;
 
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.ids.Ulid;

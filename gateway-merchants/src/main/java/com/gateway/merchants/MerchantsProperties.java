@@ -1,4 +1,4 @@
-package com.gateway.merchants.service;
+package com.gateway.merchants;
 
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;

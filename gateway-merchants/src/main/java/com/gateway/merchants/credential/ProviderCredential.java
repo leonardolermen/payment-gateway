@@ -1,5 +1,6 @@
-package com.gateway.merchants.domain;
+package com.gateway.merchants.credential;
 
+import com.gateway.merchants.apikey.ApiKeyEnvironment;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.ids.Ulid;
 import com.gateway.merchants.crypto.Encrypted;

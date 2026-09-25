@@ -2,7 +2,7 @@ package com.gateway.app.inbound.pix;
 
 import com.gateway.app.inbound.mtls.WebhookMtlsProperties;
 import com.gateway.app.security.Problems;
-import com.gateway.merchants.domain.Merchant;
+import com.gateway.merchants.merchant.Merchant;
 import com.gateway.payments.inbox.WebhookInboxService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;

@@ -1,8 +1,8 @@
-package com.gateway.merchants.repository;
+package com.gateway.merchants.apikey.persistence;
 
 import com.gateway.kernel.ids.MerchantId;
-import com.gateway.merchants.domain.ApiKey;
-import com.gateway.merchants.domain.ApiKeyEnvironment;
+import com.gateway.merchants.apikey.ApiKey;
+import com.gateway.merchants.apikey.ApiKeyEnvironment;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Repository;

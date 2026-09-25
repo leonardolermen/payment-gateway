@@ -1,4 +1,4 @@
-package com.gateway.merchants.domain;
+package com.gateway.merchants.apikey;
 
 /** Key environment: {@code test} routes to the FakePixProvider — the gateway's own sandbox. */
 public enum ApiKeyEnvironment {

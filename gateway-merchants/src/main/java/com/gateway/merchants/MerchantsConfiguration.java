@@ -1,20 +1,18 @@
 package com.gateway.merchants;
 
-import com.gateway.merchants.repository.ApiKeyRepository;
-import com.gateway.merchants.repository.ApiKeyRepositoryImpl;
-import com.gateway.merchants.repository.MerchantRepository;
-import com.gateway.merchants.repository.MerchantRepositoryImpl;
-import com.gateway.merchants.repository.ProviderCredentialRepository;
-import com.gateway.merchants.repository.ProviderCredentialRepositoryImpl;
-import com.gateway.merchants.service.ApiKeyService;
-import com.gateway.merchants.service.MerchantService;
-import com.gateway.merchants.service.MerchantsProperties;
-import com.gateway.merchants.service.ProviderCredentialService;
+import com.gateway.merchants.apikey.persistence.ApiKeyRepository;
+import com.gateway.merchants.apikey.persistence.ApiKeyRepositoryImpl;
+import com.gateway.merchants.merchant.persistence.MerchantRepository;
+import com.gateway.merchants.merchant.persistence.MerchantRepositoryImpl;
+import com.gateway.merchants.credential.persistence.ProviderCredentialRepository;
+import com.gateway.merchants.credential.persistence.ProviderCredentialRepositoryImpl;
+import com.gateway.merchants.apikey.ApiKeyService;
+import com.gateway.merchants.merchant.MerchantService;
+import com.gateway.merchants.MerchantsProperties;
+import com.gateway.merchants.credential.ProviderCredentialService;
 
 import com.gateway.merchants.crypto.EnvelopeCipher;
 import com.gateway.merchants.crypto.MasterKey;
-import com.gateway.merchants.repository.*;
-import com.gateway.merchants.service.*;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -35,8 +33,10 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(MerchantsProperties.class)
-@EntityScan("com.gateway.merchants.repository")
-@EnableJpaRepositories("com.gateway.merchants.repository")
+@EntityScan({"com.gateway.merchants.merchant.persistence", "com.gateway.merchants.apikey.persistence",
+    "com.gateway.merchants.credential.persistence"})
+@EnableJpaRepositories({"com.gateway.merchants.merchant.persistence", "com.gateway.merchants.apikey.persistence",
+    "com.gateway.merchants.credential.persistence"})
 @Import({MerchantRepositoryImpl.class, ApiKeyRepositoryImpl.class, ProviderCredentialRepositoryImpl.class})
 public class MerchantsConfiguration {
   @Bean public MasterKey masterKey(MerchantsProperties p) { return MasterKey.fromBase64(p.masterKey()); }

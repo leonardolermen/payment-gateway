@@ -1,6 +1,6 @@
 package com.gateway.app.security;
 
-import com.gateway.merchants.service.ApiKeyService;
+import com.gateway.merchants.apikey.ApiKeyService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;

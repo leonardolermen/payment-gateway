@@ -1,11 +1,12 @@
-package com.gateway.merchants.service;
+package com.gateway.merchants.apikey;
 
+import com.gateway.merchants.MerchantsProperties;
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.ids.MerchantId;
-import com.gateway.merchants.domain.ApiKey;
-import com.gateway.merchants.domain.ApiKeyEnvironment;
-import com.gateway.merchants.repository.ApiKeyRepository;
-import com.gateway.merchants.repository.MerchantRepository;
+import com.gateway.merchants.apikey.ApiKey;
+import com.gateway.merchants.apikey.ApiKeyEnvironment;
+import com.gateway.merchants.apikey.persistence.ApiKeyRepository;
+import com.gateway.merchants.merchant.persistence.MerchantRepository;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;

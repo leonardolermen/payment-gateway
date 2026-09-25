@@ -1,7 +1,7 @@
 package com.gateway.app.security;
 
 import com.gateway.kernel.ids.MerchantId;
-import com.gateway.merchants.domain.ApiKeyEnvironment;
+import com.gateway.merchants.apikey.ApiKeyEnvironment;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
