@@ -1,4 +1,4 @@
-package com.gateway.app.api.dto;
+package com.gateway.app.api.webhook.dto;
 
 import com.barrier.webhookdelivery.domain.WebhookEndpoint;
 import java.time.Instant;

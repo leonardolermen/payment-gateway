@@ -1,4 +1,4 @@
-package com.gateway.app.api;
+package com.gateway.app.api.merchant;
 
 import com.gateway.app.security.MerchantContext;
 import com.gateway.merchants.domain.ApiKeyEnvironment;
@@ -7,16 +7,16 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-public class MeController {
+public class MerchantController {
   private final MerchantService merchants;
-  public MeController(MerchantService merchants) { this.merchants = merchants; }
+  public MerchantController(MerchantService merchants) { this.merchants = merchants; }
 
-  public record Me(String merchantId, String name, ApiKeyEnvironment environment) {}
+  public record Merchant(String merchantId, String name, ApiKeyEnvironment environment) {}
 
-  @GetMapping("/v1/me")
-  public Me me() {
+  @GetMapping("/v1/merchant")
+  public Merchant me() {
     var current = MerchantContext.current();
     var merchant = merchants.get(current.merchantId());
-    return new Me(current.merchantId().value(), merchant.name(), current.environment());
+    return new Merchant(current.merchantId().value(), merchant.name(), current.environment());
   }
 }

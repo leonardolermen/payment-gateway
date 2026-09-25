@@ -1,4 +1,4 @@
-package com.gateway.app.api.dto;
+package com.gateway.app.api.payment.dto;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
