@@ -6,7 +6,13 @@ package com.gateway.kernel.provider;
  * said without the gateway having to model every bank error.
  */
 public class ProviderException extends RuntimeException {
-  public enum Code { DECLINED, UNAVAILABLE, INVALID, TIMEOUT, NOT_FOUND, UNAUTHENTICATED, UNKNOWN }
+  /**
+   * CONFLICT: the bank refuses because the resource is already in the state the caller wants to
+   * leave (a baixa on a boleto it shows paid). CREDENTIALS_INCOMPLETE: the credential parses but
+   * lacks a field this operation needs; {@code providerType} names the field so the merchant's
+   * 422 can say which one.
+   */
+  public enum Code { DECLINED, UNAVAILABLE, INVALID, TIMEOUT, NOT_FOUND, UNAUTHENTICATED, CONFLICT, CREDENTIALS_INCOMPLETE, UNKNOWN }
   private final Code code;
   private final int httpStatus;
   private final String providerType;
