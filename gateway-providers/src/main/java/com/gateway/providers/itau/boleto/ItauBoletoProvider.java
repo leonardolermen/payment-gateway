@@ -4,7 +4,8 @@ import com.gateway.kernel.provider.ProviderCredentials;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.kernel.provider.boleto.BoletoIssueRequest;
-import com.gateway.kernel.provider.boleto.BoletoProvider;
+import com.gateway.kernel.payment.PaymentMethod;
+import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
 import com.gateway.kernel.provider.boleto.BoletoStatus;
 import com.gateway.kernel.provider.boleto.IssuedBoleto;
 import com.gateway.providers.itau.auth.ItauCredentials;
@@ -18,7 +19,7 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 
 /** The only class that knows the three boleto APIs and the gateway's vocabulary at the same time. */
-public class ItauBoletoProvider implements BoletoProvider {
+public class ItauBoletoProvider implements BoletoMethodProvider {
   private record Clients(BoletoPixApiClient issue, BoletoQueryClient query, BoletoInstructionClient instruction) {}
 
   private final Clients live, test;
@@ -36,6 +37,8 @@ public class ItauBoletoProvider implements BoletoProvider {
   }
 
   @Override public String id() { return "ITAU"; }
+
+  @Override public PaymentMethod method() { return PaymentMethod.BOLECODE; }
 
   private Clients clients(ProviderCredentials c) { return c.environment() == ProviderEnvironment.LIVE ? live : test; }
 

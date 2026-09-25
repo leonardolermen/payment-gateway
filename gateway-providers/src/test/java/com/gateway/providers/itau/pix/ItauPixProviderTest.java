@@ -21,6 +21,8 @@ import static com.gateway.providers.itau.pix.PixApiClientContractTest.fixture;
 import static org.assertj.core.api.Assertions.*;
 
 import com.gateway.kernel.money.Money;
+import com.gateway.kernel.payment.PaymentMethod;
+import com.gateway.kernel.provider.pix.PixIssueRequest;
 import com.gateway.kernel.provider.*;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
@@ -55,13 +57,34 @@ class ItauPixProviderTest {
 
   @Test void idIsItau() { assertThat(provider.id()).isEqualTo("ITAU"); }
 
+  /** The sandbox shape minus the key the charge is collected into. */
+  static final ProviderCredentials WITHOUT_PIX_KEY = new ProviderCredentials(
+      "{\"client_id\":\"sandbox-client\",\"client_secret\":\"sandbox-secret\"}".getBytes(StandardCharsets.UTF_8),
+      ProviderEnvironment.TEST);
+
+  @Test void methodIsPix() { assertThat(provider.method()).isEqualTo(PaymentMethod.PIX); }
+
+  @Test void requireIssueCredentialsRefusesACredentialWithoutAPixKey() {
+    assertThatThrownBy(() -> provider.requireIssueCredentials(WITHOUT_PIX_KEY))
+        .isInstanceOf(ProviderException.class)
+        .satisfies(thrown -> {
+          ProviderException failure = (ProviderException) thrown;
+          assertThat(failure.code()).isEqualTo(ProviderException.Code.CREDENTIALS_INCOMPLETE);
+          assertThat(failure.providerType()).isEqualTo("pix_key");
+        });
+  }
+
+  @Test void requireIssueCredentialsAcceptsACompleteCredential() {
+    assertThatCode(() -> provider.requireIssueCredentials(CREDS)).doesNotThrowAnyException();
+  }
+
   @Test void createCharge() {
     server.stubFor(put("/v2/cob/" + TXID)
         .withRequestBody(matchingJsonPath("$.chave", equalTo("60701190000104")))
         .withRequestBody(matchingJsonPath("$.valor.original", equalTo("567.89")))
         .willReturn(aResponse().withStatus(201).withHeader("Content-Type", "application/json").withBody(fixture("put_cob_201.json"))));
 
-    Charge c = provider.createCharge(CREDS, TXID, Money.brl(56789), 3600, null, null, null);
+    Charge c = provider.issue(CREDS, new PixIssueRequest(TXID, Money.brl(56789), 3600, null, null, null));
 
     assertThat(c.txid()).isEqualTo(TXID);
     assertThat(c.status()).isEqualTo(ChargeStatus.ACTIVE);
@@ -75,7 +98,7 @@ class ItauPixProviderTest {
 
   @Test void findChargeCompletedCarriesThePayment() {
     server.stubFor(get("/v2/cob/" + TXID).willReturn(okJson(fixture("get_cob_200_completed.json"))));
-    Charge c = provider.findCharge(CREDS, TXID).orElseThrow();
+    Charge c = provider.find(CREDS, TXID).orElseThrow();
     assertThat(c.status()).isEqualTo(ChargeStatus.COMPLETED);
     ReceivedPix p = c.firstPix().orElseThrow();
     assertThat(p.endToEndId()).isEqualTo(E2E);
@@ -85,13 +108,13 @@ class ItauPixProviderTest {
 
   @Test void findChargeMissingIsEmpty() {
     server.stubFor(get("/v2/cob/" + TXID).willReturn(aResponse().withStatus(404).withBody(fixture("error_404_cob_nao_encontrado.json"))));
-    assertThat(provider.findCharge(CREDS, TXID)).isEmpty();
+    assertThat(provider.find(CREDS, TXID)).isEmpty();
   }
 
   @Test void cancelCharge() {
     server.stubFor(patch(urlEqualTo("/v2/cob/" + TXID)).withRequestBody(equalToJson(fixture("patch_cob_cancel_request.json")))
         .willReturn(okJson(fixture("get_cob_200_active.json").replace("\"ATIVA\"", "\"REMOVIDA_PELO_USUARIO_RECEBEDOR\""))));
-    provider.cancelCharge(CREDS, TXID);
+    provider.cancel(CREDS, TXID);
     server.verify(patchRequestedFor(urlEqualTo("/v2/cob/" + TXID)));
   }
 
@@ -175,7 +198,7 @@ class ItauPixProviderTest {
 
   @Test void cobWithoutValorIsUnknown() {
     server.stubFor(get("/v2/cob/" + TXID).willReturn(okJson("{\"txid\":\"" + TXID + "\",\"status\":\"ATIVA\"}")));
-    assertThatThrownBy(() -> provider.findCharge(CREDS, TXID)).isInstanceOfSatisfying(ProviderException.class,
+    assertThatThrownBy(() -> provider.find(CREDS, TXID)).isInstanceOfSatisfying(ProviderException.class,
         e -> assertThat(e.code()).isEqualTo(ProviderException.Code.UNKNOWN));
   }
 

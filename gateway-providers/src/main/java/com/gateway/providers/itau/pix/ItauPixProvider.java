@@ -7,7 +7,9 @@ import com.gateway.kernel.provider.ProviderWebhookEvent;
 
 import com.gateway.kernel.provider.pix.Charge;
 import com.gateway.kernel.provider.pix.ChargeStatus;
-import com.gateway.kernel.provider.pix.PixProvider;
+import com.gateway.kernel.payment.PaymentMethod;
+import com.gateway.kernel.provider.pix.PixIssueRequest;
+import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.kernel.provider.pix.ReceivedPix;
 import com.gateway.kernel.provider.pix.RefundRequest;
 import com.gateway.kernel.provider.pix.RefundResult;
@@ -35,7 +37,7 @@ import java.util.*;
 import tools.jackson.databind.ObjectMapper;
 
 /** The only class that knows Itaú's vocabulary and the gateway's at the same time. */
-public class ItauPixProvider implements PixProvider {
+public class ItauPixProvider implements PixMethodProvider {
   private static final int PAGE_SIZE = 100;
   private final PixApiClient live, test;
   private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(ItauPixProvider.class);
@@ -62,18 +64,47 @@ public class ItauPixProvider implements PixProvider {
 
   @Override public String id() { return "ITAU"; }
 
+  @Override public PaymentMethod method() { return PaymentMethod.PIX; }
+
+  /**
+   * Pix needs the key the charge is collected into. Without this check a credential missing it only
+   * failed at the first HTTP call, surfacing as PROVIDER_DECLINED; here it is
+   * PROVIDER_CREDENTIALS_MISSING before any row exists, which is what a merchant can act on.
+   */
+  @Override
+  public void requireIssueCredentials(ProviderCredentials c) {
+    requirePixCredentials(c);
+  }
+
+  /**
+   * ItauCredentials' canonical constructor already names the missing field, but as an
+   * IllegalArgumentException, which would surface as a 500. Only this entry point translates it: the
+   * other operations keep failing the way they already did.
+   */
+  private static ItauCredentials requirePixCredentials(ProviderCredentials c) {
+    try {
+      return creds(c);
+    } catch (IllegalArgumentException e) {
+      String field = e.getMessage() == null ? null : e.getMessage().replace("missing required field: ", "");
+      throw new ProviderException(ProviderException.Code.CREDENTIALS_INCOMPLETE, 0, field, e.getMessage());
+    }
+  }
+
   private PixApiClient client(ProviderCredentials c) { return c.environment() == ProviderEnvironment.LIVE ? live : test; }
   private static ItauCredentials creds(ProviderCredentials c) { return ItauCredentials.parse(c.payload()); }
 
   @Override
-  public Charge createCharge(ProviderCredentials c, String txid, Money amount, int expiresInSeconds, String payerDocument, String payerName, String description) {
+  public Charge issue(ProviderCredentials c, PixIssueRequest request) {
     ItauCredentials ic = creds(c);
-    return toCharge(client(c).putCob(ic, txid, CobRequest.forCharge(amount, expiresInSeconds, ic.pixKey(), payerDocument, payerName, description)));
+    CobRequest cob = CobRequest.forCharge(
+        request.amount(), request.expiresInSeconds(), ic.pixKey(), request.payerDocument(), request.payerName(), request.description());
+
+    return toCharge(client(c).putCob(ic, request.txid(), cob));
   }
 
-  @Override public Optional<Charge> findCharge(ProviderCredentials c, String txid) { return client(c).getCob(creds(c), txid).map(ItauPixProvider::toCharge); }
+  @Override public Optional<Charge> find(ProviderCredentials c, String txid) { return client(c).getCob(creds(c), txid).map(ItauPixProvider::toCharge); }
 
-  @Override public void cancelCharge(ProviderCredentials c, String txid) {
+  @Override public void cancel(ProviderCredentials c, String txid) {
     client(c).patchCob(creds(c), txid, Map.of("status", "REMOVIDA_PELO_USUARIO_RECEBEDOR"));
   }
 

@@ -1,8 +1,8 @@
 package com.gateway.providers;
 
 import com.gateway.kernel.provider.ProviderEnvironment;
-import com.gateway.kernel.provider.boleto.BoletoProvider;
-import com.gateway.kernel.provider.pix.PixProvider;
+import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
+import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.providers.itau.auth.ItauEndpoints;
 import com.gateway.providers.itau.auth.ItauTokenClient;
 import com.gateway.providers.itau.boleto.ItauBoletoEndpoints;
@@ -80,13 +80,13 @@ public class ProvidersConfiguration {
    * set it to the PEM from the portal's {@code ca-cert.zip} when it is not.
    */
   @Bean
-  PixProvider itauPixProvider(ItauTokenClient tokens, Clock clock, ProvidersProperties props) {
+  PixMethodProvider itauPixProvider(ItauTokenClient tokens, Clock clock, ProvidersProperties props) {
     return new ItauPixProvider(tokens, trustStore(props), props.readTimeout(), clock, props.live(), props.test());
   }
 
   /** Same token client and trust store as Pix: one credential, one cache, one CA. */
   @Bean
-  BoletoProvider itauBoletoProvider(ItauTokenClient tokens, ProvidersProperties props) {
+  BoletoMethodProvider itauBoletoProvider(ItauTokenClient tokens, ProvidersProperties props) {
     return new ItauBoletoProvider(tokens, trustStore(props), props.readTimeout(), props.boletoLive(), props.boletoTest());
   }
 
