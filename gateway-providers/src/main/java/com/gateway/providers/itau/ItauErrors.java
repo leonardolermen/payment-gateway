@@ -21,24 +21,29 @@ public final class ItauErrors {
     Problem p = parse(body);
     String type = p == null ? null : p.type();
     String message;
+
     if (p != null && (p.title() != null || p.detail() != null)) {
       message = p.title() == null ? p.detail() : p.detail() == null ? p.title() : p.title() + ": " + p.detail();
     } else {
       message = "Itaú HTTP " + status + (body == null || body.isBlank() ? "" : ": " + truncate(body));
     }
+
     return new ProviderException(code(status, type), status, type, message);
   }
 
   public static Code code(int status, String type) {
     String t = type == null ? "" : type.substring(type.lastIndexOf('/') + 1);
+
     if (t.contains("NaoEncontrad")) return Code.NOT_FOUND;
     if (t.endsWith("OperacaoInvalida") || t.endsWith("ConsultaInvalida") || t.equals("PixDevolucaoInvalida")) return Code.INVALID;
     if (status == 400 || status == 422) return Code.INVALID;
     if (status == 401 || status == 403) return Code.UNAUTHENTICATED;
+
     // A 404 without a Pix "not found" type is not the Pix API talking (wrong base URL, proxy page):
     // UNKNOWN, so nobody concludes the charge does not exist.
     if (status == 410) return Code.NOT_FOUND;
     if (status >= 500) return Code.UNAVAILABLE;
+
     return Code.UNKNOWN;
   }
 
@@ -50,6 +55,7 @@ public final class ItauErrors {
 
   private static Problem parse(String body) {
     if (body == null || body.isBlank()) return null;
+
     try {
       return MAPPER.readValue(body, Problem.class);
     } catch (RuntimeException e) {

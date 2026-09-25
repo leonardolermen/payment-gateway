@@ -107,23 +107,30 @@ public class ItauPixProvider implements PixProvider {
       throw new IllegalArgumentException("unreadable Itaú webhook", e);
     }
     if (p == null || p.pix() == null) throw new IllegalArgumentException("Itaú webhook without pix[]");
+
     List<ReceivedPix> received = new ArrayList<>();
     List<RefundResult> refunds = new ArrayList<>();
     Map<String, String> txids = new HashMap<>();
     Map<String, String> refundE2e = new HashMap<>();
+
     for (PixItem it : p.pix()) {
+
       if (it == null || it.endToEndId() == null) {
         // endToEndId is the dedup key; an item without it cannot be recorded or matched.
         LOG.warn("Itaú webhook item without endToEndId skipped (txid={})", it == null ? null : it.txid());
         continue;
       }
+
       received.add(toReceived(it));
+
       if (it.txid() != null) txids.put(it.endToEndId(), it.txid());
+
       if (it.devolucoes() != null) {
         it.devolucoes().forEach(d -> {
           refunds.add(toRefund(d));
           if (d.id() != null) refundE2e.put(d.id(), it.endToEndId());
         });
+
       }
     }
     return new ProviderWebhookEvent(received, refunds, txids, refundE2e);
@@ -133,9 +140,11 @@ public class ItauPixProvider implements PixProvider {
     if (r.valor() == null || r.valor().original() == null) {
       throw new ProviderException(ProviderException.Code.UNKNOWN, 200, null, "Itaú cob without valor.original: " + r.txid());
     }
+
     List<ReceivedPix> pix = r.pix() == null ? List.of() : r.pix().stream().map(ItauPixProvider::toReceived).toList();
     Instant created = r.calendario() == null ? null : r.calendario().criacao();
     int exp = r.calendario() == null || r.calendario().expiracao() == null ? 0 : r.calendario().expiracao();
+
     return new Charge(r.txid(), toStatus(r.status()), PixAmounts.fromItau(r.valor().original()), r.pixCopiaECola(), r.location(), created, exp, pix);
   }
 
@@ -147,6 +156,7 @@ public class ItauPixProvider implements PixProvider {
       case "NAO_REALIZADO" -> RefundStatus.FAILED;
       default -> RefundStatus.PROCESSING;
     };
+
     Instant requested = d.horario() == null ? null : d.horario().solicitacao();
     Instant settled = d.horario() == null ? null : d.horario().liquidacao();
     // motivo is only a failure reason when the refund failed; on DEVOLVIDO the bank fills it with prose.

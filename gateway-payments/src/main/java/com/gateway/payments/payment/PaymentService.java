@@ -87,7 +87,6 @@ public class PaymentService {
     if (a.street() == null || a.street().isBlank()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.street is required");
     if (a.district() == null || a.district().isBlank()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.district is required");
     if (a.city() == null || a.city().isBlank()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.city is required");
-    // "sp" is a valid UF typed in lowercase, not a wrong one; the bank's enum is uppercase, so it is normalized, not refused.
     String state = a.state() == null ? null : a.state().trim().toUpperCase(java.util.Locale.ROOT);
     if (state == null || !UF.matcher(state).matches()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.state must be a two-letter UF");
     String zip = a.zip() == null ? "" : a.zip().replaceAll("\\D", "");
@@ -662,3 +661,5 @@ public class PaymentService {
     }
   }
 }
+
+

@@ -21,10 +21,12 @@ public record CobRequest(Calendario calendario, Devedor devedor, Valor valor, St
   /** {@code solicitacaoPagador} is capped at 140 chars by the schema; longer descriptions are cut, not rejected. */
   public static CobRequest forCharge(Money amount, int expiresInSeconds, String pixKey, String payerDocument, String payerName, String description) {
     Devedor devedor = null;
+
     if (payerDocument != null && payerName != null) {
       String digits = payerDocument.replaceAll("\\D", "");
       devedor = digits.length() == 14 ? new Devedor(null, digits, payerName) : new Devedor(digits, null, payerName);
     }
+
     return new CobRequest(new Calendario(expiresInSeconds), devedor, new Valor(PixAmounts.toItau(amount)), pixKey,
         description == null ? null : description.substring(0, Math.min(140, description.length())), null);
   }
