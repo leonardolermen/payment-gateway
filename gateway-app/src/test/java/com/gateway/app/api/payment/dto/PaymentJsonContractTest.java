@@ -7,7 +7,7 @@ import com.gateway.kernel.money.Money;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentEvents;
-import com.gateway.payments.payment.PaymentMethod;
+import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.payments.payment.PaymentStatus;
 import com.gateway.payments.payment.boleto.BoletoDetails;
 import com.gateway.payments.payment.boleto.PaidVia;

@@ -43,7 +43,7 @@ public interface PaymentRepository {
    * Same order and cap as {@link #findByStatusIn}, one method only: the boleto reconciliation pass
    * sharing the mixed query let a backlog of old PENDING Pix rows fill the cap and starve Bolecodes.
    */
-  List<Payment> findByMethodAndStatusIn(com.gateway.payments.payment.PaymentMethod method, Set<PaymentStatus> statuses, Instant createdAfter, int limit);
+  List<Payment> findByMethodAndStatusIn(com.gateway.kernel.payment.PaymentMethod method, Set<PaymentStatus> statuses, Instant createdAfter, int limit);
 
   List<PaymentEvent> events(String paymentId);
   /**

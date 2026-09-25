@@ -9,7 +9,7 @@ import com.gateway.payments.TestApp;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentEvent;
-import com.gateway.payments.payment.PaymentMethod;
+import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.payments.payment.PaymentStatus;
 import com.gateway.payments.payment.boleto.BoletoDetails;
 import com.gateway.payments.payment.pix.PixDetails;

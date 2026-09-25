@@ -1,6 +1,6 @@
 package com.gateway.payments.refund;
 
-import com.gateway.payments.payment.PaymentMethod;
+import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.payments.payment.boleto.PaidVia;
 import com.gateway.payments.payment.PaymentEvents;
 import com.gateway.payments.payment.PaymentService;

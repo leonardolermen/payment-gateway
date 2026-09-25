@@ -1,5 +1,6 @@
 package com.gateway.payments.payment;
 
+import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.payments.payment.pix.PixDetails;
 import com.gateway.payments.payment.boleto.*;
 

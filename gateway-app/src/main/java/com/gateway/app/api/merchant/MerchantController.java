@@ -17,6 +17,7 @@ public class MerchantController {
   public Merchant me() {
     var current = MerchantContext.current();
     var merchant = merchants.get(current.merchantId());
+
     return new Merchant(current.merchantId().value(), merchant.name(), current.environment());
   }
 }

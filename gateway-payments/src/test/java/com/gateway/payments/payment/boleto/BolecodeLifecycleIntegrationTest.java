@@ -226,8 +226,8 @@ class BolecodeLifecycleIntegrationTest extends ServiceIntegrationTestBase {
     Payment pix = newCharge(500);
     clock.advance(Duration.ofMinutes(1));
     Payment bolecode = newBolecode(12990);
-    var rows = payments.findByMethodAndStatusIn(com.gateway.payments.payment.PaymentMethod.BOLECODE, java.util.EnumSet.of(PaymentStatus.PENDING), clock.instant().minus(Duration.ofHours(1)), 1000);
-    assertThat(rows).extracting(Payment::method).containsOnly(com.gateway.payments.payment.PaymentMethod.BOLECODE);
+    var rows = payments.findByMethodAndStatusIn(com.gateway.kernel.payment.PaymentMethod.BOLECODE, java.util.EnumSet.of(PaymentStatus.PENDING), clock.instant().minus(Duration.ofHours(1)), 1000);
+    assertThat(rows).extracting(Payment::method).containsOnly(com.gateway.kernel.payment.PaymentMethod.BOLECODE);
     assertThat(rows).extracting(Payment::id).contains(bolecode.id()).doesNotContain(pix.id());
   }
 

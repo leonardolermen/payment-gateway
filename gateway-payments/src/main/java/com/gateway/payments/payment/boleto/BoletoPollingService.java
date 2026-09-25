@@ -8,7 +8,7 @@ import com.gateway.kernel.provider.pix.ReceivedPix;
 import com.gateway.payments.PaymentsProperties;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
-import com.gateway.payments.payment.PaymentMethod;
+import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.payments.payment.PaymentService;
 import com.gateway.payments.payment.PaymentStatus;
 import com.gateway.payments.payment.persistence.PaymentRepository;

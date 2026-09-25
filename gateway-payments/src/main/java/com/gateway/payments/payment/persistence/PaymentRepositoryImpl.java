@@ -7,7 +7,7 @@ import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentDetailsJson;
 import com.gateway.payments.payment.PaymentEvent;
-import com.gateway.payments.payment.PaymentMethod;
+import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.payments.payment.PaymentStatus;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -131,7 +131,7 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   }
 
   @Override
-  public List<Payment> findByMethodAndStatusIn(com.gateway.payments.payment.PaymentMethod method, Set<PaymentStatus> statuses, Instant createdAfter, int limit) {
+  public List<Payment> findByMethodAndStatusIn(com.gateway.kernel.payment.PaymentMethod method, Set<PaymentStatus> statuses, Instant createdAfter, int limit) {
     Set<String> names = statuses.stream().map(Enum::name).collect(Collectors.toSet());
     return jpa.findByMethodAndStatusInAndCreatedAtAfter(method.name(), names, createdAfter, Limit.of(limit)).stream().map(PaymentRepositoryImpl::toDomain).toList();
   }

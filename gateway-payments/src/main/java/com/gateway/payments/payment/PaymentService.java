@@ -1,5 +1,6 @@
 package com.gateway.payments.payment;
 
+import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.payments.PaymentsProperties;
 import com.gateway.payments.provider.ProviderErrors;
 import com.gateway.payments.provider.ProviderGateway;

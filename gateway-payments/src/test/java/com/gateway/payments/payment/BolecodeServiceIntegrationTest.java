@@ -1,5 +1,6 @@
 package com.gateway.payments.payment;
 
+import com.gateway.kernel.payment.PaymentMethod;
 import static org.assertj.core.api.Assertions.*;
 
 import com.gateway.kernel.errors.DomainException;
