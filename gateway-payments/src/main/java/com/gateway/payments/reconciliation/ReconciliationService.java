@@ -11,6 +11,8 @@ import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.provider.pix.ReceivedPix;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
+import com.gateway.payments.payment.PaymentMethod;
+import com.gateway.payments.payment.boleto.BoletoPollingService;
 import com.gateway.payments.payment.PaymentStatus;
 import com.gateway.payments.payment.persistence.PaymentRepository;
 import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceRepository;
@@ -42,6 +44,7 @@ public class ReconciliationService {
   private final ReconciliationDivergenceRepository divergences;
   private final ProviderGateway providers;
   private final PaymentService paymentService;
+  private final BoletoPollingService boletoPolling;
   private final PaymentsProperties props;
   private final Clock clock;
 
@@ -50,12 +53,14 @@ public class ReconciliationService {
       ReconciliationDivergenceRepository divergences,
       ProviderGateway providers,
       PaymentService paymentService,
+      BoletoPollingService boletoPolling,
       PaymentsProperties props,
       Clock clock) {
     this.payments = payments;
     this.divergences = divergences;
     this.providers = providers;
     this.paymentService = paymentService;
+    this.boletoPolling = boletoPolling;
     this.props = props;
     this.clock = clock;
   }
@@ -71,6 +76,23 @@ public class ReconciliationService {
   public int reconcileAll(Instant now) {
     Instant from = now.minus(props.reconciliationLookback());
     Instant youngCutoff = now.minus(props.reconciliationMinAge());
+    int changed = 0;
+    // Bolecode, barcode side: there is no listing API for boletos, so each PENDING one older than
+    // minAge is checked one by one — the same decision table as the poll (BoletoPollingService).
+    for (Payment p : payments.findByStatusIn(EnumSet.of(PaymentStatus.PENDING), from, CANDIDATES)) {
+      if (p.method() != PaymentMethod.BOLECODE || p.createdAt().isAfter(youngCutoff)) {
+        continue;
+      }
+      try {
+        PaymentStatus before = p.status();
+        boletoPolling.check(p.id(), EventSource.RECONCILIATION);
+        if (payments.findById(p.id()).map(x -> x.status() != before).orElse(false)) {
+          changed++;
+        }
+      } catch (RuntimeException e) {
+        log.warn("boleto reconciliation failed for payment {}", p.id(), e);
+      }
+    }
     Map<Scope, Instant> scopes = new LinkedHashMap<>();
     for (Payment p : payments.findByStatusIn(EnumSet.of(PaymentStatus.PENDING, PaymentStatus.EXPIRED, PaymentStatus.COMPLETED, PaymentStatus.FAILED, PaymentStatus.CANCELED), from, CANDIDATES)) {
       if (p.status() == PaymentStatus.PENDING && p.createdAt().isAfter(youngCutoff)) {
@@ -78,7 +100,6 @@ public class ReconciliationService {
       }
       scopes.merge(new Scope(p.merchantId(), p.environment()), p.createdAt(), (a, b) -> a.isBefore(b) ? a : b);
     }
-    int changed = 0;
     for (Map.Entry<Scope, Instant> s : scopes.entrySet()) {
       try {
         changed += reconcile(s.getKey().merchantId(), s.getKey().env(), s.getValue(), now);
@@ -96,7 +117,7 @@ public class ReconciliationService {
     List<Charge> charges = providers.call(null, "listCharges", r, x -> x.provider().listCharges(x.credentials(), from, to));
     int changed = 0;
     for (Charge charge : charges) {
-      Optional<Payment> found = payments.findByMerchantAndId(merchantId, charge.txid());
+      Optional<Payment> found = payments.findByMerchantAndTxid(merchantId, PaymentService.PROVIDER, charge.txid());
       if (found.isEmpty()) {
         continue; // not ours, or another merchant's with the same bank account
       }

@@ -130,8 +130,8 @@ public class PaymentsConfiguration {
   @Bean
   ReconciliationService reconciliationService(
       PaymentRepository payments, ReconciliationDivergenceRepository divergences, ProviderGateway providers, PaymentService paymentService,
-      PaymentsProperties props, Clock clock) {
-    return new ReconciliationService(payments, divergences, providers, paymentService, props, clock);
+      BoletoPollingService boletoPolling, PaymentsProperties props, Clock clock) {
+    return new ReconciliationService(payments, divergences, providers, paymentService, boletoPolling, props, clock);
   }
 
   @Bean

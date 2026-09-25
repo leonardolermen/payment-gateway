@@ -363,15 +363,19 @@ public class PaymentService {
       throw new DomainException("INVALID_STATE", "only a pending payment can be canceled, this one is " + current.status());
     }
     ProviderGateway.Resolved r = providers.resolve(merchantId, current.environment(), current.provider());
-    try {
-      providers.run(id, "cancelCharge", r, x -> x.provider().cancelCharge(x.credentials(), id));
-    } catch (ProviderException e) {
-      // The bank refuses to remove a charge that is no longer ATIVA — most likely it was just paid
-      // and the webhook is on its way. Cancelling here would contradict the bank.
-      if (e.code() == ProviderException.Code.INVALID) {
-        throw new DomainException("INVALID_STATE", "the bank no longer accepts cancelling this charge");
+    if (current.method() == PaymentMethod.BOLECODE) {
+      cancelBoletoAtBank(current, r);
+    } else {
+      try {
+        providers.run(id, "cancelCharge", r, x -> x.provider().cancelCharge(x.credentials(), id));
+      } catch (ProviderException e) {
+        // The bank refuses to remove a charge that is no longer ATIVA — most likely it was just paid
+        // and the webhook is on its way. Cancelling here would contradict the bank.
+        if (e.code() == ProviderException.Code.INVALID) {
+          throw new DomainException("INVALID_STATE", "the bank no longer accepts cancelling this charge");
+        }
+        throw ProviderErrors.toDomain("PROVIDER_UNAVAILABLE", e, log, "cancelCharge", id);
       }
-      throw ProviderErrors.toDomain("PROVIDER_UNAVAILABLE", e, log, "cancelCharge", id);
     }
     return tx.execute(s -> {
       Payment p = payments.findByMerchantAndId(merchantId, id).orElseThrow();
@@ -382,6 +386,42 @@ public class PaymentService {
       events.emit(saved.merchantId(), "payment.canceled", saved);
       return saved;
     });
+  }
+
+  /**
+   * The bank first (spec §7): a barcode payment is only visible through the query, and a baixa on
+   * a paid boleto would contradict money that already arrived. Paid → the payment completes here
+   * and the caller gets ALREADY_PAID (a 409 at the edge). Open → baixa; the bank's CONFLICT means
+   * it was paid between the two calls, so the query is asked once more and decides. The QR dies
+   * with the boleto (product docs); if it does not, expiration covers it.
+   */
+  private void cancelBoletoAtBank(Payment p, ProviderGateway.Resolved r) {
+    BoletoProvider boleto = r.boleto().orElseThrow(() -> new DomainException("METHOD_NOT_SUPPORTED", PROVIDER + " has no boleto product"));
+    String nn = p.boleto().nossoNumero();
+    Optional<BoletoStatus> before = providers.call(p.id(), "findBoleto", r, x -> boleto.find(x.credentials(), nn));
+    if (before.isPresent() && before.get().paid()) {
+      throw alreadyPaid(p, before.get());
+    }
+    try {
+      providers.run(p.id(), "cancelBoleto", r, x -> boleto.cancel(x.credentials(), nn));
+    } catch (ProviderException e) {
+      if (e.code() == ProviderException.Code.CONFLICT) {
+        Optional<BoletoStatus> after = providers.call(p.id(), "findBoleto", r, x -> boleto.find(x.credentials(), nn));
+        if (after.isPresent() && after.get().paid()) {
+          throw alreadyPaid(p, after.get());
+        }
+        throw new DomainException("INVALID_STATE", "the bank no longer accepts cancelling this boleto");
+      }
+      if (e.code() == ProviderException.Code.NOT_FOUND) {
+        return; // nothing to invalidate at the bank; the gateway side is still canceled below
+      }
+      throw ProviderErrors.toDomain("PROVIDER_UNAVAILABLE", e, log, "cancelBoleto", p.id());
+    }
+  }
+
+  private DomainException alreadyPaid(Payment p, BoletoStatus status) {
+    settleBoleto(p.merchantId(), p.id(), status, EventSource.RECONCILIATION);
+    return new DomainException("ALREADY_PAID", "the bank shows this boleto paid; the payment is now COMPLETED");
   }
 
   public enum Settlement {
@@ -450,33 +490,30 @@ public class PaymentService {
    * <p>Not confirmed: an "ignored" event and an {@code UNCONFIRMED_WEBHOOK} divergence, nothing to
    * the merchant. The bank unreachable: the exception propagates and the inbox job retries.
    */
-  public Settlement settleFromWebhook(MerchantId merchantId, String paymentId, ReceivedPix hinted) {
-    Optional<Payment> found = payments.findByMerchantAndId(merchantId, paymentId);
+  public Settlement settleFromWebhook(MerchantId merchantId, String txid, ReceivedPix hinted) {
+    // By txid, not by id: a Bolecode's txid is the bank's BL..., and the webhook only knows the txid.
+    Optional<Payment> found = payments.findByMerchantAndTxid(merchantId, PROVIDER, txid);
     if (found.isEmpty()) {
       return Settlement.UNKNOWN_PAYMENT;
     }
     Payment p = found.get();
     if (p.status() == PaymentStatus.CREATED) {
-      // Same as settle: the PENDING write has not landed yet; fail and let the job retry.
-      throw new IllegalStateException("pix for payment " + paymentId + " still in " + p.status());
+      throw new IllegalStateException("pix for payment " + p.id() + " still in " + p.status());
     }
     ProviderGateway.Resolved r = providers.resolve(merchantId, p.environment(), p.provider());
-    Optional<Charge> atBank = providers.call(p.id(), "findCharge", r, x -> x.provider().findCharge(x.credentials(), p.id()));
+    Optional<Charge> atBank = providers.call(p.id(), "findCharge", r, x -> x.provider().findCharge(x.credentials(), p.pix().txid()));
     Optional<ReceivedPix> confirmed =
         atBank
             .filter(c -> c.status() == ChargeStatus.COMPLETED && c.received() != null)
             .flatMap(c -> c.received().stream().filter(x -> Objects.equals(x.endToEndId(), hinted.endToEndId())).findFirst());
     if (confirmed.isPresent()) {
-      return settle(merchantId, paymentId, confirmed.get(), EventSource.PROVIDER_WEBHOOK);
+      return settle(merchantId, p.id(), confirmed.get(), EventSource.PROVIDER_WEBHOOK);
     }
     String bankSays = atBank.map(c -> c.status().name()).orElse("NOT_FOUND");
     tx.executeWithoutResult(s -> {
-      Payment loaded = payments.findById(paymentId).orElseThrow();
+      Payment loaded = payments.findById(p.id()).orElseThrow();
       payments.save(loaded, List.of(loaded.recordIgnored("unconfirmed webhook: e2eid " + hinted.endToEndId() + ", bank says " + bankSays, EventSource.PROVIDER_WEBHOOK).orElseThrow()));
-      openDivergence(
-          loaded,
-          "UNCONFIRMED_WEBHOOK",
-          "webhook said e2eid " + hinted.endToEndId() + " paid " + hinted.amount().cents() + " cents; bank says " + bankSays);
+      openDivergence(loaded, "UNCONFIRMED_WEBHOOK", "webhook said e2eid " + hinted.endToEndId() + " paid " + hinted.amount().cents() + " cents; bank says " + bankSays);
     });
     return Settlement.IGNORED;
   }

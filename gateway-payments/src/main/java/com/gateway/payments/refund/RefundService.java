@@ -1,5 +1,7 @@
 package com.gateway.payments.refund;
 
+import com.gateway.payments.payment.PaymentMethod;
+import com.gateway.payments.payment.boleto.PaidVia;
 import com.gateway.payments.payment.PaymentEvents;
 import com.gateway.payments.payment.PaymentService;
 import com.gateway.payments.provider.ProviderErrors;
@@ -87,6 +89,11 @@ public class RefundService {
           Payment locked = payments.findByIdForUpdate(paymentId).orElseThrow();
           if (locked.status() != PaymentStatus.COMPLETED) {
             throw new DomainException("INVALID_STATE", "only a completed payment can be refunded, this one is " + locked.status());
+          }
+          if (locked.method() == PaymentMethod.BOLECODE && locked.boleto() != null && locked.boleto().paidVia() == PaidVia.BOLETO) {
+            // The bank has no devolução for a boleto settlement (spec §8); faking one with a transfer
+            // would be money leaving by a path the gateway does not control.
+            throw new DomainException("REFUND_NOT_SUPPORTED", "a payment settled by boleto cannot be refunded through the bank");
           }
           if (locked.paidAt() != null && clock.instant().isAfter(locked.paidAt().plus(WINDOW))) {
             throw new DomainException("REFUND_WINDOW_CLOSED", "the bank accepts refunds up to 90 days after payment");

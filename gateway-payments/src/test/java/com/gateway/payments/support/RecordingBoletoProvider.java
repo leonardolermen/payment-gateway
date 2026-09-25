@@ -82,6 +82,13 @@ public class RecordingBoletoProvider implements BoletoProvider {
     boletos.put(k, new BoletoStatus(BoletoSituation.PAID, amount, at, channel, s.idBoletoIndividual(), s.linhaDigitavel(), s.codigoBarras(), s.paymentLimitDate(), s.pixCopiaECola()));
   }
 
+  private final Map<String, Runnable> afterNextFind = new ConcurrentHashMap<>();
+
+  /** The payer pays between the cancel's pre-check and the baixa: the next find answers OPEN, then the boleto is paid. */
+  public void markPaidAfterNextFind(String nossoNumero, Money amount, Instant at) {
+    afterNextFind.put(nossoNumero, () -> markPaid(nossoNumero, amount, at));
+  }
+
   public void setSituation(String nossoNumero, BoletoSituation situation) {
     String k = key(nossoNumero);
     BoletoStatus s = boletos.get(k);
@@ -152,7 +159,10 @@ public class RecordingBoletoProvider implements BoletoProvider {
     ProviderException fail = failFind.remove(beneficiary(c) + ":" + nossoNumero);
     if (fail == null) fail = failFind.remove(nossoNumero);
     if (fail != null) throw fail;
-    return Optional.ofNullable(boletos.get(beneficiary(c) + ":" + nossoNumero));
+    Optional<BoletoStatus> answer = Optional.ofNullable(boletos.get(beneficiary(c) + ":" + nossoNumero));
+    Runnable then = afterNextFind.remove(nossoNumero);
+    if (then != null) then.run();
+    return answer;
   }
 
   @Override public void cancel(ProviderCredentials c, String nossoNumero) {
