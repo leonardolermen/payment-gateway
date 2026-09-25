@@ -3,7 +3,7 @@ package com.gateway.app;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.barrier.webhookdelivery.client.HmacSigner;
-import com.gateway.app.webhooks.MerchantEvents;
+import com.gateway.app.outbound.MerchantEvents;
 import com.gateway.kernel.ids.MerchantId;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
@@ -48,6 +48,7 @@ class WebhooksIntegrationTest {
   record Received(String body, Map<String, String> headers) {}
 
   static final List<Received> received = new CopyOnWriteArrayList<>();
+  static final List<Received> rawReceived = new CopyOnWriteArrayList<>();
   static HttpServer sink;
 
   @BeforeAll
@@ -59,6 +60,15 @@ class WebhooksIntegrationTest {
           Map<String, String> h = new ConcurrentHashMap<>();
           ex.getRequestHeaders().forEach((k, v) -> h.put(k.toLowerCase(), v.getFirst()));
           received.add(new Received(new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8), h));
+          ex.sendResponseHeaders(200, -1);
+          ex.close();
+        });
+    sink.createContext(
+        "/hook-raw",
+        ex -> {
+          Map<String, String> h = new ConcurrentHashMap<>();
+          ex.getRequestHeaders().forEach((k, v) -> h.put(k.toLowerCase(), v.getFirst()));
+          rawReceived.add(new Received(new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8), h));
           ex.sendResponseHeaders(200, -1);
           ex.close();
         });
@@ -113,6 +123,22 @@ class WebhooksIntegrationTest {
     long t = Long.parseLong(signature.substring(2, signature.indexOf(',')));
     assertThat(signature).isEqualTo(signer.sign(r.body(), secret, Instant.ofEpochSecond(t)));
     assertThat(r.body()).contains("\"status\":\"COMPLETED\"");
+  }
+
+  @Test
+  void emitRawCarriesTheCallersEventIdToTheMerchant() {
+    String[] mk = merchantAndKey("Store E");
+    String hookUrl = "http://localhost:" + sink.getAddress().getPort() + "/hook-raw";
+    http().post().uri("/v1/webhooks/endpoints")
+        .header("Authorization", "Bearer " + mk[1]).contentType(MediaType.APPLICATION_JSON)
+        .body(Map.of("url", hookUrl, "events", List.of("payment.*"))).exchange().expectStatus().isCreated();
+
+    java.util.UUID eventId = java.util.UUID.nameUUIDFromBytes("outbox-row-1".getBytes(StandardCharsets.UTF_8));
+    events.emitRaw(new MerchantId(mk[0]), "payment.pending", "pay_2", "pay_2", "{\"id\":\"pay_2\"}", eventId);
+
+    Awaitility.await().atMost(Duration.ofSeconds(10)).until(() -> rawReceived.size() == 1);
+    assertThat(rawReceived.getFirst().headers()).containsEntry("x-gateway-event-id", eventId.toString());
+    assertThat(rawReceived.getFirst().body()).isEqualTo("{\"id\":\"pay_2\"}");
   }
 
   @Test

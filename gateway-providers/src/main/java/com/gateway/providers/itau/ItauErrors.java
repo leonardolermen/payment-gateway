@@ -2,7 +2,7 @@ package com.gateway.providers.itau;
 
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.kernel.provider.ProviderException.Code;
-import com.gateway.providers.itau.dto.Problem;
+import com.gateway.providers.itau.pix.dto.Problem;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -11,13 +11,13 @@ import tools.jackson.databind.ObjectMapper;
  * CobOperacaoInvalida} are different business facts); the status is the fallback for bodies that
  * are not Problems (401s from the gateway layer arrive empty).
  */
-final class ItauErrors {
+public final class ItauErrors {
   private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final int MAX_RAW = 300;
 
   private ItauErrors() {}
 
-  static ProviderException from(int status, String body) {
+  public static ProviderException from(int status, String body) {
     Problem p = parse(body);
     String type = p == null ? null : p.type();
     String message;
@@ -29,7 +29,7 @@ final class ItauErrors {
     return new ProviderException(code(status, type), status, type, message);
   }
 
-  static Code code(int status, String type) {
+  public static Code code(int status, String type) {
     String t = type == null ? "" : type.substring(type.lastIndexOf('/') + 1);
     if (t.contains("NaoEncontrad")) return Code.NOT_FOUND;
     if (t.endsWith("OperacaoInvalida") || t.endsWith("ConsultaInvalida") || t.equals("PixDevolucaoInvalida")) return Code.INVALID;
@@ -43,7 +43,7 @@ final class ItauErrors {
   }
 
   /** True only for the Pix API's own not-found: an RFC 7807 {@code type} naming {@code NaoEncontrad*}. */
-  static boolean isPixNotFound(String body) {
+  public static boolean isPixNotFound(String body) {
     Problem p = parse(body);
     return p != null && p.type() != null && p.type().contains("NaoEncontrad");
   }

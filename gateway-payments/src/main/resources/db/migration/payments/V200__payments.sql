@@ -1,7 +1,10 @@
 -- payments module (spec §9). Money is BIGINT cents; the state machine lives in code, the columns only store it.
 -- txid is the payment id (ULID): it is what lets a retry after a timeout ask the bank "does this charge exist?".
 
-CREATE TABLE payments (
+-- Every name is schema-qualified: Flyway runs migrations with search_path = the FIRST of
+-- spring.flyway.schemas, which is "merchants" in the app, so unqualified tables landed there.
+
+CREATE TABLE payments.payments (
     id                     CHAR(26)     PRIMARY KEY,
     merchant_id            CHAR(26)     NOT NULL,
     environment            VARCHAR(10)  NOT NULL,           -- LIVE | TEST, always from the API key
@@ -22,15 +25,15 @@ CREATE TABLE payments (
     created_at             TIMESTAMPTZ  NOT NULL,
     updated_at             TIMESTAMPTZ  NOT NULL
 );
-CREATE INDEX idx_payments_merchant_created ON payments (merchant_id, created_at DESC);
-CREATE INDEX idx_payments_status_expires ON payments (status, expires_at);
-CREATE UNIQUE INDEX uq_payments_provider_txid ON payments (provider, (details->>'txid'));
-CREATE INDEX idx_payments_e2eid ON payments ((details->>'endToEndId'));
+CREATE INDEX idx_payments_merchant_created ON payments.payments (merchant_id, created_at DESC);
+CREATE INDEX idx_payments_status_expires ON payments.payments (status, expires_at);
+CREATE UNIQUE INDEX uq_payments_provider_txid ON payments.payments (provider, (details->>'txid'));
+CREATE INDEX idx_payments_e2eid ON payments.payments ((details->>'endToEndId'));
 
 -- The log that rebuilds a payment. sequence is per payment and is the version.
-CREATE TABLE payment_events (
+CREATE TABLE payments.payment_events (
     id         CHAR(26)    PRIMARY KEY,
-    payment_id CHAR(26)    NOT NULL REFERENCES payments (id),
+    payment_id CHAR(26)    NOT NULL REFERENCES payments.payments (id),
     sequence   BIGINT      NOT NULL,
     type       VARCHAR(30) NOT NULL,
     source     VARCHAR(20) NOT NULL,
@@ -39,9 +42,9 @@ CREATE TABLE payment_events (
     CONSTRAINT uq_payment_events_sequence UNIQUE (payment_id, sequence)
 );
 
-CREATE TABLE refunds (
+CREATE TABLE payments.refunds (
     id                 CHAR(26)     PRIMARY KEY,                 -- also the {id} at the bank
-    payment_id         CHAR(26)     NOT NULL REFERENCES payments (id),
+    payment_id         CHAR(26)     NOT NULL REFERENCES payments.payments (id),
     merchant_id        CHAR(26)     NOT NULL,
     amount             BIGINT       NOT NULL,
     state              VARCHAR(20)  NOT NULL,
@@ -51,11 +54,11 @@ CREATE TABLE refunds (
     settled_at         TIMESTAMPTZ,
     updated_at         TIMESTAMPTZ  NOT NULL
 );
-CREATE INDEX idx_refunds_payment ON refunds (payment_id);
-CREATE INDEX idx_refunds_state ON refunds (state);
+CREATE INDEX idx_refunds_payment ON payments.refunds (payment_id);
+CREATE INDEX idx_refunds_state ON payments.refunds (state);
 
 -- Written BEFORE any external call (spec §3.2): the row is the lock.
-CREATE TABLE idempotency_keys (
+CREATE TABLE payments.idempotency_keys (
     merchant_id   CHAR(26)     NOT NULL,
     key           VARCHAR(128) NOT NULL,
     request_hash  CHAR(64)     NOT NULL,
@@ -66,10 +69,10 @@ CREATE TABLE idempotency_keys (
     created_at    TIMESTAMPTZ  NOT NULL,
     PRIMARY KEY (merchant_id, key)
 );
-CREATE INDEX idx_idempotency_created ON idempotency_keys (created_at);
+CREATE INDEX idx_idempotency_created ON payments.idempotency_keys (created_at);
 
 -- Transactional outbox: written in the same transaction as the payment change; the relay in app delivers.
-CREATE TABLE outbox (
+CREATE TABLE payments.outbox (
     id            CHAR(26)     PRIMARY KEY,
     merchant_id   CHAR(26)     NOT NULL,
     aggregate_id  CHAR(26)     NOT NULL,
@@ -80,10 +83,10 @@ CREATE TABLE outbox (
     claimed_at    TIMESTAMPTZ,
     created_at    TIMESTAMPTZ  NOT NULL
 );
-CREATE INDEX idx_outbox_pending ON outbox (status, created_at) WHERE status = 'PENDING';
+CREATE INDEX idx_outbox_pending ON payments.outbox (status, created_at) WHERE status = 'PENDING';
 
 -- Postgres as the job queue (spec §2): lease + SKIP LOCKED, the same shape as webhook-delivery's claim.
-CREATE TABLE jobs (
+CREATE TABLE payments.jobs (
     id          CHAR(26)    PRIMARY KEY,
     type        VARCHAR(30) NOT NULL,
     ref_id      VARCHAR(64) NOT NULL,
@@ -95,10 +98,10 @@ CREATE TABLE jobs (
     created_at  TIMESTAMPTZ NOT NULL,
     CONSTRAINT uq_jobs_type_ref UNIQUE (type, ref_id)
 );
-CREATE INDEX idx_jobs_due ON jobs (status, next_run_at, claimed_at) WHERE status = 'PENDING';
+CREATE INDEX idx_jobs_due ON payments.jobs (status, next_run_at, claimed_at) WHERE status = 'PENDING';
 
 -- Raw provider webhooks, stored before anything else (the bank gives us 5 s).
-CREATE TABLE webhook_inbox (
+CREATE TABLE payments.webhook_inbox (
     id          CHAR(26)    PRIMARY KEY,
     provider    VARCHAR(20) NOT NULL,
     merchant_id CHAR(26)    NOT NULL,
@@ -110,7 +113,7 @@ CREATE TABLE webhook_inbox (
 );
 
 -- Every call to a bank, for support and for the metrics per provider.
-CREATE TABLE provider_requests (
+CREATE TABLE payments.provider_requests (
     id         CHAR(26)    PRIMARY KEY,
     payment_id CHAR(26),
     provider   VARCHAR(20) NOT NULL,
@@ -121,9 +124,9 @@ CREATE TABLE provider_requests (
     latency_ms BIGINT      NOT NULL,
     created_at TIMESTAMPTZ NOT NULL
 );
-CREATE INDEX idx_provider_requests_payment ON provider_requests (payment_id);
+CREATE INDEX idx_provider_requests_payment ON payments.provider_requests (payment_id);
 
-CREATE TABLE reconciliation_divergences (
+CREATE TABLE payments.reconciliation_divergences (
     id              CHAR(26)    PRIMARY KEY,
     payment_id      CHAR(26)    NOT NULL,
     gateway_status  VARCHAR(20) NOT NULL,

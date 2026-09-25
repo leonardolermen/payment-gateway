@@ -35,6 +35,64 @@ gateway:
   api-key-pepper: ${GATEWAY_API_KEY_PEPPER:}
   rate-limit:
     requests-per-minute: 600
+  webhooks:
+    mtls:
+      port: ${WEBHOOK_MTLS_PORT:8443}                 # 0 = no inbound bank webhook connector
+      keystore: ${WEBHOOK_MTLS_KEYSTORE:}            # PKCS12 with the server certificate for the public webhook host
+      keystore-password: ${WEBHOOK_MTLS_KEYSTORE_PASSWORD:}
+      truststore: ${WEBHOOK_MTLS_TRUSTSTORE:}        # PKCS12 with Itau's CA (ca-cert.zip from the portal)
+      truststore-password: ${WEBHOOK_MTLS_TRUSTSTORE_PASSWORD:}
+      public-host: ${WEBHOOK_MTLS_PUBLIC_HOST:localhost}  # host in the inbound_webhook_url the admin API shows
+      max-body-bytes: 262144                       # a Pix notification is a few KB; the bank batches but not by megabytes
+      # Exact client-cert subject DNs; empty = any certificate the CA signed. Verify what the bank's CA
+      # signs and set this before go-live (.env.example).
+      allowed-subjects: ${WEBHOOK_MTLS_ALLOWED_SUBJECTS:}
+  providers:
+    itau:
+      live-api-base: https://pix-pj.api.itau.com/regulatorio-pix/v2
+      live-token-url: https://sts.itau.com.br/as/token.oauth2
+      test-api-base: https://sandbox.devportal.itau.com.br/itau-ep9-api-regulatorio-pix-v2-externo/v2
+      test-token-url: https://sandbox.devportal.itau.com.br/api/oauth/jwt
+      test-mutual-tls: false
+      live-mutual-tls: true
+      trust-store-pem: ${ITAU_CA_PEM:}         # Itau CA chain (ca-cert.zip from the portal); empty = JDK truststore
+      read-timeout: PT30S                      # the bank's recommended client timeout (NOTES.md); 10 s cut off slow-but-successful PUTs
+      # Bolecode: three products, three hosts (spec 2026-09-25 §1). Issue and query authenticate at the Pix STS
+      # path; cash_management declares its own tokenUrl in its OpenAPI. No evidence yet of which STS path each
+      # LIVE API really honours, so every one is configurable. Sandbox: all behind the portal, /api/oauth/jwt.
+      boleto:
+        live-issue-api-base: https://pix-pj.api.itau.com/recebimentos-pix/v1
+        live-issue-token-url: https://sts.itau.com.br/as/token.oauth2
+        live-query-api-base: https://secure.api.cloud.itau.com.br/boletoscash/v2
+        live-query-token-url: https://sts.itau.com.br/as/token.oauth2
+        live-instruction-api-base: https://api.gateway.itau.com.br/cash_management/v2
+        live-instruction-token-url: https://sts.itau.com.br/api/oauth/token
+        test-issue-api-base: https://sandbox.devportal.itau.com.br/itau-ep9-api-recebimentos-v1-externo/v1
+        test-issue-token-url: https://sandbox.devportal.itau.com.br/api/oauth/jwt
+        test-query-api-base: https://sandbox.devportal.itau.com.br/itau-ep9-gtw-boletoscash-boletoscash-v2-ext-aws/v1
+        test-query-token-url: https://sandbox.devportal.itau.com.br/api/oauth/jwt
+        test-instruction-api-base: https://sandbox.devportal.itau.com.br/itau-ep9-gtw-cash-management-ext-v2/v2
+        test-instruction-token-url: https://sandbox.devportal.itau.com.br/api/oauth/jwt
+  payments:
+    default-expires-in-seconds: 3600
+    expiration-grace: PT5M
+    reconciliation-lookback: PT48H
+    reconciliation-min-age: PT10M
+    idempotency-ttl: PT24H
+    refund-not-found-grace: PT30M              # a refund PUT that timed out / got a 503 and the bank still does not know is FAILED after this
+    reconcile-lease: PT10M                     # a RECONCILE run lasts minutes; the 2 min job lease let a second worker start another
+    job-max-attempts: 8
+    job-lease: PT2M
+    outbox-lease: PT1M
+    outbox-relay-ms: 1000
+    jobs-poll-ms: 2000
+    stuck-sweep-ms: 60000
+    boleto-poll-every: PT6H                    # barcode payments clear in D+1; six hours keeps the merchant inside the business day
+    boleto-poll-max-attempts: 15000            # 10 years / 6 h; the date check in BoletoPollingService is what really stops a poll
+    boleto-poll-grace-after-limit: P2D         # a last-minute payment is credited on the next business day
+    boleto-default-due-in-days: 3
+    boleto-default-payment-limit-days: 30
+    boleto-max-payment-limit-days: 3650        # the bank's maximum (issue OpenAPI, data_limite_pagamento)
 
 management:
   endpoints:

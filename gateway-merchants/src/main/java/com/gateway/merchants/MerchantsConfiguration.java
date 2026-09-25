@@ -1,5 +1,16 @@
 package com.gateway.merchants;
 
+import com.gateway.merchants.repository.ApiKeyRepository;
+import com.gateway.merchants.repository.ApiKeyRepositoryImpl;
+import com.gateway.merchants.repository.MerchantRepository;
+import com.gateway.merchants.repository.MerchantRepositoryImpl;
+import com.gateway.merchants.repository.ProviderCredentialRepository;
+import com.gateway.merchants.repository.ProviderCredentialRepositoryImpl;
+import com.gateway.merchants.service.ApiKeyService;
+import com.gateway.merchants.service.MerchantService;
+import com.gateway.merchants.service.MerchantsProperties;
+import com.gateway.merchants.service.ProviderCredentialService;
+
 import com.gateway.merchants.crypto.EnvelopeCipher;
 import com.gateway.merchants.crypto.MasterKey;
 import com.gateway.merchants.repository.*;

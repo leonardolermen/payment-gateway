@@ -1,0 +1,156 @@
+{
+  "data": [
+    {
+      "id_boleto": "05d6489c-0dce-4467-b8ea-0f6bfd3bf039",
+      "beneficiario": {
+        "id_beneficiario": "000000000000",
+        "nome_cobranca": "NOME RDZD",
+        "tipo_pessoa": {
+          "codigo_tipo_pessoa": "J",
+          "numero_cadastro_nacional_pessoa_juridica": "00000000000000"
+        },
+        "endereco": {
+          "nome_logradouro": "AV SAGITARIO",
+          "nome_bairro": "SITIO TAMBORE A",
+          "nome_cidade": "SAO PAULO",
+          "sigla_UF": "SP",
+          "numero_CEP": "06473073"
+        }
+      },
+      "dado_boleto": {
+        "descricao_instrumento_cobranca": "boleto",
+        "forma_envio": "postagem",
+        "tipo_boleto": "a vista",
+        "quantidade_parcelas": 0,
+        "pagador": {
+          "pessoa": {
+            "nome_pessoa": "João Silva",
+            "tipo_pessoa": {
+              "codigo_tipo_pessoa": "F",
+              "numero_cadastro_pessoa_fisica": "00000000011"
+            }
+          },
+          "endereco": {
+            "nome_logradouro": "Av do Estado, 5533",
+            "nome_bairro": "Mooca",
+            "nome_cidade": "São Paulo",
+            "sigla_UF": "SP",
+            "numero_CEP": "01034010"
+          }
+        },
+        "sacador_avalista": {
+          "pessoa": {
+            "nome_pessoa": "Tais Silva",
+            "tipo_pessoa": {
+              "codigo_tipo_pessoa": "F",
+              "numero_cadastro_pessoa_fisica": "00000000000"
+            }
+          },
+          "endereco": {
+            "nome_logradouro": "Av do Estado, 5533",
+            "nome_bairro": "Mooca",
+            "nome_cidade": "São Paulo",
+            "sigla_UF": "SP",
+            "numero_CEP": "01034010"
+          }
+        },
+        "codigo_carteira": "109",
+        "dados_individuais_boleto": [
+          {
+            "situacao_geral_boleto": "Pago",
+            "status_vencimento": "A vencer",
+            "numero_nosso_numero": "00000001",
+            "dac_titulo": "1",
+            "data_vencimento": "2020-08-06",
+            "valor_titulo": "2100.00",
+            "texto_seu_numero": "123456aby",
+            "codigo_barras": "34195833900002100001560004386391500052061000",
+            "numero_linha_digitavel": "34191560090438639150400520610007583390000210000",
+            "data_limite_pagamento": "2030-08-06",
+            "identificador_boleto_mercado": "09876543210987654321",
+            "mensagens_cobranca": [
+              {
+                "mensagem": "APÓS O VENCIMENTO COBRAR JUROS DE......... 0,55% AO MÊS"
+              },
+              {
+                "mensagem": "APÓS O VENCIMENTO COBRAR MULTA DE......... 0,05%"
+              },
+              {
+                "mensagem": "ATÉ 10.07.2020 CONCEDER DESCONTO DE 0,60%"
+              },
+              {
+                "mensagem": "CONCEDER ABATIMENTO DE.................... R$ 15,10"
+              }
+            ]
+          }
+        ],
+        "codigo_especie": "95",
+        "descricao_especie": "DMI - Duplicata de venda Mercantil por Indicacao",
+        "codigo_aceite": "S",
+        "data_emissao": "2020-07-09",
+        "pagamento_parcial": false,
+        "quantidade_maximo_parcial": 0,
+        "codigo_tipo_vencimento": 3,
+        "texto_uso_beneficiario": "AB&C",
+        "pagamentos_cobranca": [
+          {
+            "numero_agencia_recebedora": "1234",
+            "data_inclusao_pagamento": "2020-01-20",
+            "valor_pago_total_cobranca": "2100.00",
+            "codigo_instituicao_financeira_pagamento": "314",
+            "descricao_canal_pagamento": "BANKFONE",
+            "descricao_meio_pagamento": "DÉBITO EM CONTA"
+          }
+        ],
+        "baixa": {
+          "data_inclusao_alteracao_baixa": "2020-01-01",
+          "motivo_baixa": "Baixa por ter sido liquidado"
+        },
+        "historico": [
+          {
+            "data": "2020-08-10",
+            "operacao": "BAIXAR",
+            "comandado_por": "999999999"
+          },
+          {
+            "data": "2020-08-08",
+            "operacao": "PAGAMENTO REJEITADO",
+            "comandado_por": "SISTEMA",
+            "motivo": "5 - Agencia inválida"
+          },
+          {
+            "data": "2020-08-07",
+            "operacao": "ALTERACAO VALOR TITULO",
+            "comandado_por": "002315157",
+            "conteudo_anterior": "150.00",
+            "conteudo_atual": "450.00"
+          },
+          {
+            "data": "2020-05-08",
+            "operacao": "ALTERACAO DADOS BENEFICIARIO FINAL",
+            "comandado_por": "012300414",
+            "detalhe": [
+              {
+                "descricao": "ALTERACAO CPF/CNPJ SACADOR AVALISTA",
+                "conteudo_anterior": "00000000000",
+                "conteudo_atual": "00000000001"
+              },
+              {
+                "descricao": "ALTERACAO NOME SACADOR AVALISTA",
+                "conteudo_anterior": "Sacador Teste",
+                "conteudo_atual": "Tais Silva"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "page": {
+    "page": 0,
+    "total_pages": 1,
+    "total_elements": 1,
+    "page_size": 1,
+    "links": {}
+  }
+}

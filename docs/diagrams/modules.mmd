@@ -1,0 +1,15 @@
+flowchart TB
+  APP["gateway-app<br/>REST, security, scheduling"]
+  PAY["gateway-payments<br/>charges, refunds, jobs"]
+  MER["gateway-merchants<br/>merchants, API keys, encrypted credentials"]
+  PROV["gateway-providers<br/>Itaú Pix client"]
+  KER["gateway-kernel<br/>shared types and provider contracts"]
+  WD[["webhook-delivery<br/>(library)"]]
+
+  APP --> PAY
+  APP --> MER
+  APP --> PROV
+  APP --> WD
+  PAY --> KER
+  MER --> KER
+  PROV --> KER

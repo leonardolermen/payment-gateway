@@ -72,6 +72,27 @@ Errors are RFC 7807 (`type`, `title`, `status`, `detail`, `violacoes[]`), e.g. `
 
 Charge status: `ATIVA`, `CONCLUIDA`, `REMOVIDA_PELO_USUARIO_RECEBEDOR`, `REMOVIDA_PELO_PSP` (portal prose shows `REMOVIDO_…`; the OpenAPI enum uses `REMOVIDA_…` — trust the enum, accept both when parsing). Refund status: `EM_PROCESSAMENTO`, `DEVOLVIDO`, `NAO_REALIZADO`. Refund nature: `ORIGINAL` (normal), `RETIRADA` (saque/troco), `MED_*` (set by the bank).
 
+## Sandbox verification (2026-09-25)
+
+Ran the gateway locally against the portal-hosted sandbox with credentials created in the portal (never committed; they live in the encrypted `TEST` credential of a local merchant):
+
+| call | result |
+|---|---|
+| `POST /api/oauth/jwt` (client credentials, no mTLS) | token issued |
+| `PUT /cob/{txid}` with `valor.original=1.00` | 201, `status=ATIVA`, `pixCopiaECola` and `location` under `spi-h.itau.com.br` |
+| `GET /cob/{txid}` | 200 |
+| `PATCH /cob/{txid}` `REMOVIDA_PELO_USUARIO_RECEBEDOR` | 200 |
+
+What it proves: the auth flow and the request/response contract are compatible with the real endpoint.
+
+What it does **not** prove: the sandbox is a static mock. It answered with the documentation's own example (`txid=bbba96ad…`, receiver "PMD BASHAR RIO") instead of echoing the txid we sent, and it accepts any `chave`. Paying the QR, receiving the inbound webhook, refunds and reconciliation can only be exercised in production or a fuller sandbox.
+
+Consequence noticed: since commit `548df4b`, the gateway stores its **own** txid (`payment.id()`) for a Pix charge
+(`PaymentService.adoptPending`) rather than whatever the bank echoes back; against this mock the bank's example txid differs
+from ours, and a mismatch only logs a WARN ("bank echoed txid … keeping ours") instead of being adopted. This closes the
+follow-up noted earlier — no longer pending. (Bolecode is different: see the Bolecode section below, where the bank's txid
+is the one stored because it derives from the account.)
+
 ## What this means for the gateway (Plan B)
 
 1. No fake provider. `TEST` environment = Itaú sandbox base URL with the merchant's sandbox credentials (plain OAuth at `/api/oauth/jwt`, no mTLS); without credentials the call fails with `PROVIDER_CREDENTIALS_MISSING`.
@@ -79,3 +100,84 @@ Charge status: `ATIVA`, `CONCLUIDA`, `REMOVIDA_PELO_USUARIO_RECEBEDOR`, `REMOVID
 3. Refund is asynchronous: `Refund` goes `REQUESTED → PROCESSING → COMPLETED | FAILED`, closed by the refund-status webhook or by polling `GET …/devolucao/{id}`.
 4. Inbound webhook needs mTLS client-cert validation against Itaú's CA at the edge.
 5. Token cache per merchant credential, refreshed before the 300 s expiry.
+
+## Bolecode (boleto with Pix) — read 2026-09-25
+
+Four products on the portal; the OpenAPIs are next to this file.
+
+| role | product | version | operation |
+|---|---|---|---|
+| issue | `itau-ep9-api-recebimentos-v1-externo` | 1.0.7 | `POST /boletos-pix` |
+| query | `itau-ep9-gtw-boletoscash-boletoscash-v2-ext-aws` | 1.2.9 | `GET /boletos?id_beneficiario&codigo_carteira&nosso_numero` |
+| baixa | `itau-ep9-gtw-cash-management-ext-v2` | 2.75.147 | `PATCH /boletos/{id_boleto}/baixa` |
+| webhook | `itau-ep9-gtw-boletos-boletos-v3-ext-aws` | 1.34.1 | out of scope (needs an OAuth2 server on our side; payload not in the OpenAPI) |
+
+Base URLs: production `https://pix-pj.api.itau.com/recebimentos-pix/v1`, `https://secure.api.cloud.itau.com.br/boletoscash/v2`,
+`https://api.gateway.itau.com.br/cash_management/v2`; sandbox `https://sandbox.devportal.itau.com.br/<product>/v1|v1|v2`.
+Auth as Pix (STS + mTLS + `x-itau-apikey`; sandbox `/api/oauth/jwt` without mTLS), except that cash_management's OpenAPI
+declares `tokenUrl: https://sts.itau.com.br/api/oauth/token` — configured per API in `application.yml` until production says which.
+
+Facts that shaped the code (all from the JSON, not the prose):
+
+- Errors are `{codigo, mensagem, campos[{campo, mensagem, valor}]}`, not RFC 7807. `campos[].valor` echoes what we sent (the
+  payer's document included) and never reaches a log line.
+- The baixa's `id_boleto` is `agência(4)+conta(7)+DAC(1)+carteira(3)+nosso número(8)` (23 chars), not the boleto UUID.
+- The Pix `txid` of a Bolecode is `BL` + agência(4) + conta(7) + carteira(3) + nosso número left-padded to 15 (`^BL[0-9]{31}$`,
+  2 + 29 digits; to be confirmed in the smoke). Unlike a pure-Pix payment, the payment record stores the **bank's** txid
+  (`IssuedBoleto.pixTxid()`, from the issue response) — the bank derives it from the account, so the gateway cannot pick its
+  own. The formula (`BoletoProvider.pixTxidFor`) is used only to *recover* it when the issue's response was lost (202/timeout):
+  the reconstructed txid is checked with `GET /cob/{txid}`. An empty answer still ADOPTS the payment (PENDING, with the
+  query's own `qrcode_pix.emv`) and flags it with divergence `PIX_TXID_UNCONFIRMED`: refusing would leave a boleto the bank
+  issued stuck in `CREATED`, and the poll settles it by nosso número regardless of the txid. Only a confirmation that could
+  not be made at all (the bank unreachable) leaves `CREATED` for the sweeper (`adoptBolecodeFromStatus`).
+- The unique-txid index (`uq_payments_provider_txid`, migration V203) is scoped `(merchant_id, provider, txid)`, per tenant —
+  the bank derives Bolecode txids from the account, and the shared sandbox returns canned txids from its own examples, so a
+  global unique index would collide across merchants testing against the same sandbox account.
+- `situacao_geral_boleto` ∈ `Em Aberto | Pago | Liquidado | Pagamento Rejeitado | Aguardando Crédito | Creditado | Baixado`;
+  the payment record is the list `pagamentos_cobranca[]` (`valor_pago_total_cobranca`, `data_inclusao_pagamento`, …).
+- `settleBoleto` decides "double payment" by the bank's paid channel, not by our own state alone: a Pix channel on an
+  already-Pix-completed payment is ignored (expected — the QR paid first); any other channel is `DOUBLE_PAYMENT`; an unknown
+  channel is ignored plus a WARN log rather than guessed at. The sandbox smoke below must record which channel codes and
+  descriptions the query actually returns, since the OpenAPI enum was not exhaustive.
+- Cancel refuses with `409 ALREADY_PAID` when the bank's query shows the boleto paid; the response message says the payment
+  is "now COMPLETED" only when the adoption actually completed it, and says "under review" when it instead opened an
+  `AMOUNT_MISMATCH` divergence (the bank's paid amount did not match ours).
+- Reconciliation's Bolecode sweep is a method-scoped repository query (`findByMethodAndStatusIn`), not a generic PENDING
+  scan, so it never touches Pix-only rows.
+- `JobRunner.last_error` is prefixed with the `ProviderException` code for every job type (not just polling), so a stuck job
+  row's failure reason is visible without joining `provider_requests`.
+- Forbidden anywhere in the issue payload: `[ : < > & ; ' " ` ( ) # * / | ü` and the words `http`, `javascript`, `alert`; each text
+  field also has its own character class — the gateway filters by the class (`BoletoText`).
+- `etapa_processo_boleto = "simulacao"` validates without issuing. Used only in the smoke below.
+
+### Sandbox smoke (to run after the plan; record the outcome here)
+
+Never paste credential values anywhere but the running request. `<...>` stays `<...>`.
+
+1. Portal: subscribe the app to the three products above; the sandbox `client_id`/`client_secret` are the same as for Pix.
+   `<beneficiary_id>` for the sandbox is whatever the portal shows for the sandbox account (the docs' example is `150000052061`).
+2. Token: `curl -s -XPOST https://sandbox.devportal.itau.com.br/api/oauth/jwt -H 'Content-Type: application/x-www-form-urlencoded' -d 'grant_type=client_credentials&client_id=<client_id>&client_secret=<client_secret>'`
+3. Simulação (validates, does not issue): take `gateway-providers/src/test/resources/itau/boleto/fixtures/post_boletos_pix_request_min.json`,
+   set `etapa_processo_boleto` to `simulacao` and `beneficiario.id_beneficiario` to `<beneficiary_id>`, then
+   `curl -s -XPOST https://sandbox.devportal.itau.com.br/itau-ep9-api-recebimentos-v1-externo/v1/boletos-pix -H 'Authorization: Bearer <token>' -H 'x-itau-correlationID: <uuid>' -H 'Content-Type: application/json' -d @body.json`.
+   Expected: 200 with `dados_individuais_boleto[0]` and `dados_qrcode`, or a `{codigo, mensagem, campos}` body — either way, record status and field names.
+4. Efetivação through the gateway: register the credential with `beneficiary_id`, `wallet_code`, `species_code`
+   (`PUT /v1/admin/merchants/<id>/providers/ITAU/credentials`, `README.md`), then `POST /v1/payments` with `method: BOLECODE` and a
+   complete `customer` using a `gk_test_` key; `GET /v1/payments/<id>`; `POST /v1/payments/<id>/cancel`.
+5. Query directly: `curl -s 'https://sandbox.devportal.itau.com.br/itau-ep9-gtw-boletoscash-boletoscash-v2-ext-aws/v1/boletos?id_beneficiario=<beneficiary_id>&codigo_carteira=109&nosso_numero=<nosso_numero>' -H 'Authorization: Bearer <token>' -H 'x-itau-correlationid: <uuid>'`.
+6. Record here, like the Pix table above: which calls answered what, whether the sandbox echoed our nosso número and txid or its
+   example's (the Pix sandbox did not echo; if this one does not either, a second Bolecode in the same database will hit
+   `uq_payments_provider_txid` on the example's fixed `BL…` txid — expected, note it), which channel codes/descriptions the query
+   returned for a paid boleto (needed by `settleBoleto`'s double-payment check), and whether `x-itau-apikey` was required
+   (sent when present per the query/instruction OpenAPIs, but the sandbox issues none as of this writing).
+
+**Not yet run.** This smoke needs real sandbox credentials and has not been executed as part of this task; the steps above
+are the procedure, not a result. Run it before relying on Bolecode against production.
+
+### Open follow-up (outside this plan)
+
+Nosso número is allocated sequentially per merchant (`boleto_numbers`, starting at `00000001`), but Itaú requires uniqueness
+per **account**, not per merchant. Two merchants sharing one Itaú beneficiary account would allocate colliding nosso números
+and one would be rejected by the bank at issue time. Not fixed here because it needs a product decision (per-account
+counter shared across merchants, or a documented one-merchant-per-account constraint) rather than a code change; tracked in
+`DECISOES.md`.

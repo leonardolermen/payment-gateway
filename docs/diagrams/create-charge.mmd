@@ -1,0 +1,12 @@
+sequenceDiagram
+  participant M as Merchant
+  participant GW as Payment Gateway
+  participant B as Itaú
+
+  M->>GW: POST /v1/payments (Idempotency-Key)
+  GW->>GW: store payment CREATED
+  GW->>B: create Pix charge
+  B-->>GW: QR code (copia e cola)
+  GW->>GW: PENDING + outbox event
+  GW-->>M: 201 { id, pix.copia_e_cola, expires_at }
+  GW-)M: webhook payment.pending

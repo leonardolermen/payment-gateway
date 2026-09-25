@@ -1,0 +1,18 @@
+flowchart LR
+  M["Merchant's system"]
+  subgraph GW["Payment Gateway — one deployable"]
+    direction TB
+    API["Public API<br/>payments · refunds · merchants"]
+    CORE["Payment engine<br/>state machine · idempotency · reconciliation"]
+    PROV["Bank adapters<br/>Itaú Pix today"]
+    OUT["Outbound webhooks<br/>signed · ordered · retried"]
+    API --> CORE
+    CORE --> PROV
+    CORE --> OUT
+  end
+  BANK(["Itaú<br/>sandbox / production"])
+  DB[("PostgreSQL")]
+
+  M <-- "REST + API key ⟶<br/>⟵ signed webhooks" --> GW
+  GW <-- "OAuth2 · mTLS ⟶<br/>⟵ Pix received (mTLS webhook)" --> BANK
+  GW --- DB

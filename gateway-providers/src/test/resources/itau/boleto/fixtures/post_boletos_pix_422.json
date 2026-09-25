@@ -1,0 +1,11 @@
+{
+  "codigo": "422",
+  "mensagem": "Consulta não realizada por alguma regra de negócio não atendida.",
+  "campos": [
+    {
+      "campo": "data_vencimento",
+      "mensagem": "Vencimento menor que prazo mínimo para carteira - (-360 dias)",
+      "valor": "2024-01-01"
+    }
+  ]
+}

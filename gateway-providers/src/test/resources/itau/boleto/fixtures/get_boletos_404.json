@@ -1,0 +1,11 @@
+{
+  "codigo": "404",
+  "mensagem": "Recurso não encontrado. Verifique na resposta da API os campos informados.",
+  "campos": [
+    {
+      "campo": "codigo_barra",
+      "valor": "01234567890123456789012345678901234567890123",
+      "mensagem": "Boleto não encontrado para esse 'codigo_barra'"
+    }
+  ]
+}

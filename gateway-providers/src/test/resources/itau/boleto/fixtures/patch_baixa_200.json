@@ -1,0 +1,13 @@
+{
+  "data": {
+    "codigo": "200",
+    "mensagem": " Aguardando aprovação",
+    "campos": [
+      {
+        "campo": "COD-RET",
+        "mensagem": " Processamento efetuado. Aguardando aprovação do gerente",
+        "valor": ""
+      }
+    ]
+  }
+}

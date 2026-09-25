@@ -1,0 +1,11 @@
+stateDiagram-v2
+  [*] --> CREATED
+  CREATED --> PENDING: bank accepted
+  CREATED --> FAILED: bank refused
+  PENDING --> COMPLETED: paid
+  PENDING --> EXPIRED: not paid in time
+  PENDING --> CANCELED: merchant canceled
+  EXPIRED --> COMPLETED: late payment (bank wins)
+  COMPLETED --> [*]
+  CANCELED --> [*]
+  FAILED --> [*]

@@ -5,7 +5,9 @@ import com.gateway.app.api.admin.dto.ApiKeyIssuedResponse;
 import com.gateway.app.api.admin.dto.MerchantRequest;
 import com.gateway.app.api.admin.dto.MerchantResponse;
 import com.gateway.app.api.admin.dto.ProviderCredentialRequest;
+import com.gateway.app.inbound.mtls.WebhookMtlsProperties;
 import com.gateway.kernel.ids.MerchantId;
+import com.gateway.merchants.domain.Merchant;
 import com.gateway.merchants.domain.Provider;
 import com.gateway.merchants.service.ApiKeyService;
 import com.gateway.merchants.service.MerchantService;
@@ -23,37 +25,42 @@ public class MerchantsAdminController {
   private final ApiKeyService apiKeys;
   private final ProviderCredentialService credentials;
   private final ObjectMapper objectMapper;
+  private final WebhookMtlsProperties mtls;
 
-  public MerchantsAdminController(MerchantService merchants, ApiKeyService apiKeys, ProviderCredentialService credentials, ObjectMapper objectMapper) {
+  public MerchantsAdminController(MerchantService merchants, ApiKeyService apiKeys, ProviderCredentialService credentials, ObjectMapper objectMapper,
+      WebhookMtlsProperties mtls) {
     this.merchants = merchants;
     this.apiKeys = apiKeys;
     this.credentials = credentials;
     this.objectMapper = objectMapper;
+    this.mtls = mtls;
   }
+
+  private MerchantResponse response(Merchant m) { return MerchantResponse.from(m, mtls.inboundWebhookUrl(m.inboundWebhookToken())); }
 
   @PostMapping
   public ResponseEntity<MerchantResponse> create(@RequestBody MerchantRequest req) {
-    return ResponseEntity.status(HttpStatus.CREATED).body(MerchantResponse.from(merchants.create(req.name())));
+    return ResponseEntity.status(HttpStatus.CREATED).body(response(merchants.create(req.name())));
   }
 
   @GetMapping
   public List<MerchantResponse> list() {
-    return merchants.list().stream().map(MerchantResponse::from).toList();
+    return merchants.list().stream().map(this::response).toList();
   }
 
   @GetMapping("/{id}")
   public MerchantResponse get(@PathVariable String id) {
-    return MerchantResponse.from(merchants.get(new MerchantId(id)));
+    return response(merchants.get(new MerchantId(id)));
   }
 
   @PostMapping("/{id}/suspend")
   public MerchantResponse suspend(@PathVariable String id) {
-    return MerchantResponse.from(merchants.suspend(new MerchantId(id)));
+    return response(merchants.suspend(new MerchantId(id)));
   }
 
   @PostMapping("/{id}/activate")
   public MerchantResponse activate(@PathVariable String id) {
-    return MerchantResponse.from(merchants.activate(new MerchantId(id)));
+    return response(merchants.activate(new MerchantId(id)));
   }
 
   @PostMapping("/{id}/api-keys")

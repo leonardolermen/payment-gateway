@@ -1,5 +1,10 @@
 package com.gateway.merchants.service;
 
+import com.gateway.merchants.domain.ApiKey;
+import com.gateway.merchants.domain.ApiKeyEnvironment;
+import com.gateway.merchants.domain.Merchant;
+import com.gateway.merchants.domain.Provider;
+
 import static org.assertj.core.api.Assertions.*;
 
 import com.gateway.kernel.errors.DomainException;
@@ -27,6 +32,18 @@ class MerchantsIntegrationTest {
   @Autowired ApiKeyService apiKeys;
   @Autowired ProviderCredentialService credentials;
   @Autowired JdbcTemplate jdbc;
+
+  @Test
+  void inboundWebhookTokenResolvesItsMerchantAndSurvivesSuspension() {
+    var m = merchants.create("Token Store");
+    assertThat(m.inboundWebhookToken()).hasSize(26);
+    assertThat(merchants.findByInboundWebhookToken(m.inboundWebhookToken())).map(x -> x.id()).contains(m.id());
+    // The token is the URL registered at the bank; a status change must not silently rotate it.
+    assertThat(merchants.suspend(m.id()).inboundWebhookToken()).isEqualTo(m.inboundWebhookToken());
+    assertThat(merchants.findByInboundWebhookToken("0".repeat(26))).isEmpty();
+    assertThat(merchants.findByInboundWebhookToken("short")).isEmpty();
+    assertThat(merchants.findByInboundWebhookToken(null)).isEmpty();
+  }
 
   @Test
   void issuesAuthenticatesAndRotates() {

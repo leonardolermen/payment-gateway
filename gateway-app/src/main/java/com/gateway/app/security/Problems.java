@@ -9,10 +9,10 @@ import java.io.IOException;
  * limit). Escaping is limited to the one character ({@code "}) that a code or a static message can
  * ever contain here; the request-derived reason phrases we pass in are all literals.
  */
-final class Problems {
+public final class Problems {
   private Problems() {}
 
-  static void write(HttpServletResponse res, int status, String code, String detail) throws IOException {
+  public static void write(HttpServletResponse res, int status, String code, String detail) throws IOException {
     res.setStatus(status);
     res.setContentType("application/problem+json");
     res.getWriter().write(String.format(

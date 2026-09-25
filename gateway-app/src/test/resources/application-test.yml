@@ -4,6 +4,11 @@ gateway:
   api-key-pepper: test-pepper
   rate-limit:
     requests-per-minute: 5
+  # Off by default in tests: every @SpringBootTest would otherwise bind 8443 (and fail the key-material
+  # guard). The mTLS integration test turns it on with its own port and generated stores.
+  webhooks:
+    mtls:
+      port: 0
 spring:
   flyway:
     schemas: merchants,payments

@@ -14,7 +14,10 @@ public class ArchitectureTest {
 
   @ArchTest
   static void importSeesTheModules(JavaClasses classes) {
-    assertThat(classes.size()).as("ArchUnit imported too few classes; the rules would pass vacuously").isGreaterThan(30);
+    // 202 main classes after Plan C's Bolecode work (`find gateway-*/src/main -name '*.java' | wc -l`);
+    // the guard sits at roughly half that so a module accidentally dropped from the scan still trips it
+    // well before the count could coincidentally clear the old `> 60`, which every module alone already cleared.
+    assertThat(classes.size()).as("ArchUnit imported too few classes; the rules would pass vacuously").isGreaterThan(90);
   }
 
   @ArchTest
@@ -55,8 +58,20 @@ public class ArchitectureTest {
   static final ArchRule jpaEntitiesArePackagePrivate =
       classes().that().areAnnotatedWith(jakarta.persistence.Entity.class).should().bePackagePrivate();
 
+  /**
+   * Packages are by concept (payment, refund, jobs, ...), so "the domain" is no longer a folder. JPA is
+   * confined to the persistence sub-packages, and the plain model types (records, enums, aggregates)
+   * stay free of Spring: only the classes that are wiring by their nature may see it.
+   */
   @ArchTest
-  static final ArchRule domainHasNoSpringOrJpa =
-      noClasses().that().resideInAPackage("..domain..")
-          .should().dependOnClassesThat().resideInAnyPackage("org.springframework..", "jakarta.persistence..");
+  static final ArchRule jpaOnlyInPersistence =
+      noClasses().that().resideOutsideOfPackages("..persistence..", "com.gateway.app..", "com.gateway.merchants.repository..")
+          .should().dependOnClassesThat().resideInAPackage("jakarta.persistence..");
+
+  @ArchTest
+  static final ArchRule modelsHaveNoSpring =
+      noClasses().that().resideInAnyPackage("com.gateway.kernel..", "com.gateway.payments..", "com.gateway.merchants.domain..")
+          .and().resideOutsideOfPackages("..persistence..", "..support..")
+          .and().haveNameNotMatching(".*(Service|Runner|Gateway|Relay|Properties|Configuration|Events)$")
+          .should().dependOnClassesThat().resideInAPackage("org.springframework..");
 }
