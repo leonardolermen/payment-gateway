@@ -126,8 +126,10 @@ Facts that shaped the code (all from the JSON, not the prose):
   2 + 29 digits; to be confirmed in the smoke). Unlike a pure-Pix payment, the payment record stores the **bank's** txid
   (`IssuedBoleto.pixTxid()`, from the issue response) — the bank derives it from the account, so the gateway cannot pick its
   own. The formula (`BoletoProvider.pixTxidFor`) is used only to *recover* it when the issue's response was lost (202/timeout):
-  the reconstructed txid is confirmed with `GET /cob/{txid}` before it is trusted, and an empty/mismatched confirmation opens
-  divergence `PIX_TXID_UNCONFIRMED` rather than being adopted silently (`adoptPendingBolecode`/`adoptBolecodeFromStatus`).
+  the reconstructed txid is checked with `GET /cob/{txid}`. An empty answer still ADOPTS the payment (PENDING, with the
+  query's own `qrcode_pix.emv`) and flags it with divergence `PIX_TXID_UNCONFIRMED`: refusing would leave a boleto the bank
+  issued stuck in `CREATED`, and the poll settles it by nosso número regardless of the txid. Only a confirmation that could
+  not be made at all (the bank unreachable) leaves `CREATED` for the sweeper (`adoptBolecodeFromStatus`).
 - The unique-txid index (`uq_payments_provider_txid`, migration V203) is scoped `(merchant_id, provider, txid)`, per tenant —
   the bank derives Bolecode txids from the account, and the shared sandbox returns canned txids from its own examples, so a
   global unique index would collide across merchants testing against the same sandbox account.

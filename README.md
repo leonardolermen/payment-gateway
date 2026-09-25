@@ -117,7 +117,7 @@ gateway, sequential per merchant from `00000001`.
 
 Divergences a boleto can open (`reconciliation_divergences`, for a human): `AMOUNT_MISMATCH` (bank paid a
 different amount), `DOUBLE_PAYMENT` (paid by QR and by barcode), `BOLETO_REJECTED`, `CANCELED_AT_BANK` (a baixa
-done outside the gateway), `NOT_FOUND_AT_BANK` (two consecutive empty queries), `PIX_TXID_UNCONFIRMED` (a boleto
+done outside the gateway), `NOT_FOUND_AT_BANK` (a second empty query, not necessarily the next one), `PIX_TXID_UNCONFIRMED` (a boleto
 adopted from the query whose derived Pix txid the bank does not know).
 
 ### Registering the inbound webhook at Itaú
