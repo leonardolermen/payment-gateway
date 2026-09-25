@@ -1,23 +1,30 @@
 package com.gateway.providers.itau.auth;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.gateway.kernel.security.Secret;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.regex.Pattern;
 import tools.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
- * A merchant's Itaú credential: six values, see docs/providers/itau/NOTES.md; the Pix key is the
- * receiving account's key and is configuration, but it lives here so a merchant's Itaú setup is
- * one object. The sandbox shape has only {@code client_id}, {@code client_secret}, {@code pix_key};
- * production requires the other three ({@code x_itau_apikey}, {@code certificate_pem},
- * {@code private_key_pem}) — see {@link #requireProductionShape()}.
+ * A merchant's Itaú credential: six values for Pix (docs/providers/itau/NOTES.md) plus the boleto
+ * account data (spec 2026-09-25 §4): {@code beneficiary_id} (agência 4 + conta 7 + DAC 1, required
+ * to issue a boleto), {@code wallet_code} (carteira, 109 is the only one the product documents) and
+ * {@code species_code} (espécie, 01 = DM). The sandbox shape has only client_id/client_secret/pix_key;
+ * production requires x_itau_apikey, certificate_pem and private_key_pem — see
+ * {@link #requireProductionShape()}; a boleto issue requires beneficiary_id — see {@link #requireBoletoShape()}.
  */
 public record ItauCredentials(
-    String clientId, Secret clientSecret, String apiKey, String certificatePem, Secret privateKeyPem, String pixKey, String fingerprint) {
+    String clientId, Secret clientSecret, String apiKey, String certificatePem, Secret privateKeyPem, String pixKey,
+    String beneficiaryId, String walletCode, String speciesCode, String fingerprint) {
 
   private static final Pattern API_KEY = Pattern.compile("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
+  private static final Pattern BENEFICIARY = Pattern.compile("^\\d{12}$");
+  private static final Pattern WALLET = Pattern.compile("^\\d{3}$");
+  private static final Pattern SPECIES = Pattern.compile("^\\d{2}$");
+  static final String DEFAULT_WALLET = "109";
+  static final String DEFAULT_SPECIES = "01";
 
   public ItauCredentials {
     requireNonBlank(clientId, "client_id");
@@ -31,15 +38,22 @@ public record ItauCredentials(
     if (hasCert != hasKey) {
       throw new IllegalArgumentException(hasCert ? "certificate_pem present without private_key_pem" : "private_key_pem present without certificate_pem");
     }
+    if (beneficiaryId != null && !BENEFICIARY.matcher(beneficiaryId).matches()) {
+      throw new IllegalArgumentException("beneficiary_id must be 12 digits (agencia + conta + DAC)");
+    }
+    if (walletCode == null) walletCode = DEFAULT_WALLET;
+    if (!WALLET.matcher(walletCode).matches()) throw new IllegalArgumentException("wallet_code must be 3 digits");
+    if (speciesCode == null) speciesCode = DEFAULT_SPECIES;
+    if (!SPECIES.matcher(speciesCode).matches()) throw new IllegalArgumentException("species_code must be 2 digits");
   }
 
   private static void requireNonBlank(String value, String field) {
     if (value == null || value.isBlank()) throw new IllegalArgumentException("missing required field: " + field);
   }
 
-  public boolean hasCertificate() {
-    return certificatePem != null && privateKeyPem != null;
-  }
+  public boolean hasCertificate() { return certificatePem != null && privateKeyPem != null; }
+
+  public boolean hasBeneficiary() { return beneficiaryId != null; }
 
   /** Called when the endpoint requires mTLS (LIVE): fails fast instead of at the first handshake. */
   public void requireProductionShape() {
@@ -47,13 +61,19 @@ public record ItauCredentials(
     if (apiKey == null) throw new IllegalArgumentException("production credential missing x_itau_apikey");
   }
 
+  /** Called before an issue: a boleto needs the beneficiary account, and the bank's 400 would name a field the merchant never sent. */
+  public void requireBoletoShape() {
+    if (!hasBeneficiary()) throw new IllegalArgumentException("beneficiary_id");
+  }
+
   /**
    * SHA-256 hex of the whole decrypted payload, computed once in {@link #parse}: the cache key for
    * the OAuth token and the mTLS HttpClient. It used to hash only client_id + certificate_pem, so a
    * rotated client_secret or private key (same id, same certificate) kept hitting the cached token
    * and the HttpClient built with the OLD key until the token expired or a 401 evicted it. Covering
-   * every byte means any change to the credential is a new cache entry. Not a secret by itself, but
-   * derived from one: never log it ({@link #toString} leaves it out).
+   * every byte means any change to the credential (a rotated secret or key, a new beneficiary) is a
+   * new cache entry. Not a secret by itself, but derived from one: never log it ({@link #toString}
+   * leaves it out).
    */
   @Override
   public String fingerprint() {
@@ -63,7 +83,8 @@ public record ItauCredentials(
   @Override
   public String toString() {
     return "ItauCredentials[clientId=" + clientId + ", clientSecret=***, apiKey=" + apiKey
-        + ", certificatePem=" + (certificatePem == null ? "null" : "***") + ", privateKeyPem=***, pixKey=" + pixKey + "]";
+        + ", certificatePem=" + (certificatePem == null ? "null" : "***") + ", privateKeyPem=***, pixKey=" + pixKey
+        + ", beneficiaryId=" + beneficiaryId + ", walletCode=" + walletCode + ", speciesCode=" + speciesCode + "]";
   }
 
   public static ItauCredentials parse(byte[] json) {
@@ -81,6 +102,9 @@ public record ItauCredentials(
         // fail only at the first mTLS handshake instead of here.
         blankToNull(raw.privateKeyPem) == null ? null : Secret.of(raw.privateKeyPem),
         raw.pixKey,
+        blankToNull(raw.beneficiaryId),
+        blankToNull(raw.walletCode),
+        blankToNull(raw.speciesCode),
         fingerprint);
   }
 
@@ -103,5 +127,8 @@ public record ItauCredentials(
       @JsonProperty("x_itau_apikey") String apiKey,
       @JsonProperty("certificate_pem") String certificatePem,
       @JsonProperty("private_key_pem") String privateKeyPem,
-      @JsonProperty("pix_key") String pixKey) {}
+      @JsonProperty("pix_key") String pixKey,
+      @JsonProperty("beneficiary_id") String beneficiaryId,
+      @JsonProperty("wallet_code") String walletCode,
+      @JsonProperty("species_code") String speciesCode) {}
 }
