@@ -25,4 +25,7 @@ class BoletoFixturesFromOpenApiTest {
 
   @Test void issueRequestMin() throws Exception { assertThat(fixture("post_boletos_pix_request_min.json")).isEqualTo(example("issue", "/components/examples/requestPostBoletosPix/value")); }
   @Test void issue200() throws Exception { assertThat(fixture("post_boletos_pix_200.json")).isEqualTo(example("issue", "/components/examples/200boletoPixResponse/value")); }
+
+  @Test void query200() throws Exception { assertThat(fixture("get_boletos_200.json")).isEqualTo(example("query", "/components/examples/query_200_boletos_get_response/value")); }
+  @Test void query404() throws Exception { assertThat(fixture("get_boletos_404.json")).isEqualTo(example("query", "/components/responses/404/content/application~1json/examples/404/value")); }
 }
