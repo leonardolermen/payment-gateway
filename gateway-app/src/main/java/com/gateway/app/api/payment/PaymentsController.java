@@ -1,8 +1,9 @@
-package com.gateway.app.api;
+package com.gateway.app.api.payment;
 
-import com.gateway.app.api.dto.CreatePaymentRequest;
-import com.gateway.app.api.dto.PaymentEventResponse;
-import com.gateway.app.api.dto.PaymentResponse;
+import com.gateway.app.api.support.IdempotencyFilter;
+import com.gateway.app.api.payment.dto.CreatePaymentRequest;
+import com.gateway.app.api.payment.dto.PaymentEventResponse;
+import com.gateway.app.api.payment.dto.PaymentResponse;
 import com.gateway.app.security.MerchantContext;
 import com.gateway.kernel.money.Money;
 import com.gateway.kernel.provider.ProviderEnvironment;
@@ -40,13 +41,16 @@ public class PaymentsController {
     MerchantContext.Current who = MerchantContext.current();
     ProviderEnvironment env = providerEnvironment(who.environment());
     Money amount = new Money(req.amount(), req.currency());
-    Payment p =
+
+    Payment payment =
         req.isBolecode()
             ? payments.createBolecode(new PaymentService.CreateBolecode(
                 who.merchantId(), env, amount, req.reference(), req.description(), req.payer(), req.dueDate(), req.paymentLimitDays()))
+
             : payments.createCharge(new PaymentService.CreateCharge(
                 who.merchantId(), env, amount, req.reference(), req.description(), req.customer() == null ? null : req.customer().document(), req.expiresIn()));
-    return withResource(HttpStatus.CREATED, p);
+
+    return withResource(HttpStatus.CREATED, payment);
   }
 
   @GetMapping("/{id}")
@@ -61,12 +65,17 @@ public class PaymentsController {
   @GetMapping
   public List<PaymentResponse> list(
       @RequestParam(defaultValue = "20") int limit, @RequestParam(required = false) String cursor, @RequestParam(required = false) String reference) {
+
     if (limit <= 0 || limit > MAX_PAGE) throw new IllegalArgumentException("limit must be between 1 and " + MAX_PAGE);
+
     var merchantId = MerchantContext.current().merchantId();
+
     if (reference != null) {
+
       if (cursor != null) throw new IllegalArgumentException("cursor and reference cannot be combined");
       return payments.listByReference(merchantId, reference, limit).stream().map(PaymentResponse::from).toList();
     }
+
     return payments.list(merchantId, limit, cursor).stream().map(PaymentResponse::from).toList();
   }
 

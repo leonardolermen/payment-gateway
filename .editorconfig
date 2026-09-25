@@ -1,0 +1,40 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.java]
+max_line_length = 120
+# Continuação de linha recua 4, não alinha no parêntese.
+ij_java_continuation_indent_size = 4
+ij_java_keep_line_breaks = true
+ij_java_blank_lines_after_class_header = 0
+ij_java_if_brace_force = always
+ij_java_for_brace_force = always
+ij_java_while_brace_force = always
+ij_java_space_before_if_parentheses = true
+
+[*.{xml,yml,yaml,json}]
+max_line_length = 120
+
+[*.md]
+max_line_length = 100
+trim_trailing_whitespace = false
+
+[*.sql]
+indent_size = 2
+max_line_length = 120
+
+[{Makefile,*.mk}]
+indent_style = tab
+
+[mvnw]
+end_of_line = lf
+
+[mvnw.cmd]
+end_of_line = crlf

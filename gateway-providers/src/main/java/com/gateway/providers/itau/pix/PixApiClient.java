@@ -92,10 +92,12 @@ class PixApiClient {
         .header("x-itau-correlationID", correlationId())
         .header("Content-Type", "application/json")
         .header("Accept", "application/json");
+
     // Production requires it; the sandbox documents no apikey (NOTES.md "Sandbox authentication").
     if (creds.apiKey() != null) b.header("x-itau-apikey", creds.apiKey());
     HttpRequest req = b.build();
     HttpResponse<String> res;
+
     try {
       res = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
     } catch (HttpTimeoutException e) {
@@ -106,7 +108,9 @@ class PixApiClient {
       Thread.currentThread().interrupt();
       throw new ProviderException(ProviderException.Code.UNAVAILABLE, "interrupted calling Itaú", e);
     }
+
     int status = res.statusCode();
+
     if (status >= 200 && status < 300) {
       try {
         return Optional.of(mapper.readValue(res.body(), type));
@@ -114,9 +118,11 @@ class PixApiClient {
         throw new ProviderException(ProviderException.Code.UNKNOWN, "unreadable provider response", e);
       }
     }
+
     // Only the Pix API's own "not found" is an answer. A 404 from a wrong base URL or a proxy page
     // would otherwise read as "charge does not exist" and reconciliation would drop paid charges.
     if (status == 404 && emptyOn404 && ItauErrors.isPixNotFound(res.body())) return Optional.empty();
+
     // A rejected token must not be reused: the next call fetches a fresh one (and a fresh HttpClient).
     if (status == 401) tokens.evict(creds.fingerprint());
     throw ItauErrors.from(status, res.body());

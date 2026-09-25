@@ -1,4 +1,4 @@
-package com.gateway.app.api.dto;
+package com.gateway.app.api.payment.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.gateway.payments.payment.Payment;

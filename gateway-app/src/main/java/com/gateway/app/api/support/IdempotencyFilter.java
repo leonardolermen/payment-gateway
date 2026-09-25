@@ -1,4 +1,4 @@
-package com.gateway.app.api;
+package com.gateway.app.api.support;
 
 import com.gateway.app.security.MerchantContext;
 import com.gateway.app.security.Problems;
