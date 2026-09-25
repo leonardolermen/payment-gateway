@@ -1,4 +1,4 @@
-package com.gateway.app.api.dto;
+package com.gateway.app.api.payment.dto;
 
 import com.gateway.kernel.provider.boleto.Payer;
 import java.time.LocalDate;

@@ -1,4 +1,4 @@
-package com.gateway.app.api.dto;
+package com.gateway.app.api.refund.dto;
 
 import com.gateway.payments.refund.Refund;
 import java.time.Instant;

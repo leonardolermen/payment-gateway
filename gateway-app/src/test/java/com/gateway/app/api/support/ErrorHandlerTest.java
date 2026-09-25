@@ -1,4 +1,4 @@
-package com.gateway.app.api;
+package com.gateway.app.api.support;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

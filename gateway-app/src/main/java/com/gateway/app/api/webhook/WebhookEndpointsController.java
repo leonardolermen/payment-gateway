@@ -1,10 +1,10 @@
-package com.gateway.app.api;
+package com.gateway.app.api.webhook;
 
 import com.barrier.webhookdelivery.domain.WebhookEndpoint;
 import com.barrier.webhookdelivery.service.WebhookEndpointService;
-import com.gateway.app.api.dto.EndpointResponse;
-import com.gateway.app.api.dto.EndpointWithSecretResponse;
-import com.gateway.app.api.dto.RegisterEndpointRequest;
+import com.gateway.app.api.webhook.dto.EndpointResponse;
+import com.gateway.app.api.webhook.dto.EndpointWithSecretResponse;
+import com.gateway.app.api.webhook.dto.RegisterEndpointRequest;
 import com.gateway.app.security.MerchantContext;
 import com.gateway.kernel.errors.NotFoundException;
 import java.util.List;

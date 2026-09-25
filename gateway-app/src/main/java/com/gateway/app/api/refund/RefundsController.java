@@ -1,7 +1,8 @@
-package com.gateway.app.api;
+package com.gateway.app.api.refund;
 
-import com.gateway.app.api.dto.RefundRequestBody;
-import com.gateway.app.api.dto.RefundResponse;
+import com.gateway.app.api.support.IdempotencyFilter;
+import com.gateway.app.api.refund.dto.RefundRequestBody;
+import com.gateway.app.api.refund.dto.RefundResponse;
 import com.gateway.app.security.MerchantContext;
 import com.gateway.kernel.money.Money;
 import com.gateway.payments.refund.Refund;
