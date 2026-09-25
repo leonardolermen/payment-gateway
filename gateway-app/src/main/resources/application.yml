@@ -57,6 +57,22 @@ gateway:
       live-mutual-tls: true
       trust-store-pem: ${ITAU_CA_PEM:}         # Itau CA chain (ca-cert.zip from the portal); empty = JDK truststore
       read-timeout: PT30S                      # the bank's recommended client timeout (NOTES.md); 10 s cut off slow-but-successful PUTs
+      # Bolecode: three products, three hosts (spec 2026-09-25 §1). Issue and query authenticate at the Pix STS
+      # path; cash_management declares its own tokenUrl in its OpenAPI. No evidence yet of which STS path each
+      # LIVE API really honours, so every one is configurable. Sandbox: all behind the portal, /api/oauth/jwt.
+      boleto:
+        live-issue-api-base: https://pix-pj.api.itau.com/recebimentos-pix/v1
+        live-issue-token-url: https://sts.itau.com.br/as/token.oauth2
+        live-query-api-base: https://secure.api.cloud.itau.com.br/boletoscash/v2
+        live-query-token-url: https://sts.itau.com.br/as/token.oauth2
+        live-instruction-api-base: https://api.gateway.itau.com.br/cash_management/v2
+        live-instruction-token-url: https://sts.itau.com.br/api/oauth/token
+        test-issue-api-base: https://sandbox.devportal.itau.com.br/itau-ep9-api-recebimentos-v1-externo/v1
+        test-issue-token-url: https://sandbox.devportal.itau.com.br/api/oauth/jwt
+        test-query-api-base: https://sandbox.devportal.itau.com.br/itau-ep9-gtw-boletoscash-boletoscash-v2-ext-aws/v1
+        test-query-token-url: https://sandbox.devportal.itau.com.br/api/oauth/jwt
+        test-instruction-api-base: https://sandbox.devportal.itau.com.br/itau-ep9-gtw-cash-management-ext-v2/v2
+        test-instruction-token-url: https://sandbox.devportal.itau.com.br/api/oauth/jwt
   payments:
     default-expires-in-seconds: 3600
     expiration-grace: PT5M
@@ -71,6 +87,12 @@ gateway:
     outbox-relay-ms: 1000
     jobs-poll-ms: 2000
     stuck-sweep-ms: 60000
+    boleto-poll-every: PT6H                    # barcode payments clear in D+1; six hours keeps the merchant inside the business day
+    boleto-poll-max-attempts: 15000            # 10 years / 6 h; the date check in BoletoPollingService is what really stops a poll
+    boleto-poll-grace-after-limit: P2D         # a last-minute payment is credited on the next business day
+    boleto-default-due-in-days: 3
+    boleto-default-payment-limit-days: 30
+    boleto-max-payment-limit-days: 3650        # the bank's maximum (issue OpenAPI, data_limite_pagamento)
 
 management:
   endpoints:

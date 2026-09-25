@@ -38,9 +38,14 @@ public class PaymentsController {
   public ResponseEntity<PaymentResponse> create(@RequestBody CreatePaymentRequest req) {
     req.validate();
     MerchantContext.Current who = MerchantContext.current();
-    Payment p = payments.createCharge(new PaymentService.CreateCharge(
-        who.merchantId(), providerEnvironment(who.environment()), new Money(req.amount(), req.currency()),
-        req.reference(), req.description(), req.customer() == null ? null : req.customer().document(), req.expiresIn()));
+    ProviderEnvironment env = providerEnvironment(who.environment());
+    Money amount = new Money(req.amount(), req.currency());
+    Payment p =
+        req.isBolecode()
+            ? payments.createBolecode(new PaymentService.CreateBolecode(
+                who.merchantId(), env, amount, req.reference(), req.description(), req.payer(), req.dueDate(), req.paymentLimitDays()))
+            : payments.createCharge(new PaymentService.CreateCharge(
+                who.merchantId(), env, amount, req.reference(), req.description(), req.customer() == null ? null : req.customer().document(), req.expiresIn()));
     return withResource(HttpStatus.CREATED, p);
   }
 
