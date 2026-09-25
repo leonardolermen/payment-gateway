@@ -252,7 +252,15 @@ public class PaymentService {
         log.warn("boleto {} for payment {} not at the bank after {}; left CREATED for the sweeper", nossoNumero, payment.id(), e.code());
         throw ProviderErrors.toDomain(code, e, log, "issueBoleto", payment.id());
       }
-      return adoptBolecodeFromStatus(payment.id(), r, existing.get(), EventSource.API);
+      try {
+        return adoptBolecodeFromStatus(payment.id(), r, existing.get(), EventSource.API);
+      } catch (ProviderException again) {
+        // The boleto exists but its txid could not be confirmed: adopting an unconfirmed txid is the
+        // thing the confirmation exists to prevent, so the payment stays CREATED and the sweeper asks
+        // again. Translated here, not inside adoptBolecodeFromStatus, so the sweeper's job still sees
+        // the raw failure and retries.
+        throw ProviderErrors.toDomain(code, again, log, "confirmBoletoTxid", payment.id());
+      }
     }
     return adoptPendingBolecode(payment.id(), issued, EventSource.API);
   }

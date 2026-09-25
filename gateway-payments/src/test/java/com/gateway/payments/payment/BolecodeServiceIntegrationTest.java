@@ -153,4 +153,41 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
         .isInstanceOf(DomainException.class).extracting(e -> ((DomainException) e).code()).isEqualTo("PROVIDER_CREDENTIALS_MISSING");
     assertThat(jdbc.queryForObject("SELECT count(*) FROM payments.payments WHERE merchant_id = ?", Long.class, merchant.value())).isZero();
   }
+
+  /** A timeout and then the query itself fails: nothing is known, so nothing changes and the sweeper decides later. */
+  @Test
+  void timeoutThenFailedQueryLeavesCreatedWithNothingEmitted() {
+    boletos.failNextIssueWith(new ProviderException(ProviderException.Code.TIMEOUT, "read timed out", null));
+    boletos.failNextFindWith("00000001", new ProviderException(ProviderException.Code.UNAVAILABLE, 503, null, "proxy said 503"));
+    assertThatThrownBy(() -> newBolecode(700)).isInstanceOf(DomainException.class).extracting(e -> ((DomainException) e).code()).isEqualTo("PROVIDER_TIMEOUT");
+    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    assertThat(p.status()).isEqualTo(PaymentStatus.CREATED);
+    assertThat(outboxTypes(p.id())).isEmpty();
+    assertThat(jobs.findByTypeAndRef(JobType.EXPIRE_PAYMENT, p.id())).isEmpty();
+    assertThat(jobs.findByTypeAndRef(JobType.POLL_BOLETO, p.id())).isEmpty();
+    assertThat(boletos.callsFor(merchant, "00000001")).containsExactly("issueBoleto:00000001", "findBoleto:00000001");
+  }
+
+  /** The query finds the boleto but GET /cob does not know the derived txid: adopted with the query's EMV, and a human is told the formula missed. */
+  @Test
+  void unconfirmedTxidAdoptsWithTheQueryEmvAndOpensADivergence() {
+    boletos.skipNextPixRegistration();
+    boletos.landNextIssueThenFailWith(new ProviderException(ProviderException.Code.TIMEOUT, 202, "202", "Operação em andamento"));
+    Payment p = newBolecode(700);
+    assertThat(p.status()).isEqualTo(PaymentStatus.PENDING);
+    assertThat(p.pix().pixCopiaECola()).isNotNull().isEqualTo(boletos.status("00000001").pixCopiaECola());
+    assertThat(jdbc.queryForList("SELECT provider_status FROM payments.reconciliation_divergences WHERE payment_id = ?", String.class, p.id()))
+        .containsExactly("PIX_TXID_UNCONFIRMED");
+  }
+
+  /** The boleto is at the bank but GET /cob fails: an unconfirmed txid is never adopted, the payment waits for the sweeper. */
+  @Test
+  void failedTxidConfirmationLeavesCreated() {
+    boletos.landNextIssueThenFailWith(new ProviderException(ProviderException.Code.TIMEOUT, "read timed out", null));
+    bank.failNextFindWith(boletos.pixTxidFor(merchant, "00000001"), new ProviderException(ProviderException.Code.UNAVAILABLE, 503, null, "proxy said 503"));
+    assertThatThrownBy(() -> newBolecode(700)).isInstanceOf(DomainException.class).extracting(e -> ((DomainException) e).code()).isEqualTo("PROVIDER_TIMEOUT");
+    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    assertThat(p.status()).isEqualTo(PaymentStatus.CREATED);
+    assertThat(outboxTypes(p.id())).isEmpty();
+  }
 }

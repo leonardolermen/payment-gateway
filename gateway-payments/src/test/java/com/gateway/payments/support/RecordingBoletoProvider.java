@@ -44,6 +44,7 @@ public class RecordingBoletoProvider implements BoletoProvider {
   private volatile ProviderException failNextIssue;
   private volatile ProviderException landThenFail;
   private volatile boolean refuseCredentials;
+  private volatile boolean skipPix;
 
   public RecordingBoletoProvider(Clock clock, RecordingPixProvider pix) {
     this.clock = clock;
@@ -56,6 +57,9 @@ public class RecordingBoletoProvider implements BoletoProvider {
 
   /** The POST reached the bank and issued the boleto, but the caller sees {@code e} (a timeout, a 503, a 202). */
   public void landNextIssueThenFailWith(ProviderException e) { this.landThenFail = e; }
+
+  /** The next issue creates no Pix side at the bank, so GET /cob on the derived txid finds nothing. */
+  public void skipNextPixRegistration() { this.skipPix = true; }
 
   public void refuseNextIssueCredentials() { this.refuseCredentials = true; }
 
@@ -122,7 +126,8 @@ public class RecordingBoletoProvider implements BoletoProvider {
     String k = beneficiary(c) + ":" + r.nossoNumero();
     latest.put(r.nossoNumero(), k);
     boletos.put(k, new BoletoStatus(BoletoSituation.OPEN, null, null, null, "uuid-" + r.nossoNumero(), linha, barras, r.paymentLimitDate(), emv));
-    pix.register(new Charge(txid, ChargeStatus.ACTIVE, r.amount(), emv, "pix.example/qr/" + txid, clock.instant(), 0, List.of()));
+    if (skipPix) skipPix = false;
+    else pix.register(new Charge(txid, ChargeStatus.ACTIVE, r.amount(), emv, "pix.example/qr/" + txid, clock.instant(), 0, List.of()));
     ProviderException after = landThenFail;
     if (after != null) {
       landThenFail = null;
