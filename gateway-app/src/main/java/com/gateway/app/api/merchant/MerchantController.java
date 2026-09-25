@@ -13,7 +13,9 @@ public class MerchantController {
 
   public record Merchant(String merchantId, String name, ApiKeyEnvironment environment) {}
 
-  @GetMapping("/v1/merchant")
+  /** The route is {@code /v1/me}: it is contract, documented in the README and asserted by
+   * AuthenticationIntegrationTest. The class and the record were renamed; the path was not. */
+  @GetMapping("/v1/me")
   public Merchant me() {
     var current = MerchantContext.current();
     var merchant = merchants.get(current.merchantId());
