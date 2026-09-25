@@ -116,6 +116,9 @@ public class JobRunner {
         reconciliation.reconcileAll(now);
         yield true;
       }
+      // Placeholder to keep this switch exhaustive: nothing enqueues POLL_BOLETO yet, and Task 10
+      // (BoletoPollingService) replaces this case with the real poll-and-complete logic.
+      case POLL_BOLETO -> throw new UnsupportedOperationException("POLL_BOLETO is executed from Task 10 (BoletoPollingService)");
     };
   }
 

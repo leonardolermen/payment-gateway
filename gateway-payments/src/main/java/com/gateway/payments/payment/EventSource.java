@@ -6,5 +6,7 @@ public enum EventSource {
   PROVIDER_WEBHOOK,
   RECONCILIATION,
   EXPIRATION_JOB,
-  SYSTEM
+  SYSTEM,
+  /** The boleto query (GET /boletos) run by the POLL_BOLETO job: a provider-side fact, like a webhook. */
+  PROVIDER_POLL
 }

@@ -1,6 +1,8 @@
 package com.gateway.payments.payment;
 
 import com.gateway.payments.payment.pix.PixDetails;
+import com.gateway.payments.payment.boleto.BoletoDetails;
+import com.gateway.payments.payment.boleto.PaidVia;
 
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.ids.Ulid;
@@ -11,7 +13,7 @@ import java.time.Instant;
 import java.util.Optional;
 
 /**
- * A Pix charge. Mutable, event-sourced-in-spirit aggregate: every state change produces a
+ * A Pix charge or a Bolecode (a registered boleto with a Pix QR on it). Mutable, event-sourced-in-spirit aggregate: every state change produces a
  * {@link PaymentEvent} whose {@code sequence} is the new {@code version} (optimistic lock).
  *
  * <p>{@code txid} is the payment id itself ({@link Ulid#next()} fits the Bacen {@code [a-zA-Z0-9]{26,35}}
@@ -24,6 +26,7 @@ import java.util.Optional;
  */
 public final class Payment {
   private final String id;
+  private final PaymentMethod method;
   private final MerchantId merchantId;
   private final ProviderEnvironment environment;
   private final String provider;
@@ -36,6 +39,7 @@ public final class Payment {
 
   private PaymentStatus status;
   private PixDetails pix;
+  private BoletoDetails boleto;
   private Instant expiresAt;
   private Instant paidAt;
   private Money paidAmount;
@@ -46,6 +50,7 @@ public final class Payment {
 
   private Payment(
       String id,
+      PaymentMethod method,
       MerchantId merchantId,
       ProviderEnvironment environment,
       String provider,
@@ -56,6 +61,7 @@ public final class Payment {
       Instant createdAt,
       Clock clock) {
     this.id = id;
+    this.method = method;
     this.merchantId = merchantId;
     this.environment = environment;
     this.provider = provider;
@@ -83,11 +89,31 @@ public final class Payment {
       Clock clock) {
     String id = Ulid.next();
     Payment p =
-        new Payment(id, merchantId, environment, provider, amount, reference, description, customerDocumentHash, clock.instant(), clock);
+        new Payment(id, PaymentMethod.PIX, merchantId, environment, provider, amount, reference, description, customerDocumentHash, clock.instant(), clock);
     p.expiresAt = clock.instant().plusSeconds(expiresInSeconds);
     p.version = 1;
-    p.createdEvent =
-        new PaymentEvent(Ulid.next(), id, p.version, "created", EventSource.API, "{\"amount\":" + amount.cents() + "}", p.createdAt);
+    p.createdEvent = new PaymentEvent(
+        Ulid.next(), id, p.version, "created", EventSource.API, "{\"amount\":" + amount.cents() + ",\"method\":\"PIX\"}", p.createdAt);
+    return p;
+  }
+
+  /**
+   * A Bolecode starts with its nosso número reserved (the bank's query key) and no txid: the Pix
+   * side only exists once the bank answers the issue. {@code expiresAt} is the limit date's end of
+   * day in São Paulo, computed by the caller.
+   */
+  public static Payment createBolecode(
+      MerchantId merchantId, ProviderEnvironment environment, String provider, Money amount, String reference, String description,
+      String customerDocumentHash, BoletoDetails boleto, Instant expiresAt, Clock clock) {
+    String id = Ulid.next();
+    Payment p = new Payment(
+        id, PaymentMethod.BOLECODE, merchantId, environment, provider, amount, reference, description, customerDocumentHash, clock.instant(), clock);
+    p.pix = new PixDetails(null, null, null, null);
+    p.boleto = boleto;
+    p.expiresAt = expiresAt;
+    p.version = 1;
+    p.createdEvent = new PaymentEvent(Ulid.next(), id, p.version, "created", EventSource.API,
+        "{\"amount\":" + amount.cents() + ",\"method\":\"BOLECODE\",\"nossoNumero\":" + json(boleto.nossoNumero()) + "}", p.createdAt);
     return p;
   }
 
@@ -117,18 +143,36 @@ public final class Payment {
     return event;
   }
 
+  public PaymentEvent markPendingBolecode(PixDetails pixDetails, BoletoDetails boletoDetails, Instant expiresAt, EventSource by) {
+    if (method != PaymentMethod.BOLECODE) throw new IllegalStateException("markPendingBolecode on a " + method + " payment");
+    PaymentEvent event = transition(PaymentStatus.PENDING, by, "pending",
+        "{\"txid\":" + json(pixDetails.txid()) + ",\"nossoNumero\":" + json(boletoDetails.nossoNumero()) + "}");
+    this.pix = pixDetails;
+    this.boleto = boletoDetails;
+    this.expiresAt = expiresAt;
+    return event;
+  }
+
   public PaymentEvent markFailed(String reason, EventSource by) {
     return transition(PaymentStatus.FAILED, by, "failed", "{\"reason\":" + json(reason) + "}");
   }
 
   public PaymentEvent markCompleted(String endToEndId, Money paidAmount, Instant paidAt, EventSource by) {
-    PaymentEvent event =
-        transition(
-            PaymentStatus.COMPLETED,
-            by,
-            "completed",
-            "{\"endToEndId\":" + json(endToEndId) + ",\"paidAmount\":" + paidAmount.cents() + "}");
+    PaymentEvent event = transition(PaymentStatus.COMPLETED, by, "completed",
+        "{\"endToEndId\":" + json(endToEndId) + ",\"paidAmount\":" + paidAmount.cents() + ",\"paidVia\":\"PIX\"}");
     this.pix = pix.withEndToEndId(endToEndId);
+    if (boleto != null) this.boleto = boleto.withPaidVia(PaidVia.PIX);
+    this.paidAmount = paidAmount;
+    this.paidAt = paidAt;
+    return event;
+  }
+
+  /** The barcode path: no endToEndId exists, the bank's payment record is the evidence. {@code paidChannel} is its codigo_meio_pagamento. */
+  public PaymentEvent markCompletedByBoleto(Money paidAmount, Instant paidAt, String paidChannel, EventSource by) {
+    if (method != PaymentMethod.BOLECODE) throw new IllegalStateException("markCompletedByBoleto on a " + method + " payment");
+    PaymentEvent event = transition(PaymentStatus.COMPLETED, by, "completed",
+        "{\"paidVia\":\"BOLETO\",\"paidAmount\":" + paidAmount.cents() + ",\"paidChannel\":" + json(paidChannel) + "}");
+    this.boleto = boleto.withPaidVia(PaidVia.BOLETO);
     this.paidAmount = paidAmount;
     this.paidAt = paidAt;
     return event;
@@ -268,6 +312,14 @@ public final class Payment {
     return pix;
   }
 
+  public PaymentMethod method() {
+    return method;
+  }
+
+  public BoletoDetails boleto() {
+    return boleto;
+  }
+
   public Instant expiresAt() {
     return expiresAt;
   }
@@ -321,10 +373,18 @@ public final class Payment {
       Instant createdAt,
       Instant updatedAt,
       Clock clock) {
-    Payment p =
-        new Payment(id, merchantId, environment, provider, amount, reference, description, customerDocumentHash, createdAt, clock);
+    return rehydrate(id, merchantId, environment, provider, PaymentMethod.PIX, status, amount, reference, description, customerDocumentHash,
+        pix, null, expiresAt, paidAt, paidAmount, refundedAmount, version, createdAt, updatedAt, clock);
+  }
+
+  public static Payment rehydrate(
+      String id, MerchantId merchantId, ProviderEnvironment environment, String provider, PaymentMethod method, PaymentStatus status,
+      Money amount, String reference, String description, String customerDocumentHash, PixDetails pix, BoletoDetails boleto,
+      Instant expiresAt, Instant paidAt, Money paidAmount, Money refundedAmount, long version, Instant createdAt, Instant updatedAt, Clock clock) {
+    Payment p = new Payment(id, method, merchantId, environment, provider, amount, reference, description, customerDocumentHash, createdAt, clock);
     p.status = status;
     p.pix = pix;
+    p.boleto = boleto;
     p.expiresAt = expiresAt;
     p.paidAt = paidAt;
     p.paidAmount = paidAmount;

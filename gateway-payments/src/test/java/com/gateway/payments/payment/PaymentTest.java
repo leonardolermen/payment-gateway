@@ -1,6 +1,7 @@
 package com.gateway.payments.payment;
 
 import com.gateway.payments.payment.pix.PixDetails;
+import com.gateway.payments.payment.boleto.*;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -98,5 +99,53 @@ class PaymentTest {
     assertThat(p.fullyRefunded()).isTrue();
     assertThat(p.status()).isEqualTo(PaymentStatus.COMPLETED);
     assertThatThrownBy(() -> p.applyRefund(Money.brl(1))).isInstanceOf(IllegalArgumentException.class);
+  }
+
+  Payment bolecode() {
+    BoletoDetails b = new BoletoDetails("00000042", null, null, null, LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 31), null);
+    return Payment.createBolecode(MerchantId.next(), ProviderEnvironment.TEST, "ITAU", Money.brl(12990), "order-42", "Pedido 42", null, b,
+        BoletoDates.endOfDay(LocalDate.of(2026, 10, 31)), clock);
+  }
+
+  @Test void aBolecodeStartsWithItsNumberAndNoTxid() {
+    Payment p = bolecode();
+    assertThat(p.method()).isEqualTo(PaymentMethod.BOLECODE);
+    assertThat(p.boleto().nossoNumero()).isEqualTo("00000042");
+    assertThat(p.pix().txid()).isNull();
+    assertThat(p.status()).isEqualTo(PaymentStatus.CREATED);
+    assertThat(p.version()).isEqualTo(1);
+    assertThat(p.createdEvent().payload()).contains("\"method\":\"BOLECODE\"").contains("\"nossoNumero\":\"00000042\"");
+    assertThat(fresh().method()).isEqualTo(PaymentMethod.PIX);
+    assertThat(fresh().boleto()).isNull();
+  }
+
+  @Test void pendingBolecodeCarriesBothSidesAndPaidByBoletoSetsPaidVia() {
+    Payment p = bolecode();
+    PixDetails pix = new PixDetails("BL15000005206109000000000000042", "000201…", null, null);
+    BoletoDetails issued = p.boleto().withIssued("uuid-1", "1".repeat(47), "1".repeat(44), LocalDate.of(2026, 10, 30));
+    PaymentEvent pending = p.markPendingBolecode(pix, issued, BoletoDates.endOfDay(LocalDate.of(2026, 10, 30)), EventSource.API);
+    assertThat(pending.type()).isEqualTo("pending");
+    assertThat(p.boleto().paymentLimitDate()).isEqualTo(LocalDate.of(2026, 10, 30));
+    assertThat(p.boleto().linhaDigitavel()).hasSize(47);
+    assertThat(p.pix().txid()).startsWith("BL");
+
+    PaymentEvent done = p.markCompletedByBoleto(Money.brl(12990), Instant.parse("2026-10-05T12:00:00Z"), "01", EventSource.PROVIDER_POLL);
+    assertThat(p.status()).isEqualTo(PaymentStatus.COMPLETED);
+    assertThat(p.boleto().paidVia()).isEqualTo(PaidVia.BOLETO);
+    assertThat(p.paidAmount()).isEqualTo(Money.brl(12990));
+    assertThat(p.pix().endToEndId()).isNull();
+    assertThat(done.payload()).contains("\"paidVia\":\"BOLETO\"").contains("\"paidChannel\":\"01\"");
+  }
+
+  @Test void pixOnABolecodeSetsPaidViaPixAndBoletoCompletionIsRefusedOnPix() {
+    Payment p = bolecode();
+    p.markPendingBolecode(new PixDetails("BL1", "emv", null, null), p.boleto(), Instant.parse("2026-11-01T02:59:59Z"), EventSource.API);
+    PaymentEvent e = p.markCompleted("E123", Money.brl(12990), Instant.now(), EventSource.PROVIDER_WEBHOOK);
+    assertThat(p.boleto().paidVia()).isEqualTo(PaidVia.PIX);
+    assertThat(e.payload()).contains("\"paidVia\":\"PIX\"");
+
+    Payment pix = fresh();
+    pix.markPending(new PixDetails(pix.id(), "x", "y", null), Instant.now());
+    assertThatThrownBy(() -> pix.markCompletedByBoleto(Money.brl(1), Instant.now(), null, EventSource.PROVIDER_POLL)).isInstanceOf(IllegalStateException.class);
   }
 }

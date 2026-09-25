@@ -48,4 +48,13 @@ class PaymentTransitionsTest {
     assertThat(PaymentTransitions.allowed(PaymentStatus.CREATED, PaymentStatus.PENDING, EventSource.SYSTEM)).isTrue();
     assertThat(PaymentTransitions.allowed(PaymentStatus.CREATED, PaymentStatus.PENDING, EventSource.RECONCILIATION)).isFalse();
   }
+
+  /** Polling the boleto query is a provider-side fact, like a webhook: it may complete PENDING and a late-paid EXPIRED, never anything else. */
+  @org.junit.jupiter.api.Test
+  void providerPollCompletesLikeAWebhook() {
+    assertThat(PaymentTransitions.allowed(PaymentStatus.PENDING, PaymentStatus.COMPLETED, EventSource.PROVIDER_POLL)).isTrue();
+    assertThat(PaymentTransitions.allowed(PaymentStatus.EXPIRED, PaymentStatus.COMPLETED, EventSource.PROVIDER_POLL)).isTrue();
+    assertThat(PaymentTransitions.allowed(PaymentStatus.PENDING, PaymentStatus.CANCELED, EventSource.PROVIDER_POLL)).isFalse();
+    assertThat(PaymentTransitions.allowed(PaymentStatus.PENDING, PaymentStatus.EXPIRED, EventSource.PROVIDER_POLL)).isFalse();
+  }
 }

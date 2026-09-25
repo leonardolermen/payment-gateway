@@ -29,6 +29,11 @@ public record Job(
     return new Job(Ulid.next(), JobType.POLL_REFUND, refundId, firstAt, 0, "PENDING", null, null, clock.instant());
   }
 
+  /** Bolecode: ask GET /boletos whether the barcode was paid; the runner reschedules it every 6 h until the limit date plus a grace. */
+  public static Job pollBoleto(String paymentId, Instant firstAt, Clock clock) {
+    return new Job(Ulid.next(), JobType.POLL_BOLETO, paymentId, firstAt, 0, "PENDING", null, null, clock.instant());
+  }
+
   public static Job reconcile(Clock clock) {
     Instant now = clock.instant();
     return new Job(Ulid.next(), JobType.RECONCILE, "all", now, 0, "PENDING", null, null, now);
