@@ -89,7 +89,12 @@ public class ExpirationService {
               paymentService.settleBoleto(p.merchantId(), p.id(), atBank.get(), EventSource.RECONCILIATION);
             }
           }
-          changed++;
+          // Counted from the row, not assumed: every branch above may be a no-op (markFailed and the
+          // adoption both leave a payment that is no longer CREATED alone), and counting those made
+          // the sweep report work it did not do.
+          if (payments.findById(p.id()).map(x -> x.status() != PaymentStatus.CREATED).orElse(false)) {
+            changed++;
+          }
           continue;
         }
         Optional<Charge> atBank = providers.call(p.id(), "findCharge", r, x -> x.provider().findCharge(x.credentials(), p.id()));

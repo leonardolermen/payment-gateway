@@ -100,6 +100,9 @@ public class RecordingBoletoProvider implements BoletoProvider {
 
   public void remove(String nossoNumero) { boletos.remove(key(nossoNumero)); }
 
+  /** Puts a boleto back as the bank shows it: an issue the bank registered after the gateway had already given up on it. */
+  public void restore(String nossoNumero, BoletoStatus status) { boletos.put(key(nossoNumero), status); }
+
   public BoletoStatus status(String nossoNumero) { return boletos.get(key(nossoNumero)); }
 
   private String key(String nossoNumero) { return latest.getOrDefault(nossoNumero, BENEFICIARY + ":" + nossoNumero); }

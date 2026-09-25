@@ -28,6 +28,7 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
   @Autowired PaymentRepository payments;
   @Autowired JobRepository jobs;
   @Autowired JobRunner jobRunner;
+  @Autowired com.gateway.payments.payment.ExpirationService expiration;
 
   /** runDue claims one batch; the shared context leaves earlier tests' jobs due at the same instant, so drain it. */
   private int drain(Instant at) {
@@ -216,5 +217,79 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
     assertThat(job.nextRunAt()).isEqualTo(later.plus(Duration.ofMinutes(1)));
     assertThat(job.lastError()).contains("UNAVAILABLE");
     assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.PENDING);
+  }
+
+  // --- ruling R2: CANCELED and FAILED stay watched until the limit date plus the grace ---
+
+  @Test
+  void aCanceledBolecodeKeepsBeingPolledAndABarcodePaidAfterTheBaixaIsBoletoPaid() {
+    Payment p = newBolecode(12990);
+    paymentService.cancel(merchant, p.id());
+    assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).as("baixa'd, still within the window").isFalse();
+    assertThat(divergences(p.id())).as("CANCELED at the bank is the expected picture").isEmpty();
+
+    boletos.markPaid(nn(p), Money.brl(12990), clock.instant(), "Guichê de caixa");
+    assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isTrue();
+    assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.CANCELED);
+    assertThat(divergences(p.id())).extracting(d -> d.get("provider_status")).containsExactly("BOLETO_PAID");
+    assertThat(outboxTypes(p.id())).containsExactly("payment.pending", "payment.canceled");
+  }
+
+  @Test
+  void theCanceledPollStopsOnlyAfterTheLimitDatePlusTheGrace() {
+    Payment p = paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, payer(), BoletoDates.today(clock), 0));
+    paymentService.cancel(merchant, p.id());
+    assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isFalse();
+    clock.advance(Duration.ofDays(3));
+    assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isTrue();
+    assertThat(divergences(p.id())).isEmpty();
+  }
+
+  @Test
+  void aFailedBolecodeTheBankRegisteredAnywayAndThatGetsPaidIsBoletoPaid() {
+    boletos.landNextIssueThenFailWith(new ProviderException(ProviderException.Code.TIMEOUT, "read timed out", null));
+    boletos.failNextFindWith(merchant, "00000001", new ProviderException(ProviderException.Code.UNAVAILABLE, 503, null, "down"));
+    assertThatThrownBy(() -> newBolecode(12990)).isInstanceOf(com.gateway.kernel.errors.DomainException.class);
+    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    var registered = boletos.status(nn(p));
+    boletos.remove(nn(p)); // the bank's 202: not visible yet when the sweeper asks
+    clock.advance(Duration.ofMinutes(11));
+    expiration.sweepStuckCreated(clock.instant());
+    assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.FAILED);
+
+    boletos.restore(nn(p), registered);
+    assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).as("open, within the window").isFalse();
+    assertThat(divergences(p.id())).isEmpty();
+    boletos.markPaid(nn(p), Money.brl(12990), clock.instant(), "Guichê de caixa");
+    assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isTrue();
+    assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.FAILED);
+    assertThat(divergences(p.id())).extracting(d -> d.get("provider_status")).containsExactly("BOLETO_PAID");
+  }
+
+  @Test
+  void aFailedBolecodeTheBankNeverSawIsQuiet() {
+    boletos.failNextIssueWith(new ProviderException(ProviderException.Code.DECLINED, 422, "422", "Vencimento menor que prazo mínimo"));
+    assertThatThrownBy(() -> newBolecode(100)).isInstanceOf(com.gateway.kernel.errors.DomainException.class);
+    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isFalse();
+    assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isFalse();
+    assertThat(divergences(p.id())).as("no NOT_FOUND_AT_BANK for an issue the bank refused").isEmpty();
+    assertThat(payments.events(p.id())).extracting(e -> e.type()).containsExactly("created", "failed");
+  }
+
+  // --- duplicate completion ---
+
+  @Test
+  void aBoletoAlreadyCompletedViaBoletoSeenPaidAgainIsIgnored() {
+    Payment p = newBolecode(12990);
+    boletos.markPaid(nn(p), Money.brl(12990), clock.instant());
+    assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isTrue();
+    assertThat(payments.findById(p.id()).orElseThrow().boleto().paidVia()).isEqualTo(PaidVia.BOLETO);
+
+    assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isTrue();
+    assertThat(payments.events(p.id())).extracting(e -> e.type()).containsExactly("created", "pending", "completed", "ignored");
+    assertThat(payments.events(p.id()).getLast().payload()).contains("already settled");
+    assertThat(divergences(p.id())).isEmpty();
+    assertThat(outboxTypes(p.id())).containsExactly("payment.pending", "payment.completed");
   }
 }

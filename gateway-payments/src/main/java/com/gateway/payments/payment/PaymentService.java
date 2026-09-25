@@ -87,10 +87,12 @@ public class PaymentService {
     if (a.street() == null || a.street().isBlank()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.street is required");
     if (a.district() == null || a.district().isBlank()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.district is required");
     if (a.city() == null || a.city().isBlank()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.city is required");
-    if (a.state() == null || !UF.matcher(a.state()).matches()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.state must be a two-letter UF");
+    // "sp" is a valid UF typed in lowercase, not a wrong one; the bank's enum is uppercase, so it is normalized, not refused.
+    String state = a.state() == null ? null : a.state().trim().toUpperCase(java.util.Locale.ROOT);
+    if (state == null || !UF.matcher(state).matches()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.state must be a two-letter UF");
     String zip = a.zip() == null ? "" : a.zip().replaceAll("\\D", "");
     if (!CEP.matcher(zip).matches()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.zip must be 8 digits");
-    return new Payer(payer.name(), document, new Address(a.street(), a.district(), a.city(), a.state(), zip));
+    return new Payer(payer.name(), document, new Address(a.street(), a.district(), a.city(), state, zip));
   }
 
   private final PaymentRepository payments;
@@ -244,7 +246,11 @@ public class PaymentService {
     try {
       issued = providers.call(payment.id(), "issueBoleto", r, x -> boleto.issue(x.credentials(), request));
     } catch (ProviderException e) {
-      boolean mayHaveLanded = e.code() == ProviderException.Code.TIMEOUT || e.code() == ProviderException.Code.UNAVAILABLE;
+      // CONFLICT on the issue is the bank saying "this nosso número already exists" (ruling R4): the
+      // number is ours and reserved before the call, so it can only be our own earlier attempt that
+      // landed. Failing it would leave a payable boleto behind a FAILED payment; the query adopts it.
+      boolean mayHaveLanded = e.code() == ProviderException.Code.TIMEOUT || e.code() == ProviderException.Code.UNAVAILABLE
+          || e.code() == ProviderException.Code.CONFLICT;
       if (!mayHaveLanded) {
         boolean declined = e.code() == ProviderException.Code.INVALID || e.code() == ProviderException.Code.DECLINED;
         throw fail(payment.id(), declined ? "PROVIDER_DECLINED" : "PROVIDER_UNAVAILABLE", e, null);
@@ -263,10 +269,11 @@ public class PaymentService {
       try {
         return adoptBolecodeFromStatus(payment.id(), r, existing.get(), EventSource.API);
       } catch (ProviderException again) {
-        // The boleto exists but its txid could not be confirmed: adopting an unconfirmed txid is the
-        // thing the confirmation exists to prevent, so the payment stays CREATED and the sweeper asks
-        // again. Translated here, not inside adoptBolecodeFromStatus, so the sweeper's job still sees
-        // the raw failure and retries.
+        // The boleto exists but GET /cob itself failed (bank unreachable), so nothing is known about
+        // the txid yet. This is not the "bank does not know the txid" case: that one is adopted and
+        // flagged PIX_TXID_UNCONFIRMED inside adoptBolecodeFromStatus (ruling R1). Here the payment
+        // stays CREATED and the sweeper asks again after stuckCreatedAfter. Translated here, not inside
+        // adoptBolecodeFromStatus, so the sweeper still sees the raw failure and retries.
         throw ProviderErrors.toDomain(code, again, log, "confirmBoletoTxid", payment.id());
       }
     }
@@ -275,10 +282,17 @@ public class PaymentService {
 
   /** CREATED -> PENDING with both sides, the expire job (limit date's end of day + grace) and the poll job (+boletoPollEvery), plus the outbox row. */
   Payment adoptPendingBolecode(String paymentId, IssuedBoleto issued, EventSource by) {
+    return adoptPendingBolecode(paymentId, issued, by, null);
+  }
+
+  /** {@code unconfirmedDetail} non-null opens PIX_TXID_UNCONFIRMED in the same transaction, and only if this call made the transition. */
+  private Payment adoptPendingBolecode(String paymentId, IssuedBoleto issued, EventSource by, String unconfirmedDetail) {
     return tx.execute(s -> {
       Payment p = payments.findById(paymentId).orElseThrow();
       if (p.status() != PaymentStatus.CREATED) {
-        return p; // the sweeper and a slow create may race to adopt the same boleto; the loser must not fail
+        // The sweeper and a slow create may race to adopt the same boleto; the loser must not fail,
+        // and must not flag a txid it did not adopt: the winner's own confirmation is what counts.
+        return p;
       }
       BoletoDetails details = p.boleto().withIssued(issued.idBoletoIndividual(), issued.linhaDigitavel(), issued.codigoBarras(), issued.paymentLimitDate());
       PixDetails pix = new PixDetails(issued.pixTxid(), issued.pixCopiaECola(), null, null);
@@ -290,6 +304,9 @@ public class PaymentService {
         log.debug("poll job for payment {} was already queued", saved.id());
       }
       events.emit(saved.merchantId(), "payment.pending", saved);
+      if (unconfirmedDetail != null) {
+        openDivergence(saved, "PIX_TXID_UNCONFIRMED", unconfirmedDetail);
+      }
       return saved;
     });
   }
@@ -306,12 +323,12 @@ public class PaymentService {
     String txid = r.boleto().orElseThrow().pixTxidFor(r.credentials(), nossoNumero);
     Optional<Charge> charge = providers.call(paymentId, "findCharge", r, x -> x.provider().findCharge(x.credentials(), txid));
     String emv = charge.map(Charge::pixCopiaECola).orElse(status.pixCopiaECola());
-    Payment adopted = adoptPendingBolecode(paymentId,
-        new IssuedBoleto(status.idBoletoIndividual(), status.linhaDigitavel(), status.codigoBarras(), status.paymentLimitDate(), txid, emv, null), by);
-    if (charge.isEmpty()) {
-      tx.executeWithoutResult(s -> openDivergence(adopted, "PIX_TXID_UNCONFIRMED", "GET /cob/" + txid + " empty while adopting boleto " + nossoNumero + " from the query"));
-    }
-    return adopted;
+    // Ruling R1: an unconfirmed txid is still ADOPTED, and flagged. Refusing would leave a boleto the
+    // bank issued in CREATED, and the sweeper would later fail it while it is payable; the poll
+    // settles by nosso número, so the txid only matters for the Pix webhook match and refunds.
+    String unconfirmed = charge.isEmpty() ? "GET /cob/" + txid + " empty while adopting boleto " + nossoNumero + " from the query" : null;
+    return adoptPendingBolecode(paymentId,
+        new IssuedBoleto(status.idBoletoIndividual(), status.linhaDigitavel(), status.codigoBarras(), status.paymentLimitDate(), txid, emv, null), by, unconfirmed);
   }
 
   /**
@@ -481,11 +498,13 @@ public class PaymentService {
       }
       if (p.status().terminal()) {
         String knownE2e = p.pix() == null ? null : p.pix().endToEndId();
+        boolean sameAmount = p.paidAmount() != null && p.paidAmount().cents() == pix.amount().cents();
+        // A Bolecode the boleto query completed via PIX without an endToEndId (GET /cob unreachable
+        // at that moment) has no e2eid to compare: its QR is its only Pix side, so a Pix of the same
+        // amount is the one the query already saw, not a second payment.
+        boolean completedByQueryViaPix = p.boleto() != null && p.boleto().paidVia() == PaidVia.PIX && knownE2e == null;
         boolean duplicate =
-            p.status() == PaymentStatus.COMPLETED
-                && Objects.equals(knownE2e, pix.endToEndId())
-                && p.paidAmount() != null
-                && p.paidAmount().cents() == pix.amount().cents();
+            p.status() == PaymentStatus.COMPLETED && sameAmount && (Objects.equals(knownE2e, pix.endToEndId()) || completedByQueryViaPix);
         String what = duplicate ? "duplicate e2eid " + pix.endToEndId() : "pix " + pix.endToEndId() + " on a " + p.status() + " payment";
         payments.save(p, List.of(p.recordIgnored(what, by).orElseThrow()));
         if (!duplicate) {
@@ -567,7 +586,14 @@ public class PaymentService {
           return Settlement.IGNORED;
         }
         Instant paidAt = status.paidAt() == null ? clock.instant() : status.paidAt();
-        Payment saved = payments.save(p, List.of(p.markCompletedByBoleto(status.paidAmount(), paidAt, status.paidChannel(), by)));
+        // Ruling R3: a Pix channel means the payer used the QR, and a Pix settlement is refundable at
+        // the bank while a barcode one is not. Recording BOLETO here would lock the merchant out of a
+        // refund they are owed. The query has no endToEndId; BoletoPollingService asks GET /cob for it
+        // first, so reaching this with a Pix channel means it stays unknown.
+        PaymentEvent completion = isPixChannel(status.paidChannel())
+            ? p.markCompleted(null, status.paidAmount(), paidAt, by)
+            : p.markCompletedByBoleto(status.paidAmount(), paidAt, status.paidChannel(), by);
+        Payment saved = payments.save(p, List.of(completion));
         events.emit(saved.merchantId(), "payment.completed", saved);
         return Settlement.COMPLETED;
       }
@@ -603,7 +629,9 @@ public class PaymentService {
     });
   }
 
-  private static boolean isPixChannel(String channel) {
+  /** Whether the bank's payment channel is Pix; null or blank is not (the caller decides what an absent channel means). */
+  public static boolean isPixChannel(String channel) {
+    if (channel == null || channel.isBlank()) return false;
     String plain = java.text.Normalizer.normalize(channel, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "").toLowerCase(java.util.Locale.ROOT);
     return plain.contains("pix");
   }

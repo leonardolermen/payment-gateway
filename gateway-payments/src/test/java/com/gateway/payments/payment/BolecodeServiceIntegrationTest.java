@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
   @Autowired PaymentRepository payments;
   @Autowired JobRepository jobs;
+  @Autowired com.gateway.payments.provider.ProviderGateway providers;
 
   @Test
   void createsABolecodeWithBothSidesTwoJobsAndPending() {
@@ -168,13 +169,21 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
     assertThat(boletos.callsFor(merchant, "00000001")).containsExactly("issueBoleto:00000001", "findBoleto:00000001");
   }
 
-  /** The query finds the boleto but GET /cob does not know the derived txid: adopted with the query's EMV, and a human is told the formula missed. */
+  /**
+   * Ruling R1: the query finds the boleto but GET /cob does not know the derived txid. The payment is
+   * ADOPTED anyway (PENDING, derived txid, the query's EMV, both jobs, payment.pending) and flagged
+   * PIX_TXID_UNCONFIRMED; refusing would leave a boleto the bank issued in CREATED.
+   */
   @Test
   void unconfirmedTxidAdoptsWithTheQueryEmvAndOpensADivergence() {
     boletos.skipNextPixRegistration();
     boletos.landNextIssueThenFailWith(new ProviderException(ProviderException.Code.TIMEOUT, 202, "202", "Operação em andamento"));
     Payment p = newBolecode(700);
     assertThat(p.status()).isEqualTo(PaymentStatus.PENDING);
+    assertThat(p.pix().txid()).isEqualTo(boletos.pixTxidFor(merchant, "00000001"));
+    assertThat(outboxTypes(p.id())).containsExactly("payment.pending");
+    assertThat(jobs.findByTypeAndRef(JobType.POLL_BOLETO, p.id())).isPresent();
+    assertThat(jobs.findByTypeAndRef(JobType.EXPIRE_PAYMENT, p.id())).isPresent();
     assertThat(p.pix().pixCopiaECola()).isNotNull().isEqualTo(boletos.status("00000001").pixCopiaECola());
     assertThat(jdbc.queryForList("SELECT provider_status FROM payments.reconciliation_divergences WHERE payment_id = ?", String.class, p.id()))
         .containsExactly("PIX_TXID_UNCONFIRMED");
@@ -189,5 +198,36 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
     Payment p = paymentService.list(merchant, 10, null).getFirst();
     assertThat(p.status()).isEqualTo(PaymentStatus.CREATED);
     assertThat(outboxTypes(p.id())).isEmpty();
+  }
+
+  /** Ruling R4: CONFLICT on the issue is "this number already exists at the bank" — our own earlier attempt — so the query adopts it. */
+  @Test
+  void conflictOnIssueIsAdoptedFromTheQuery() {
+    boletos.landNextIssueThenFailWith(new ProviderException(ProviderException.Code.CONFLICT, 422, "422", "Nosso número já existente"));
+    Payment p = newBolecode(700);
+    assertThat(p.status()).isEqualTo(PaymentStatus.PENDING);
+    assertThat(p.boleto().linhaDigitavel()).hasSize(47);
+    assertThat(boletos.callsFor(merchant, "00000001")).containsExactly("issueBoleto:00000001", "findBoleto:00000001");
+    assertThat(outboxTypes(p.id())).containsExactly("payment.pending");
+  }
+
+  /** A second adopter that finds the payment already PENDING did not adopt anything: no PIX_TXID_UNCONFIRMED from it. */
+  @Test
+  void anAdopterThatLostTheRaceDoesNotFlagTheTxid() {
+    boletos.skipNextPixRegistration(); // GET /cob on the derived txid will be empty
+    Payment p = newBolecode(700);
+    assertThat(p.status()).isEqualTo(PaymentStatus.PENDING);
+    var r = providers.resolve(merchant, ProviderEnvironment.TEST, PaymentService.PROVIDER);
+    Payment again = paymentService.adoptBolecodeFromStatus(p.id(), r, boletos.status("00000001"), EventSource.SYSTEM);
+    assertThat(again.status()).isEqualTo(PaymentStatus.PENDING);
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM payments.reconciliation_divergences WHERE payment_id = ?", Long.class, p.id())).isZero();
+  }
+
+  @Test
+  void aLowercaseStateIsNormalizedNotRefused() {
+    Payer lower = new Payer("Joao", "12345678901", new Address("Rua A", "Centro", "Sao Paulo", "sp", "01310-100"));
+    assertThat(PaymentService.validatePayer(lower).address().state()).isEqualTo("SP");
+    Payment p = paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, lower, null, null));
+    assertThat(p.status()).isEqualTo(PaymentStatus.PENDING);
   }
 }

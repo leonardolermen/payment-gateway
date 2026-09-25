@@ -77,10 +77,12 @@ public class ReconciliationService {
     Instant from = now.minus(props.reconciliationLookback());
     Instant youngCutoff = now.minus(props.reconciliationMinAge());
     int changed = 0;
-    // Bolecode, barcode side: there is no listing API for boletos, so each PENDING one older than
-    // minAge is checked one by one — the same decision table as the poll (BoletoPollingService).
-    for (Payment p : payments.findByMethodAndStatusIn(PaymentMethod.BOLECODE, EnumSet.of(PaymentStatus.PENDING), from, CANDIDATES)) {
-      if (p.createdAt().isAfter(youngCutoff)) {
+    // Bolecode, barcode side: there is no listing API for boletos, so each one is checked one by one
+    // with the same decision table as the poll (BoletoPollingService). PENDING older than minAge, and
+    // CANCELED/FAILED too (ruling R2): a printed barcode can still be paid after a baixa or a failed
+    // issue, and a FAILED Bolecode never had a poll job, so this pass is the only one that sees it.
+    for (Payment p : payments.findByMethodAndStatusIn(PaymentMethod.BOLECODE, EnumSet.of(PaymentStatus.PENDING, PaymentStatus.CANCELED, PaymentStatus.FAILED), from, CANDIDATES)) {
+      if (p.status() == PaymentStatus.PENDING && p.createdAt().isAfter(youngCutoff)) {
         continue;
       }
       try {

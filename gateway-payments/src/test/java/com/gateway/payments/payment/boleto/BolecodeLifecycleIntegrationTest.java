@@ -166,7 +166,7 @@ class BolecodeLifecycleIntegrationTest extends ServiceIntegrationTestBase {
     boletos.markPaid(nn(p), Money.brl(12990), clock.instant());
     assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.EXPIRED);
     reconciliation.reconcileAll(clock.instant());
-    // The reconciliation's boleto pass looks at PENDING only; the poll job (still within limit + 2 days) is what completes an EXPIRED one.
+    // The reconciliation's boleto pass looks at PENDING, CANCELED and FAILED, not EXPIRED; the poll job (still within limit + 2 days) is what completes an EXPIRED one.
     assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.EXPIRED);
     assertThat(polling.check(p.id(), com.gateway.payments.payment.EventSource.PROVIDER_POLL)).isTrue();
     Payment done = payments.findById(p.id()).orElseThrow();
@@ -259,5 +259,106 @@ class BolecodeLifecycleIntegrationTest extends ServiceIntegrationTestBase {
     assertThatThrownBy(() -> refunds.request(merchant, p.id(), Money.brl(1000))).isInstanceOfSatisfying(DomainException.class, e -> assertThat(e.code()).isEqualTo("REFUND_NOT_SUPPORTED"));
     assertThat(bank.callsFor(p.id())).noneMatch(c -> c.startsWith("requestRefund"));
     assertThat(jdbc.queryForObject("SELECT count(*) FROM payments.refunds WHERE payment_id = ?", Long.class, p.id())).isZero();
+  }
+
+  // --- ruling R2 through reconciliation ---
+
+  @Test
+  void reconciliationSeesABarcodePaidAfterTheBaixaAsBoletoPaidWithoutGrowingTheLog() {
+    Payment p = newBolecode(12990);
+    paymentService.cancel(merchant, p.id());
+    boletos.markPaid(nn(p), Money.brl(12990), clock.instant(), "Guichê de caixa");
+    reconciliation.reconcileAll(clock.instant());
+    reconciliation.reconcileAll(clock.instant().plusSeconds(900));
+    assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.CANCELED);
+    assertThat(divergences(p.id())).containsExactly("BOLETO_PAID");
+    assertThat(payments.events(p.id())).extracting(e -> e.type()).containsExactly("created", "pending", "canceled");
+  }
+
+  @Test
+  void reconciliationSeesAFailedBolecodePaidAtTheBank() {
+    boletos.landNextIssueThenFailWith(new ProviderException(ProviderException.Code.TIMEOUT, "read timed out", null));
+    boletos.failNextFindWith(merchant, "00000001", new ProviderException(ProviderException.Code.UNAVAILABLE, 503, null, "down"));
+    assertThatThrownBy(() -> newBolecode(12990)).isInstanceOf(DomainException.class);
+    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    var registered = boletos.status(nn(p));
+    boletos.remove(nn(p));
+    clock.advance(Duration.ofMinutes(11));
+    expiration.sweepStuckCreated(clock.instant());
+    assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.FAILED);
+    boletos.restore(nn(p), registered);
+    boletos.markPaid(nn(p), Money.brl(12990), clock.instant(), "Guichê de caixa");
+    reconciliation.reconcileAll(clock.instant());
+    assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.FAILED);
+    assertThat(divergences(p.id())).containsExactly("BOLETO_PAID");
+  }
+
+  // --- ruling R3: the poll sees the QR's payment first ---
+
+  private void pixWebhook(Payment p, String e2e) {
+    String inboxId = webhookInbox.accept("ITAU", merchant, "{}", (e2e + " " + p.pix().txid() + " 12990").getBytes(StandardCharsets.UTF_8));
+    webhookInbox.process(inboxId);
+  }
+
+  @Test
+  void aPixChannelPaymentSeenByThePollCompletesViaPixAndIsRefundable() {
+    Payment p = newBolecode(12990);
+    String e2e = "E2E-POLL-" + nn(p);
+    bank.markPaid(p.pix().txid(), e2e, Money.brl(12990));
+    boletos.markPaid(nn(p), Money.brl(12990), clock.instant(), "Pagamento via PIX");
+    assertThat(polling.check(p.id(), com.gateway.payments.payment.EventSource.PROVIDER_POLL)).isTrue();
+    Payment done = payments.findById(p.id()).orElseThrow();
+    assertThat(done.status()).isEqualTo(PaymentStatus.COMPLETED);
+    assertThat(done.boleto().paidVia()).isEqualTo(PaidVia.PIX);
+    assertThat(done.pix().endToEndId()).isEqualTo(e2e);
+
+    pixWebhook(p, e2e);
+    assertThat(payments.events(p.id()).getLast().type()).isEqualTo("ignored");
+    assertThat(divergences(p.id())).isEmpty();
+    assertThat(outboxTypes(p.id())).containsExactly("payment.pending", "payment.completed");
+
+    Refund r = refunds.request(merchant, p.id(), Money.brl(1000));
+    assertThat(r.state()).isEqualTo(RefundState.PROCESSING);
+  }
+
+  @Test
+  void aPixChannelPaymentSeenWhileTheChargeIsUnreadableStillCompletesViaPix() {
+    Payment p = newBolecode(12990);
+    String e2e = "E2E-POLL2-" + nn(p);
+    bank.failNextFindWith(p.pix().txid(), new ProviderException(ProviderException.Code.UNAVAILABLE, 503, null, "down"));
+    boletos.markPaid(nn(p), Money.brl(12990), clock.instant(), "Pagamento via PIX");
+    assertThat(polling.check(p.id(), com.gateway.payments.payment.EventSource.PROVIDER_POLL)).isTrue();
+    Payment done = payments.findById(p.id()).orElseThrow();
+    assertThat(done.status()).isEqualTo(PaymentStatus.COMPLETED);
+    assertThat(done.boleto().paidVia()).isEqualTo(PaidVia.PIX);
+    assertThat(done.pix().endToEndId()).isNull();
+
+    // The webhook arrives afterwards: the same money, not a second Pix.
+    bank.markPaid(p.pix().txid(), e2e, Money.brl(12990));
+    pixWebhook(p, e2e);
+    assertThat(payments.events(p.id()).getLast().type()).isEqualTo("ignored");
+    assertThat(divergences(p.id())).isEmpty();
+
+    // Without an endToEndId there is nothing to address a devolução to: refused before any row.
+    assertThatThrownBy(() -> refunds.request(merchant, p.id(), Money.brl(1000)))
+        .isInstanceOfSatisfying(DomainException.class, e -> assertThat(e.code()).isEqualTo("REFUND_NOT_SUPPORTED"));
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM payments.refunds WHERE payment_id = ?", Long.class, p.id())).isZero();
+  }
+
+  // --- stuck CREATED, bank unreachable ---
+
+  @Test
+  void stuckCreatedSweepWithTheBankUnreachableLeavesCreatedAndKeepsGoing() {
+    boletos.failNextIssueWith(new ProviderException(ProviderException.Code.TIMEOUT, "read timed out", null));
+    assertThatThrownBy(() -> newBolecode(100)).isInstanceOf(DomainException.class);
+    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    clock.advance(Duration.ofMinutes(11));
+    boletos.failNextFindWith(merchant, nn(p), new ProviderException(ProviderException.Code.UNAVAILABLE, 503, null, "down"));
+    assertThatCode(() -> expiration.sweepStuckCreated(clock.instant())).doesNotThrowAnyException();
+    assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.CREATED);
+    assertThat(outboxTypes(p.id())).isEmpty();
+    // The next sweep, with the bank back, decides.
+    expiration.sweepStuckCreated(clock.instant());
+    assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.FAILED);
   }
 }
