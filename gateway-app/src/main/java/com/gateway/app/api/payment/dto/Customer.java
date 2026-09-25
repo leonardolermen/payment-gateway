@@ -16,6 +16,7 @@ public record Customer(String name, String document, Address address) {
         document,
         address == null
             ? null
-            : new PayerData.AddressData(address.street(), address.district(), address.city(), address.state(), address.zip()));
+            : new PayerData.AddressData(
+                address.street(), address.district(), address.city(), address.state(), address.zip()));
   }
 }

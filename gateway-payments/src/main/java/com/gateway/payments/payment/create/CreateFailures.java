@@ -41,7 +41,9 @@ public class CreateFailures {
       String paymentId, String code, ProviderException cause, ResolvedProvider<PixMethodProvider> resolved) {
     if (resolved != null) {
       try {
-        providers.run(paymentId, "cancelCharge", resolved, target -> target.provider().cancel(target.credentials(), paymentId));
+        providers.run(
+            paymentId, "cancelCharge", resolved,
+            target -> target.provider().cancel(target.credentials(), paymentId));
       } catch (RuntimeException ignored) {
         // NOT_FOUND is the expected answer; anything else is left to reconciliation.
       }

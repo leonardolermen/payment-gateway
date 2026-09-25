@@ -48,7 +48,9 @@ public class BolecodeFromQuery {
 
     String emv = charge.map(Charge::pixCopiaECola).orElse(status.pixCopiaECola());
     String unconfirmed =
-        charge.isEmpty() ? "GET /cob/" + txid + " empty while adopting boleto " + nossoNumero + " from the query" : null;
+        charge.isEmpty()
+            ? "GET /cob/" + txid + " empty while adopting boleto " + nossoNumero + " from the query"
+            : null;
 
     IssuedBoleto issued =
         new IssuedBoleto(

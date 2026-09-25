@@ -103,7 +103,8 @@ public class PixPaymentFlow implements PaymentFlow {
     try {
       existing =
           providers.call(
-              payment.id(), "findCharge", resolved, target -> target.provider().find(target.credentials(), payment.id()));
+              payment.id(), "findCharge", resolved,
+              target -> target.provider().find(target.credentials(), payment.id()));
     } catch (ProviderException again) {
       throw failures.fail(payment.id(), code, again, resolved);
     }

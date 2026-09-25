@@ -86,12 +86,15 @@ public class BolecodePaymentFlow implements PaymentFlow {
     String nossoNumero = payment.boleto().nossoNumero();
 
     BoletoIssueRequest request =
-        new BoletoIssueRequest(nossoNumero, bolecode.amount(), dueDate, paymentLimitDate, payer, bolecode.description());
+        new BoletoIssueRequest(
+            nossoNumero, bolecode.amount(), dueDate, paymentLimitDate, payer, bolecode.description());
 
     IssuedBoleto issued;
     try {
       issued =
-          providers.call(payment.id(), "issueBoleto", resolved, target -> target.provider().issue(target.credentials(), request));
+          providers.call(
+              payment.id(), "issueBoleto", resolved,
+              target -> target.provider().issue(target.credentials(), request));
     } catch (ProviderException failure) {
       return recover(payment, nossoNumero, resolved, failure);
     }
@@ -100,14 +103,16 @@ public class BolecodePaymentFlow implements PaymentFlow {
   }
 
   /** The beneficiary lives inside the credential, so an incomplete one is the merchant's to fix, not a bank error. */
-  private void requireIssueCredentials(ResolvedProvider<BoletoMethodProvider> resolved, CreateBolecodePayment bolecode) {
+  private void requireIssueCredentials(
+      ResolvedProvider<BoletoMethodProvider> resolved, CreateBolecodePayment bolecode) {
     try {
       resolved.provider().requireIssueCredentials(resolved.credentials());
     } catch (ProviderException e) {
       if (e.code() == ProviderException.Code.CREDENTIALS_INCOMPLETE) {
         throw new DomainException(
             "PROVIDER_CREDENTIALS_MISSING",
-            "the " + PaymentService.PROVIDER + " " + bolecode.environment() + " credential is missing " + e.providerType());
+            "the " + PaymentService.PROVIDER + " " + bolecode.environment()
+                + " credential is missing " + e.providerType());
       }
       throw e;
     }
@@ -115,7 +120,8 @@ public class BolecodePaymentFlow implements PaymentFlow {
 
   private LocalDate dueDateOf(CreateBolecodePayment bolecode) {
     LocalDate today = BoletoDates.today(clock);
-    LocalDate dueDate = bolecode.dueDate() == null ? today.plusDays(props.boletoDefaultDueInDays()) : bolecode.dueDate();
+    LocalDate dueDate =
+        bolecode.dueDate() == null ? today.plusDays(props.boletoDefaultDueInDays()) : bolecode.dueDate();
 
     if (dueDate.isBefore(today)) {
       throw new DomainException("INVALID_DUE_DATE", "due_date must be today or later (America/Sao_Paulo)");
@@ -162,7 +168,8 @@ public class BolecodePaymentFlow implements PaymentFlow {
     try {
       existing =
           providers.call(
-              payment.id(), "findBoleto", resolved, target -> target.provider().find(target.credentials(), nossoNumero));
+              payment.id(), "findBoleto", resolved,
+              target -> target.provider().find(target.credentials(), nossoNumero));
     } catch (ProviderException again) {
       throw ProviderErrors.toDomain(code, again, log, "issueBoleto", payment.id());
     }

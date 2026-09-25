@@ -111,7 +111,9 @@ public class PendingAdoption {
 
       BoletoDetails details =
           payment.boleto()
-              .withIssued(issued.idBoletoIndividual(), issued.linhaDigitavel(), issued.codigoBarras(), issued.paymentLimitDate());
+              .withIssued(
+                  issued.idBoletoIndividual(), issued.linhaDigitavel(), issued.codigoBarras(),
+                  issued.paymentLimitDate());
       PixDetails pix = new PixDetails(issued.pixTxid(), issued.pixCopiaECola(), null, null);
 
       Payment saved =

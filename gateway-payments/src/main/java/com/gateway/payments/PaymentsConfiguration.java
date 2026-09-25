@@ -91,9 +91,10 @@ public class PaymentsConfiguration {
     return new PaymentEvents(outbox, clock);
   }
 
-  /** ObjectProvider: a context without any BoletoMethodProvider (the payments tests before Task 9's support existed) must still start. */
+  /** ObjectProvider: a context with no BoletoMethodProvider at all (some payments tests) must still start. */
   @Bean
-  ProviderGateway providerGateway(List<PixMethodProvider> providers, ObjectProvider<BoletoMethodProvider> boletoProviders,
+  ProviderGateway providerGateway(
+      List<PixMethodProvider> providers, ObjectProvider<BoletoMethodProvider> boletoProviders,
       CredentialLookup credentials, ProviderRequestRepository requests) {
     return new ProviderGateway(providers, boletoProviders.orderedStream().toList(), credentials, requests);
   }

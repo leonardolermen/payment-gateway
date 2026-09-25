@@ -207,3 +207,62 @@ Bolecode). Custo se errado (a versão invertida, publicada por engano): alguém 
 o Bolecode guarda `payment.id()` como o Pix, e um mismatch de txid no Bolecode seria tratado como aviso
 inofensivo em vez do sinal real de que o `nosso_numero`/conta não bateram — o tipo de erro que
 `PIX_TXID_UNCONFIRMED` existe para pegar.
+
+## 2026-09-25 — Uma interface de provider sobre a espinha, extensão por método
+`MethodProvider<ISSUE, ISSUED, STATUS>` com `issue`/`find`/`cancel` é o que Pix e boleto de fato têm em
+comum; devolução, listagem e webhook são do Pix, o txid derivado é do boleto, e cada um vive na sua
+extensão estreita. Rejeitado: uma interface gorda com `Set<PaymentMethod> capabilities()` e métodos que
+lançam `UnsupportedOperationException` — o compilador deixa passar e você descobre em produção que o
+provider não tem o produto; rejeitado também records neutros (`IssueRequest`/`IssueResult`) que Pix e
+boleto preenchem pela metade, que é o mesmo DTO misturado que esta mudança tirou do request body, um andar
+abaixo. Custo se errado: se um terceiro método não couber em `issue/find/cancel`, a espinha é o lugar
+errado e a interface volta a se dividir — o preço é uma assinatura, não comportamento.
+
+## 2026-09-25 — `PaymentMethod` no kernel
+`MethodProvider.method()` precisa do enum e o kernel não pode importar `payments` (ArchUnit
+`kernelImportsNothing`), então o enum subiu para `com.gateway.kernel.payment`: é vocabulário compartilhado
+entre payments e providers, que é para o que o kernel existe. Valores persistidos inalterados, sem
+migração. Rejeitado: um segundo enum no kernel traduzido de e para `PaymentMethod` — tabela de tradução
+entre dois enums com os mesmos dois valores. Custo se errado: nenhum técnico; se um dia o produto do banco
+deixar de ser 1-para-1 com o nosso método, aí sim aparecem dois enums e a tradução.
+
+## 2026-09-25 — Request body polimórfico por `method`, quebrando o contrato
+`POST /v1/payments` passou a desserializar em `PixPaymentRequest` ou `BolecodePaymentRequest` (sealed,
+`@JsonTypeInfo` sobre `method`), cada um declarando só os seus campos. Rejeitado: manter o corpo flat com
+todos os campos e validar por dentro — o corpo flat é exatamente o que obrigava a validação cruzada por
+comparação de string (`"PIX".equals(method)` quatro vezes). Junto veio
+`fail-on-unknown-properties: true`: sem isso o Jackson engoliria calado um `due_date` num corpo PIX, e
+igualmente um `expires_in` escrito errado que então recebe a expiração padrão. Custo se errado: cliente que
+mandava campo do outro método recebe 400 em vez de 422 com mensagem explicativa, e cliente que mandava
+campo desconhecido (inclusive por typo) passa a receber 400 onde antes era ignorado; não há cliente em
+produção hoje. Mensagem de `method` inválido preservada no `ErrorHandler`, porque mensagem de erro é
+contrato.
+
+## 2026-09-25 — Um flow por método, dono do create inteiro, tronco por composição
+`PixPaymentFlow` e `BolecodePaymentFlow` implementam `PaymentFlow` e leem de cima para baixo;
+`PaymentDraftFactory`, `PendingAdoption`, `CreateFailures` e `BolecodeFromQuery` são o tronco comum.
+Rejeitado: template method com `PaymentService` dirigindo os passos — exigiria um objeto de contexto
+passado entre eles e esconderia atrás de um flag a diferença que importa: no timeout o Pix pergunta e
+decide na hora (o txid é nosso, `GET /cob` vazio é autoritativo), e o Bolecode fica CREATED para o sweeper
+(o 202 do banco significa "em andamento"). Custo se errado: mais linhas que a versão template, e uma
+mudança no tronco tem de ser lida nos dois flows. `PaymentFlows` exige exatamente um flow por valor do
+enum na construção: método novo sem flow é falha de startup, não 500 no primeiro request de um merchant.
+
+## 2026-09-25 — Invariante de formato é responsabilidade do tipo
+`Document`, `PersonName`, `Uf` e `ZipCode` validam e normalizam no próprio factory, e `Payer`/`Address`
+passaram a ser compostos deles em `kernel/party`; `PayerFactory` traduz `PayerData` (o pagador cru) em
+`Payer`, e é dele o único conhecimento que os tipos não podem ter: que o campo se chama
+`customer.address.zip` na API e que o código é `CUSTOMER_REQUIRED`. Os 14 `if` de
+`PaymentService.validatePayer` viraram duas checagens de nulo e sete construções tipadas, com as dez
+mensagens preservadas letra por letra (`PayerFactoryTest`). Rejeitado: Bean Validation com anotações —
+poria a grafia dos campos da API dentro do domínio e brigaria com o mapeamento para `DomainException`.
+Custo se errado: quatro tipos a mais no kernel.
+
+## 2026-09-25 — `UnitOfWork` no lugar de afrouxar o ArchUnit
+Os três colaboradores que escrevem linha durante um create precisavam de transação, e receber o
+`TransactionTemplate` do Spring violaria `modelsHaveNoSpring` — cuja intenção é justamente manter Spring
+fora do modelo. Rejeitado: estender o regex de nomes da regra para aceitar `Factory|Adoption|Failures`
+(afrouxar a regra para o código passar), e rejeitado renomear os três para `*Service` só para casar com o
+sufixo. Em vez disso eles recebem a porta `UnitOfWork`, com `TransactionalRunner` como único adaptador.
+Custo se errado: uma indireção a mais, e uma inconsistência enquanto os serviços antigos continuam
+recebendo o template direto.

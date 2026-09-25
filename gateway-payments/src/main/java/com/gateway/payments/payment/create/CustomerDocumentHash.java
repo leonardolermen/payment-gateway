@@ -27,7 +27,8 @@ public final class CustomerDocumentHash {
     }
 
     try {
-      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(digits.getBytes(StandardCharsets.US_ASCII)));
+      byte[] hash = MessageDigest.getInstance("SHA-256").digest(digits.getBytes(StandardCharsets.US_ASCII));
+      return HexFormat.of().formatHex(hash);
     } catch (NoSuchAlgorithmException e) {
       throw new IllegalStateException("SHA-256 not available", e);
     }
