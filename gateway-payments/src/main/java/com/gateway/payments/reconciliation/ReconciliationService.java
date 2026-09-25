@@ -79,8 +79,8 @@ public class ReconciliationService {
     int changed = 0;
     // Bolecode, barcode side: there is no listing API for boletos, so each PENDING one older than
     // minAge is checked one by one — the same decision table as the poll (BoletoPollingService).
-    for (Payment p : payments.findByStatusIn(EnumSet.of(PaymentStatus.PENDING), from, CANDIDATES)) {
-      if (p.method() != PaymentMethod.BOLECODE || p.createdAt().isAfter(youngCutoff)) {
+    for (Payment p : payments.findByMethodAndStatusIn(PaymentMethod.BOLECODE, EnumSet.of(PaymentStatus.PENDING), from, CANDIDATES)) {
+      if (p.createdAt().isAfter(youngCutoff)) {
         continue;
       }
       try {

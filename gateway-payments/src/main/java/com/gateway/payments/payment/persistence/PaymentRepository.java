@@ -39,6 +39,12 @@ public interface PaymentRepository {
   /** Ordered by {@code created_at} ascending, capped at {@code limit}. */
   List<Payment> findByStatusIn(Set<PaymentStatus> statuses, Instant createdAfter, int limit);
 
+  /**
+   * Same order and cap as {@link #findByStatusIn}, one method only: the boleto reconciliation pass
+   * sharing the mixed query let a backlog of old PENDING Pix rows fill the cap and starve Bolecodes.
+   */
+  List<Payment> findByMethodAndStatusIn(com.gateway.payments.payment.PaymentMethod method, Set<PaymentStatus> statuses, Instant createdAfter, int limit);
+
   List<PaymentEvent> events(String paymentId);
   /**
    * {@code SELECT ... FOR UPDATE}; requires an active transaction. For the refund reserve: two

@@ -398,7 +398,7 @@ public class PaymentService {
   private void cancelBoletoAtBank(Payment p, ProviderGateway.Resolved r) {
     BoletoProvider boleto = r.boleto().orElseThrow(() -> new DomainException("METHOD_NOT_SUPPORTED", PROVIDER + " has no boleto product"));
     String nn = p.boleto().nossoNumero();
-    Optional<BoletoStatus> before = providers.call(p.id(), "findBoleto", r, x -> boleto.find(x.credentials(), nn));
+    Optional<BoletoStatus> before = findBoletoForCancel(p, r, boleto, nn);
     if (before.isPresent() && before.get().paid()) {
       throw alreadyPaid(p, before.get());
     }
@@ -406,7 +406,7 @@ public class PaymentService {
       providers.run(p.id(), "cancelBoleto", r, x -> boleto.cancel(x.credentials(), nn));
     } catch (ProviderException e) {
       if (e.code() == ProviderException.Code.CONFLICT) {
-        Optional<BoletoStatus> after = providers.call(p.id(), "findBoleto", r, x -> boleto.find(x.credentials(), nn));
+        Optional<BoletoStatus> after = findBoletoForCancel(p, r, boleto, nn);
         if (after.isPresent() && after.get().paid()) {
           throw alreadyPaid(p, after.get());
         }
@@ -419,9 +419,25 @@ public class PaymentService {
     }
   }
 
+  /**
+   * A request caller: a timeout or a 503 on the query must reach the merchant as PROVIDER_*, not as
+   * a raw ProviderException (a 500), and the payment stays PENDING because nothing was decided.
+   */
+  private Optional<BoletoStatus> findBoletoForCancel(Payment p, ProviderGateway.Resolved r, BoletoProvider boleto, String nn) {
+    try {
+      return providers.call(p.id(), "findBoleto", r, x -> boleto.find(x.credentials(), nn));
+    } catch (ProviderException e) {
+      throw ProviderErrors.toDomain("PROVIDER_UNAVAILABLE", e, log, "findBoleto", p.id());
+    }
+  }
+
   private DomainException alreadyPaid(Payment p, BoletoStatus status) {
-    settleBoleto(p.merchantId(), p.id(), status, EventSource.RECONCILIATION);
-    return new DomainException("ALREADY_PAID", "the bank shows this boleto paid; the payment is now COMPLETED");
+    if (settleBoleto(p.merchantId(), p.id(), status, EventSource.RECONCILIATION) == Settlement.COMPLETED) {
+      return new DomainException("ALREADY_PAID", "the bank shows this boleto paid; the payment is now COMPLETED");
+    }
+    // settleBoleto refused to complete (an amount mismatch, say) and opened a divergence. The cancel
+    // is still refused because the bank holds money for it, but claiming COMPLETED would be false.
+    return new DomainException("ALREADY_PAID", "the bank reports a payment for this boleto that is under review (divergence opened); the payment status is unchanged");
   }
 
   public enum Settlement {

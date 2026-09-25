@@ -71,6 +71,42 @@ class BolecodeLifecycleIntegrationTest extends ServiceIntegrationTestBase {
   }
 
   @Test
+  void cancelWhoseRequeryAfterAConflictFailsIsAProviderErrorAndLeavesThePaymentPending() {
+    Payment p = newBolecode(12990);
+    boletos.afterNextFind(nn(p), () -> {
+      boletos.markPaid(nn(p), Money.brl(12990), clock.instant());
+      boletos.failNextFindWith(merchant, nn(p), new ProviderException(ProviderException.Code.TIMEOUT, "read timed out", null));
+    });
+    assertThatThrownBy(() -> paymentService.cancel(merchant, p.id())).isInstanceOfSatisfying(DomainException.class, e -> assertThat(e.code()).startsWith("PROVIDER_"));
+    assertThat(boletos.callsFor(merchant, nn(p))).containsExactly("issueBoleto:" + nn(p), "findBoleto:" + nn(p), "cancelBoleto:" + nn(p), "findBoleto:" + nn(p));
+    assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.PENDING);
+    assertThat(outboxTypes(p.id())).containsExactly("payment.pending");
+  }
+
+  @Test
+  void cancelWhosePreCheckFailsIsAProviderErrorAndSendsNoBaixa() {
+    Payment p = newBolecode(100);
+    boletos.failNextFindWith(merchant, nn(p), new ProviderException(ProviderException.Code.UNAVAILABLE, 503, null, "down"));
+    assertThatThrownBy(() -> paymentService.cancel(merchant, p.id())).isInstanceOfSatisfying(DomainException.class, e -> assertThat(e.code()).startsWith("PROVIDER_"));
+    assertThat(boletos.callsFor(merchant, nn(p))).doesNotContain("cancelBoleto:" + nn(p));
+    assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.PENDING);
+  }
+
+  @Test
+  void cancelOfABoletoPaidWithAnotherAmountIsRefusedWithoutClaimingCompleted() {
+    Payment p = newBolecode(12990);
+    boletos.markPaid(nn(p), Money.brl(12000), clock.instant());
+    assertThatThrownBy(() -> paymentService.cancel(merchant, p.id()))
+        .isInstanceOfSatisfying(DomainException.class, e -> {
+          assertThat(e.code()).isEqualTo("ALREADY_PAID");
+          assertThat(e.getMessage()).contains("under review").doesNotContain("now COMPLETED");
+        });
+    assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.PENDING);
+    assertThat(divergences(p.id())).contains("AMOUNT_MISMATCH");
+    assertThat(boletos.callsFor(merchant, nn(p))).doesNotContain("cancelBoleto:" + nn(p));
+  }
+
+  @Test
   void cancelIsRefusedWhenNotPending() {
     Payment p = newBolecode(100);
     paymentService.cancel(merchant, p.id());
@@ -183,6 +219,16 @@ class BolecodeLifecycleIntegrationTest extends ServiceIntegrationTestBase {
     Payment done = payments.findById(p.id()).orElseThrow();
     assertThat(done.status()).isEqualTo(PaymentStatus.COMPLETED);
     assertThat(payments.events(p.id()).getLast().source()).isEqualTo(com.gateway.payments.payment.EventSource.RECONCILIATION);
+  }
+
+  @Test
+  void theBoletoPassQueriesBolecodesOnlySoOldPixRowsCannotFillItsCap() {
+    Payment pix = newCharge(500);
+    clock.advance(Duration.ofMinutes(1));
+    Payment bolecode = newBolecode(12990);
+    var rows = payments.findByMethodAndStatusIn(com.gateway.payments.payment.PaymentMethod.BOLECODE, java.util.EnumSet.of(PaymentStatus.PENDING), clock.instant().minus(Duration.ofHours(1)), 1000);
+    assertThat(rows).extracting(Payment::method).containsOnly(com.gateway.payments.payment.PaymentMethod.BOLECODE);
+    assertThat(rows).extracting(Payment::id).contains(bolecode.id()).doesNotContain(pix.id());
   }
 
   // --- the QR side ---

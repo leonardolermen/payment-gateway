@@ -131,6 +131,12 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   }
 
   @Override
+  public List<Payment> findByMethodAndStatusIn(com.gateway.payments.payment.PaymentMethod method, Set<PaymentStatus> statuses, Instant createdAfter, int limit) {
+    Set<String> names = statuses.stream().map(Enum::name).collect(Collectors.toSet());
+    return jpa.findByMethodAndStatusInAndCreatedAtAfter(method.name(), names, createdAfter, Limit.of(limit)).stream().map(PaymentRepositoryImpl::toDomain).toList();
+  }
+
+  @Override
   public List<Payment> findByStatusIn(Set<PaymentStatus> statuses, Instant createdAfter, int limit) {
     Set<String> names = statuses.stream().map(Enum::name).collect(Collectors.toSet());
     return jpa.findByStatusInAndCreatedAtAfter(names, createdAfter, Limit.of(limit)).stream().map(PaymentRepositoryImpl::toDomain).toList();

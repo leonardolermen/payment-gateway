@@ -89,6 +89,9 @@ public class RecordingBoletoProvider implements BoletoProvider {
     afterNextFind.put(nossoNumero, () -> markPaid(nossoNumero, amount, at));
   }
 
+  /** Whatever the bank does between two calls of a test's flow, run right after the next find answers. */
+  public void afterNextFind(String nossoNumero, Runnable then) { afterNextFind.put(nossoNumero, then); }
+
   public void setSituation(String nossoNumero, BoletoSituation situation) {
     String k = key(nossoNumero);
     BoletoStatus s = boletos.get(k);

@@ -32,6 +32,10 @@ interface PaymentJpaRepository extends JpaRepository<PaymentEntity, String> {
   java.util.List<PaymentEntity> findByStatusInAndCreatedAtAfter(
       @Param("statuses") Collection<String> statuses, @Param("after") Instant after, Limit limit);
 
+  @Query("SELECT p FROM PaymentEntity p WHERE p.method = :method AND p.status IN :statuses AND p.createdAt > :after ORDER BY p.createdAt ASC")
+  java.util.List<PaymentEntity> findByMethodAndStatusInAndCreatedAtAfter(
+      @Param("method") String method, @Param("statuses") Collection<String> statuses, @Param("after") Instant after, Limit limit);
+
   @Query("SELECT p FROM PaymentEntity p WHERE p.merchantId = :merchantId AND (:cursorId IS NULL OR p.id < :cursorId) ORDER BY p.id DESC")
   java.util.List<PaymentEntity> findByMerchant(@Param("merchantId") String merchantId, @Param("cursorId") String cursorId, Limit limit);
 
