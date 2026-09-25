@@ -17,7 +17,7 @@ class ItauCredentialsTest {
     assertThat(c.clientSecret().reveal()).isEqualTo("s3cr3t");
     assertThat(c.apiKey()).isEqualTo("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
     assertThat(c.pixKey()).isEqualTo("60701190000104");
-    assertThat(c.toString()).doesNotContain("s3cr3t").doesNotContain("MIIE");
+    assertThat(c.toString()).doesNotContain("s3cr3t").doesNotContain("MIIE").doesNotContain("aaaaaaaa-bbbb").contains("apiKey=***");
   }
 
   @Test void missingFieldNamesTheField() {
@@ -27,7 +27,7 @@ class ItauCredentialsTest {
 
   @Test void apiKeyMustMatchItauRegex() {
     assertThatThrownBy(() -> ItauCredentials.parse(JSON.replace("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "not-a-uuid").getBytes()))
-        .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("x_itau_apikey");
+        .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("x_itau_apikey").hasMessageNotContaining("not-a-uuid");
   }
 
   @Test void sandboxShapeHasNoCertificate() {
@@ -66,6 +66,7 @@ class ItauCredentialsTest {
     assertThat(c.speciesCode()).isEqualTo("01");
     assertThat(c.hasBeneficiary()).isTrue();
     c.requireBoletoShape();
+    assertThat(c.toString()).doesNotContain("150000052061").contains("beneficiaryId=***");
   }
 
   @Test void walletAndSpeciesDefaultWhenAbsent() {

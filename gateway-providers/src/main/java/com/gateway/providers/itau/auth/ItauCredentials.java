@@ -31,7 +31,9 @@ public record ItauCredentials(
     if (clientSecret == null) throw new IllegalArgumentException("missing required field: client_secret");
     requireNonBlank(pixKey, "pix_key");
     if (apiKey != null && !API_KEY.matcher(apiKey).matches()) {
-      throw new IllegalArgumentException("x_itau_apikey does not match the Itau format: " + apiKey);
+      // The value is not echoed: a key with a stray character is still the merchant's live key, and
+      // this message reaches the admin API's 422 body and the log.
+      throw new IllegalArgumentException("x_itau_apikey does not match the Itau format (a UUID)");
     }
     boolean hasCert = certificatePem != null && !certificatePem.isBlank();
     boolean hasKey = privateKeyPem != null;
@@ -82,9 +84,11 @@ public record ItauCredentials(
 
   @Override
   public String toString() {
-    return "ItauCredentials[clientId=" + clientId + ", clientSecret=***, apiKey=" + apiKey
+    // apiKey authenticates every call with the client id, and beneficiaryId is the merchant's bank
+    // account (agência + conta): neither belongs in a log line or an exception built from this.
+    return "ItauCredentials[clientId=" + clientId + ", clientSecret=***, apiKey=" + (apiKey == null ? "null" : "***")
         + ", certificatePem=" + (certificatePem == null ? "null" : "***") + ", privateKeyPem=***, pixKey=" + pixKey
-        + ", beneficiaryId=" + beneficiaryId + ", walletCode=" + walletCode + ", speciesCode=" + speciesCode + "]";
+        + ", beneficiaryId=" + (beneficiaryId == null ? "null" : "***") + ", walletCode=" + walletCode + ", speciesCode=" + speciesCode + "]";
   }
 
   public static ItauCredentials parse(byte[] json) {
