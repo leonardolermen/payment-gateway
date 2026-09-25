@@ -24,16 +24,16 @@ public final class BoletoErrors {
     String message;
 
     if (problem != null && problem.mensagem() != null) {
-      StringBuilder sb = new StringBuilder(problem.mensagem());
+      StringBuilder stringBuilder = new StringBuilder(problem.mensagem());
       if (problem.campos() != null && !problem.campos().isEmpty()) {
-        sb.append(" [");
+        stringBuilder.append(" [");
         for (int i = 0; i < problem.campos().size(); i++) {
-          if (i > 0) sb.append("; ");
-          sb.append(problem.campos().get(i).campo()).append(": ").append(problem.campos().get(i).mensagem());
+          if (i > 0) stringBuilder.append("; ");
+          stringBuilder.append(problem.campos().get(i).campo()).append(": ").append(problem.campos().get(i).mensagem());
         }
-        sb.append(']');
+        stringBuilder.append(']');
       }
-      message = sb.toString();
+      message = stringBuilder.toString();
     } else {
       message = "Itaú boleto HTTP " + status + (body == null || body.isBlank() ? "" : ": " + truncate(body));
     }

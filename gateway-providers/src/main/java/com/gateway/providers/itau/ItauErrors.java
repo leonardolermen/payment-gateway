@@ -18,12 +18,12 @@ public final class ItauErrors {
   private ItauErrors() {}
 
   public static ProviderException from(int status, String body) {
-    Problem p = parse(body);
-    String type = p == null ? null : p.type();
+    Problem problem = parse(body);
+    String type = problem == null ? null : problem.type();
     String message;
 
-    if (p != null && (p.title() != null || p.detail() != null)) {
-      message = p.title() == null ? p.detail() : p.detail() == null ? p.title() : p.title() + ": " + p.detail();
+    if (problem != null && (problem.title() != null || problem.detail() != null)) {
+      message = problem.title() == null ? problem.detail() : problem.detail() == null ? problem.title() : problem.title() + ": " + problem.detail();
     } else {
       message = "Itaú HTTP " + status + (body == null || body.isBlank() ? "" : ": " + truncate(body));
     }
@@ -61,8 +61,8 @@ public final class ItauErrors {
 
   /** True only for the Pix API's own not-found: an RFC 7807 {@code type} naming {@code NaoEncontrad*}. */
   public static boolean isPixNotFound(String body) {
-    Problem p = parse(body);
-    return p != null && p.type() != null && p.type().contains("NaoEncontrad");
+    Problem problem = parse(body);
+    return problem != null && problem.type() != null && problem.type().contains("NaoEncontrad");
   }
 
   private static Problem parse(String body) {

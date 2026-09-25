@@ -30,7 +30,7 @@ public class WebhookInboxService {
   private final ProviderGateway providers;
   private final PaymentService paymentService;
   private final RefundService refundService;
-  private final TransactionTemplate tx;
+  private final TransactionTemplate transactionTemplate;
   private final Clock clock;
 
   public WebhookInboxService(
@@ -39,20 +39,20 @@ public class WebhookInboxService {
       ProviderGateway providers,
       PaymentService paymentService,
       RefundService refundService,
-      TransactionTemplate tx,
+      TransactionTemplate transactionTemplate,
       Clock clock) {
     this.inbox = inbox;
     this.jobs = jobs;
     this.providers = providers;
     this.paymentService = paymentService;
     this.refundService = refundService;
-    this.tx = tx;
+    this.transactionTemplate = transactionTemplate;
     this.clock = clock;
   }
 
   public String accept(String provider, MerchantId merchantId, String rawHeaders, byte[] body) {
     String id = Ulid.next();
-    tx.executeWithoutResult(s -> {
+    transactionTemplate.executeWithoutResult(s -> {
       inbox.save(new WebhookInboxEntry(id, provider, merchantId, rawHeaders, body, "RECEIVED", null, clock.instant()));
       jobs.enqueue(Job.processWebhook(id, clock));
     });
@@ -101,7 +101,7 @@ public class WebhookInboxService {
 
   private void mark(WebhookInboxEntry e, String status, String error) {
     String err = error == null || error.length() <= 500 ? error : error.substring(0, 500);
-    tx.executeWithoutResult(
+    transactionTemplate.executeWithoutResult(
         s -> inbox.save(new WebhookInboxEntry(e.id(), e.provider(), e.merchantId(), e.rawHeaders(), e.rawBody(), status, err, e.receivedAt())));
   }
 }

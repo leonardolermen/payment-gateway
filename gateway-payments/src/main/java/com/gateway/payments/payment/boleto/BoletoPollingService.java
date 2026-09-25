@@ -38,60 +38,60 @@ public class BoletoPollingService {
   private final ProviderGateway providers;
   private final PaymentService paymentService;
   private final PaymentsProperties props;
-  private final TransactionTemplate tx;
+  private final TransactionTemplate transactionTemplate;
   private final Clock clock;
 
   public BoletoPollingService(
-      PaymentRepository payments, ProviderGateway providers, PaymentService paymentService, PaymentsProperties props, TransactionTemplate tx, Clock clock) {
+      PaymentRepository payments, ProviderGateway providers, PaymentService paymentService, PaymentsProperties props, TransactionTemplate transactionTemplate, Clock clock) {
     this.payments = payments;
     this.providers = providers;
     this.paymentService = paymentService;
     this.props = props;
-    this.tx = tx;
+    this.transactionTemplate = transactionTemplate;
     this.clock = clock;
   }
 
   public boolean check(String paymentId, EventSource by) {
-    Payment p = payments.findById(paymentId).orElse(null);
-    if (p == null || p.method() != PaymentMethod.BOLECODE || p.boleto() == null) {
+    Payment payment = payments.findById(paymentId).orElse(null);
+    if (payment == null || payment.method() != PaymentMethod.BOLECODE || payment.boleto() == null) {
       return true;
     }
-    if (p.status() == PaymentStatus.CREATED) {
+    if (payment.status() == PaymentStatus.CREATED) {
       return true; // CREATED is the stuck-CREATED sweeper's business, not the poll's
     }
-    ResolvedProvider<BoletoMethodProvider> resolved = providers.resolveBoleto(p.merchantId(), p.environment(), p.provider());
-    String nn = p.boleto().nossoNumero();
+    ResolvedProvider<BoletoMethodProvider> resolved = providers.resolveBoleto(payment.merchantId(), payment.environment(), payment.provider());
+    String nn = payment.boleto().nossoNumero();
     Optional<BoletoStatus> atBank =
-        providers.call(p.id(), "findBoleto", resolved, target -> target.provider().find(target.credentials(), nn));
-    if (p.status() == PaymentStatus.CANCELED || p.status() == PaymentStatus.FAILED) {
-      return gaveUp(p, nn, atBank, by);
+        providers.call(payment.id(), "findBoleto", resolved, target -> target.provider().find(target.credentials(), nn));
+    if (payment.status() == PaymentStatus.CANCELED || payment.status() == PaymentStatus.FAILED) {
+      return gaveUp(payment, nn, atBank, by);
     }
     if (atBank.isEmpty()) {
-      return notFound(p, nn, by);
+      return notFound(payment, nn, by);
     }
     BoletoStatus status = atBank.get();
-    if (p.status() == PaymentStatus.COMPLETED) {
+    if (payment.status() == PaymentStatus.COMPLETED) {
       if (status.paid()) {
-        paymentService.settleBoleto(p.merchantId(), p.id(), status, by); // duplicate or DOUBLE_PAYMENT, decided there
+        paymentService.settleBoleto(payment.merchantId(), payment.id(), status, by); // duplicate or DOUBLE_PAYMENT, decided there
       } else {
-        record(p.id(), "poll after completion: bank says " + status.situation(), by);
+        record(payment.id(), "poll after completion: bank says " + status.situation(), by);
       }
       return true;
     }
     return switch (status.situation()) {
-      case OPEN, AWAITING_CREDIT -> pastWindow(p);
+      case OPEN, AWAITING_CREDIT -> pastWindow(payment);
       case PAID, SETTLED, CREDITED -> {
-        settlePaid(p, status, by);
+        settlePaid(payment, status, by);
         yield true;
       }
       case PAYMENT_REJECTED -> {
         // The bank refused a payment attempt (wrong amount, closed account, ...); the boleto is still open for the payer.
-        paymentService.openDivergence(p, "BOLETO_REJECTED", "bank rejected a payment of boleto " + nn + "; still open for the payer");
-        yield pastWindow(p);
+        paymentService.openDivergence(payment, "BOLETO_REJECTED", "bank rejected a payment of boleto " + nn + "; still open for the payer");
+        yield pastWindow(payment);
       }
       case CANCELED -> {
         // Someone did a baixa outside the gateway (bankline, another system). The state is not moved: the merchant did not ask for it.
-        paymentService.openDivergence(p, "CANCELED_AT_BANK", "boleto " + nn + " baixado at the bank while the gateway has " + p.status());
+        paymentService.openDivergence(payment, "CANCELED_AT_BANK", "boleto " + nn + " baixado at the bank while the gateway has " + payment.status());
         yield true;
       }
     };
@@ -105,17 +105,17 @@ public class BoletoPollingService {
    * propagates, CANCELED, absent for an issue the bank refused) is the expected picture and is left
    * silent: a NOT_FOUND_AT_BANK on every declined Bolecode would bury the real ones.
    */
-  private boolean gaveUp(Payment p, String nn, Optional<BoletoStatus> atBank, EventSource by) {
+  private boolean gaveUp(Payment payment, String nn, Optional<BoletoStatus> atBank, EventSource by) {
     if (atBank.isEmpty() || !atBank.get().paid()) {
-      return pastWindow(p);
+      return pastWindow(payment);
     }
     if (by == EventSource.RECONCILIATION) {
       // Reconciliation runs every 15 minutes over the lookback: going through settleBoleto would add
       // an "ignored" event per run to the payment's log. The divergence alone is deduplicated.
       long cents = atBank.get().paidAmount() == null ? -1 : atBank.get().paidAmount().cents();
-      paymentService.openDivergence(p, "BOLETO_PAID", "boleto " + nn + " paid " + cents + " cents at the bank while " + p.status());
+      paymentService.openDivergence(payment, "BOLETO_PAID", "boleto " + nn + " paid " + cents + " cents at the bank while " + payment.status());
     } else {
-      paymentService.settleBoleto(p.merchantId(), p.id(), atBank.get(), by);
+      paymentService.settleBoleto(payment.merchantId(), payment.id(), atBank.get(), by);
     }
     return true;
   }
@@ -128,24 +128,24 @@ public class BoletoPollingService {
    * (refunds and the later webhook's duplicate check work as usual); without it, settleBoleto still
    * completes via PIX with the endToEndId unknown.
    */
-  private void settlePaid(Payment p, BoletoStatus status, EventSource by) {
-    if (PaymentService.isPixChannel(status.paidChannel()) && p.pix() != null && p.pix().txid() != null) {
+  private void settlePaid(Payment payment, BoletoStatus status, EventSource by) {
+    if (PaymentService.isPixChannel(status.paidChannel()) && payment.pix() != null && payment.pix().txid() != null) {
       Optional<ReceivedPix> pix = Optional.empty();
       try {
         // The Pix side of the same charge, through the Pix door: one bank, two products.
-        ResolvedProvider<PixMethodProvider> pixSide = providers.resolvePix(p.merchantId(), p.environment(), p.provider());
-        pix = providers.call(p.id(), "findCharge", pixSide, target -> target.provider().find(target.credentials(), p.pix().txid()))
+        ResolvedProvider<PixMethodProvider> pixSide = providers.resolvePix(payment.merchantId(), payment.environment(), payment.provider());
+        pix = providers.call(payment.id(), "findCharge", pixSide, target -> target.provider().find(target.credentials(), payment.pix().txid()))
             .filter(c -> c.status() == ChargeStatus.COMPLETED)
             .flatMap(c -> c.firstPix());
       } catch (ProviderException e) {
-        log.info("could not read the pix of boleto {} of payment {}: {}; completing without its endToEndId", p.boleto().nossoNumero(), p.id(), e.code());
+        log.info("could not read the pix of boleto {} of payment {}: {}; completing without its endToEndId", payment.boleto().nossoNumero(), payment.id(), e.code());
       }
       if (pix.isPresent()) {
-        paymentService.settle(p.merchantId(), p.id(), pix.get(), by);
+        paymentService.settle(payment.merchantId(), payment.id(), pix.get(), by);
         return;
       }
     }
-    paymentService.settleBoleto(p.merchantId(), p.id(), status, by);
+    paymentService.settleBoleto(payment.merchantId(), payment.id(), status, by);
   }
 
   /**
@@ -154,27 +154,27 @@ public class BoletoPollingService {
    * events carrying the mark, so it survives restarts and a second worker; counting only
    * consecutive ones would need a reset event on every non-empty answer for no gain.
    */
-  private boolean notFound(Payment p, String nn, EventSource by) {
-    long previous = payments.events(p.id()).stream().filter(e -> "ignored".equals(e.type()) && e.payload().contains(NOT_FOUND_MARK)).count();
-    record(p.id(), NOT_FOUND_MARK + ": " + nn, by);
+  private boolean notFound(Payment payment, String nn, EventSource by) {
+    long previous = payments.events(payment.id()).stream().filter(e -> "ignored".equals(e.type()) && e.payload().contains(NOT_FOUND_MARK)).count();
+    record(payment.id(), NOT_FOUND_MARK + ": " + nn, by);
     if (previous + 1 >= 2) {
-      paymentService.openDivergence(p, "NOT_FOUND_AT_BANK", "boleto " + nn + " unknown to the bank on " + (previous + 1) + " polls");
+      paymentService.openDivergence(payment, "NOT_FOUND_AT_BANK", "boleto " + nn + " unknown to the bank on " + (previous + 1) + " polls");
     } else {
-      log.info("boleto {} of payment {} not at the bank yet", nn, p.id());
+      log.info("boleto {} of payment {} not at the bank yet", nn, payment.id());
     }
-    return pastWindow(p);
+    return pastWindow(payment);
   }
 
   private void record(String paymentId, String what, EventSource by) {
-    tx.executeWithoutResult(s -> {
+    transactionTemplate.executeWithoutResult(s -> {
       Payment loaded = payments.findById(paymentId).orElseThrow();
       payments.save(loaded, List.of(loaded.recordIgnored(what, by).orElseThrow()));
     });
   }
 
   /** Two days past the limit date's end (São Paulo): a last-minute payment is credited on the next business day. */
-  private boolean pastWindow(Payment p) {
-    Instant end = BoletoDates.endOfDay(p.boleto().paymentLimitDate()).plus(props.boletoPollGraceAfterLimit());
+  private boolean pastWindow(Payment payment) {
+    Instant end = BoletoDates.endOfDay(payment.boleto().paymentLimitDate()).plus(props.boletoPollGraceAfterLimit());
     return clock.instant().isAfter(end);
   }
 }

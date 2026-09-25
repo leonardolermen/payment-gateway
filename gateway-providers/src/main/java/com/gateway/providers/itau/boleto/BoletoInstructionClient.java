@@ -27,8 +27,8 @@ class BoletoInstructionClient {
    * and no code, so the text is all there is.
    */
   void baixa(ItauCredentials c, String idBoleto) {
-    HttpRequest.Builder b = http.request("/boletos/" + BoletoHttp.seg(idBoleto) + "/baixa").method("PATCH", HttpRequest.BodyPublishers.noBody());
-    HttpResponse<String> res = http.send(c, b);
+    HttpRequest.Builder builder = http.request("/boletos/" + BoletoHttp.seg(idBoleto) + "/baixa").method("PATCH", HttpRequest.BodyPublishers.noBody());
+    HttpResponse<String> res = http.send(c, builder);
     int status = res.statusCode();
     if (status == 200 || status == 202 || status == 204) {
       return;

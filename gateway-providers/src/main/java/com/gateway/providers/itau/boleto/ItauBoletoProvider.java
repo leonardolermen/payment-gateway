@@ -50,13 +50,13 @@ public class ItauBoletoProvider implements BoletoMethodProvider {
 
   /** A credential without the beneficiary is the merchant's configuration problem, not the bank's: CREDENTIALS_INCOMPLETE names the field. */
   private static ItauCredentials boletoCreds(ProviderCredentials c) {
-    ItauCredentials ic = ItauCredentials.parse(c.payload());
+    ItauCredentials credentials = ItauCredentials.parse(c.payload());
     try {
-      ic.requireBoletoShape();
+      credentials.requireBoletoShape();
     } catch (IllegalArgumentException e) {
       throw new ProviderException(ProviderException.Code.CREDENTIALS_INCOMPLETE, 0, e.getMessage(), "ITAU credential is missing " + e.getMessage());
     }
-    return ic;
+    return credentials;
   }
 
   @Override public void requireIssueCredentials(ProviderCredentials c) {
@@ -64,22 +64,22 @@ public class ItauBoletoProvider implements BoletoMethodProvider {
   }
 
   @Override public IssuedBoleto issue(ProviderCredentials c, BoletoIssueRequest r) {
-    ItauCredentials ic = boletoCreds(c);
-    BoletoPixResponse res = clients(c).issue().post(ic, BoletoPixRequest.forIssue(r, ic));
+    ItauCredentials credentials = boletoCreds(c);
+    BoletoPixResponse res = clients(c).issue().post(credentials, BoletoPixRequest.forIssue(r, credentials));
     BoletoPixResponse.Individual i = res.first();
-    BoletoPixResponse.DadosQrcode qr = res.dadosQrcode();
+    BoletoPixResponse.DadosQrcode qrCode = res.dadosQrcode();
     return new IssuedBoleto(i.idBoletoIndividual(), i.numeroLinhaDigitavel(), i.codigoBarras(), ItauDates.date(i.dataLimitePagamento()),
-        qr == null ? null : qr.txid(), qr == null ? null : qr.emv(), qr == null ? null : qr.chave());
+        qrCode == null ? null : qrCode.txid(), qrCode == null ? null : qrCode.emv(), qrCode == null ? null : qrCode.chave());
   }
 
   @Override public Optional<BoletoStatus> find(ProviderCredentials c, String nossoNumero) {
-    ItauCredentials ic = boletoCreds(c);
-    return clients(c).query().find(ic, nossoNumero).map(item -> toStatus(item, nossoNumero));
+    ItauCredentials credentials = boletoCreds(c);
+    return clients(c).query().find(credentials, nossoNumero).map(item -> toStatus(item, nossoNumero));
   }
 
   @Override public void cancel(ProviderCredentials c, String nossoNumero) {
-    ItauCredentials ic = boletoCreds(c);
-    clients(c).instruction().baixa(ic, baixaId(ic, nossoNumero));
+    ItauCredentials credentials = boletoCreds(c);
+    clients(c).instruction().baixa(credentials, baixaId(credentials, nossoNumero));
   }
 
   @Override public String pixTxidFor(ProviderCredentials c, String nossoNumero) {

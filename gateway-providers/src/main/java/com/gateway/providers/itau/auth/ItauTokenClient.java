@@ -49,9 +49,9 @@ public class ItauTokenClient {
 
   /** The sandbox has no client certificate (NOTES.md "Sandbox authentication"); production always does. */
   private HttpClient newHttpClient(ItauCredentials creds, boolean mutualTls, KeyStore trustStore) {
-    HttpClient.Builder b = HttpClient.newBuilder().connectTimeout(connectTimeout);
-    if (mutualTls) b.sslContext(PemKeyStores.mutualTls(creds.certificatePem(), creds.privateKeyPem().reveal(), trustStore));
-    return b.build();
+    HttpClient.Builder builder = HttpClient.newBuilder().connectTimeout(connectTimeout);
+    if (mutualTls) builder.sslContext(PemKeyStores.mutualTls(creds.certificatePem(), creds.privateKeyPem().reveal(), trustStore));
+    return builder.build();
   }
 
   /** Also the HttpClient: a credential replaced by the merchant must not keep the old key alive. */

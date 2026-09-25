@@ -31,9 +31,9 @@ public record ApiKey(String id, MerchantId merchantId, ApiKeyEnvironment environ
 
   public static String hashOf(String plainKey, String pepper) {
     try {
-      MessageDigest md = MessageDigest.getInstance("SHA-256");
-      md.update(pepper.getBytes(StandardCharsets.UTF_8));
-      return HexFormat.of().formatHex(md.digest(plainKey.getBytes(StandardCharsets.UTF_8)));
+      MessageDigest messageDigest = MessageDigest.getInstance("SHA-256");
+      messageDigest.update(pepper.getBytes(StandardCharsets.UTF_8));
+      return HexFormat.of().formatHex(messageDigest.digest(plainKey.getBytes(StandardCharsets.UTF_8)));
     } catch (NoSuchAlgorithmException e) {
       throw new IllegalStateException(e);
     }

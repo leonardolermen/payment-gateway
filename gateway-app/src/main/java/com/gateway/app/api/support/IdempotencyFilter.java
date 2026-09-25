@@ -153,16 +153,16 @@ public class IdempotencyFilter extends OncePerRequestFilter {
     }
 
     @Override public ServletInputStream getInputStream() {
-      ByteArrayInputStream in = new ByteArrayInputStream(body);
+      ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(body);
       return new ServletInputStream() {
         @Override public int read() {
-          return in.read();
+          return byteArrayInputStream.read();
         }
         @Override public int read(byte[] b, int off, int len) {
-          return in.read(b, off, len);
+          return byteArrayInputStream.read(b, off, len);
         }
         @Override public boolean isFinished() {
-          return in.available() == 0;
+          return byteArrayInputStream.available() == 0;
         }
         @Override public boolean isReady() {
           return true;

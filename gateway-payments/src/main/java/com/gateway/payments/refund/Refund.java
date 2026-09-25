@@ -104,10 +104,10 @@ public final class Refund {
       Instant settledAt,
       String failureReason,
       Instant createdAt) {
-    Refund r = new Refund(id, paymentId, merchantId, amount, createdAt);
-    r.state = state;
-    r.settledAt = settledAt;
-    r.failureReason = failureReason;
-    return r;
+    Refund refund = new Refund(id, paymentId, merchantId, amount, createdAt);
+    refund.state = state;
+    refund.settledAt = settledAt;
+    refund.failureReason = failureReason;
+    return refund;
   }
 }

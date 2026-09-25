@@ -39,7 +39,7 @@ public class JobRunner {
   private final RefundService refunds;
   private final ReconciliationService reconciliation;
   private final PaymentsProperties props;
-  private final TransactionTemplate tx;
+  private final TransactionTemplate transactionTemplate;
   private final Clock clock;
 
   public JobRunner(
@@ -51,7 +51,7 @@ public class JobRunner {
       RefundService refunds,
       ReconciliationService reconciliation,
       PaymentsProperties props,
-      TransactionTemplate tx,
+      TransactionTemplate transactionTemplate,
       Clock clock) {
     this.jobs = jobs;
     this.inbox = inbox;
@@ -61,20 +61,20 @@ public class JobRunner {
     this.refunds = refunds;
     this.reconciliation = reconciliation;
     this.props = props;
-    this.tx = tx;
+    this.transactionTemplate = transactionTemplate;
     this.clock = clock;
   }
 
   /** Creates the RECONCILE singleton if it is not there yet; safe to call on every boot. */
   public void scheduleReconciliation() {
-    if (!Boolean.TRUE.equals(tx.execute(s -> jobs.enqueue(Job.reconcile(clock))))) {
+    if (!Boolean.TRUE.equals(transactionTemplate.execute(s -> jobs.enqueue(Job.reconcile(clock))))) {
       log.debug("reconcile job already scheduled");
     }
   }
 
   /** Returns how many jobs were claimed (not how many succeeded) — callers loop until 0. */
   public int runDue(Instant now) {
-    List<Job> claimed = tx.execute(s -> jobs.claimDue(now, BATCH, props.jobLease(), props.reconcileLease()));
+    List<Job> claimed = transactionTemplate.execute(s -> jobs.claimDue(now, BATCH, props.jobLease(), props.reconcileLease()));
     if (claimed == null) {
       return 0;
     }
@@ -103,7 +103,7 @@ public class JobRunner {
         next = new Job(job.id(), job.type(), job.refId(), now.plus(RECONCILE_EVERY), 0, "PENDING", null, error, job.createdAt());
       }
       Job toSave = next;
-      tx.executeWithoutResult(s -> jobs.save(toSave));
+      transactionTemplate.executeWithoutResult(s -> jobs.save(toSave));
     }
     return claimed.size();
   }

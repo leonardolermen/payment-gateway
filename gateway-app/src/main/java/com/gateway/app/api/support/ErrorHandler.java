@@ -89,8 +89,8 @@ public class ErrorHandler {
   }
 
   private static ProblemDetail problem(HttpStatus status, String code, String detail) {
-    ProblemDetail pd = ProblemDetail.forStatusAndDetail(status, detail);
-    pd.setType(URI.create("urn:gateway:" + code));
-    return pd;
+    ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(status, detail);
+    problemDetail.setType(URI.create("urn:gateway:" + code));
+    return problemDetail;
   }
 }

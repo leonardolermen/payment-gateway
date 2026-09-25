@@ -49,24 +49,24 @@ public class ProvidersConfiguration {
     ItauEndpoints test() { return merge(ItauEndpoints.forEnvironment(ProviderEnvironment.TEST), testApiBase, testTokenUrl, testMutualTls); }
 
     ItauBoletoEndpoints boletoLive() {
-      ItauBoletoEndpoints d = ItauBoletoEndpoints.forEnvironment(ProviderEnvironment.LIVE);
+      ItauBoletoEndpoints defaults = ItauBoletoEndpoints.forEnvironment(ProviderEnvironment.LIVE);
       return new ItauBoletoEndpoints(
-          merge(d.issue(), boleto.liveIssueApiBase(), boleto.liveIssueTokenUrl(), liveMutualTls),
-          merge(d.query(), boleto.liveQueryApiBase(), boleto.liveQueryTokenUrl(), liveMutualTls),
-          merge(d.instruction(), boleto.liveInstructionApiBase(), boleto.liveInstructionTokenUrl(), liveMutualTls));
+          merge(defaults.issue(), boleto.liveIssueApiBase(), boleto.liveIssueTokenUrl(), liveMutualTls),
+          merge(defaults.query(), boleto.liveQueryApiBase(), boleto.liveQueryTokenUrl(), liveMutualTls),
+          merge(defaults.instruction(), boleto.liveInstructionApiBase(), boleto.liveInstructionTokenUrl(), liveMutualTls));
     }
 
     ItauBoletoEndpoints boletoTest() {
-      ItauBoletoEndpoints d = ItauBoletoEndpoints.forEnvironment(ProviderEnvironment.TEST);
+      ItauBoletoEndpoints defaults = ItauBoletoEndpoints.forEnvironment(ProviderEnvironment.TEST);
       return new ItauBoletoEndpoints(
-          merge(d.issue(), boleto.testIssueApiBase(), boleto.testIssueTokenUrl(), testMutualTls),
-          merge(d.query(), boleto.testQueryApiBase(), boleto.testQueryTokenUrl(), testMutualTls),
-          merge(d.instruction(), boleto.testInstructionApiBase(), boleto.testInstructionTokenUrl(), testMutualTls));
+          merge(defaults.issue(), boleto.testIssueApiBase(), boleto.testIssueTokenUrl(), testMutualTls),
+          merge(defaults.query(), boleto.testQueryApiBase(), boleto.testQueryTokenUrl(), testMutualTls),
+          merge(defaults.instruction(), boleto.testInstructionApiBase(), boleto.testInstructionTokenUrl(), testMutualTls));
     }
 
-    private static ItauEndpoints merge(ItauEndpoints d, String api, String token, Boolean mtls) {
-      return ItauEndpoints.custom(api == null || api.isBlank() ? d.apiBase() : URI.create(api),
-          token == null || token.isBlank() ? d.tokenUrl() : URI.create(token), mtls == null ? d.mutualTls() : mtls);
+    private static ItauEndpoints merge(ItauEndpoints defaults, String api, String token, Boolean mtls) {
+      return ItauEndpoints.custom(api == null || api.isBlank() ? defaults.apiBase() : URI.create(api),
+          token == null || token.isBlank() ? defaults.tokenUrl() : URI.create(token), mtls == null ? defaults.mutualTls() : mtls);
     }
   }
 

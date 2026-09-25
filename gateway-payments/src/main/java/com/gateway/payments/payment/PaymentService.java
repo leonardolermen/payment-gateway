@@ -60,7 +60,7 @@ public class PaymentService {
   private final BolecodeFromQuery bolecodeFromQuery;
   private final CreateFailures failures;
   private final PaymentsProperties props;
-  private final TransactionTemplate tx;
+  private final TransactionTemplate transactionTemplate;
   private final Clock clock;
 
   public PaymentService(
@@ -73,7 +73,7 @@ public class PaymentService {
       BolecodeFromQuery bolecodeFromQuery,
       CreateFailures failures,
       PaymentsProperties props,
-      TransactionTemplate tx,
+      TransactionTemplate transactionTemplate,
       Clock clock) {
     this.payments = payments;
     this.divergences = divergences;
@@ -84,7 +84,7 @@ public class PaymentService {
     this.bolecodeFromQuery = bolecodeFromQuery;
     this.failures = failures;
     this.props = props;
-    this.tx = tx;
+    this.transactionTemplate = transactionTemplate;
     this.clock = clock;
   }
 
@@ -163,12 +163,12 @@ public class PaymentService {
         throw ProviderErrors.toDomain("PROVIDER_UNAVAILABLE", e, log, "cancelCharge", id);
       }
     }
-    return tx.execute(s -> {
-      Payment p = payments.findByMerchantAndId(merchantId, id).orElseThrow();
-      if (p.status() != PaymentStatus.PENDING) {
-        throw new DomainException("INVALID_STATE", "payment changed to " + p.status() + " while cancelling");
+    return transactionTemplate.execute(s -> {
+      Payment payment = payments.findByMerchantAndId(merchantId, id).orElseThrow();
+      if (payment.status() != PaymentStatus.PENDING) {
+        throw new DomainException("INVALID_STATE", "payment changed to " + payment.status() + " while cancelling");
       }
-      Payment saved = payments.save(p, List.of(p.markCanceled(EventSource.API)));
+      Payment saved = payments.save(payment, List.of(payment.markCanceled(EventSource.API)));
       events.emit(saved.merchantId(), "payment.canceled", saved);
       return saved;
     });
@@ -181,26 +181,26 @@ public class PaymentService {
    * it was paid between the two calls, so the query is asked once more and decides. The QR dies
    * with the boleto (product docs); if it does not, expiration covers it.
    */
-  private void cancelBoletoAtBank(Payment p, ResolvedProvider<BoletoMethodProvider> resolved) {
-    String nn = p.boleto().nossoNumero();
-    Optional<BoletoStatus> before = findBoletoForCancel(p, resolved, nn);
+  private void cancelBoletoAtBank(Payment payment, ResolvedProvider<BoletoMethodProvider> resolved) {
+    String nn = payment.boleto().nossoNumero();
+    Optional<BoletoStatus> before = findBoletoForCancel(payment, resolved, nn);
     if (before.isPresent() && before.get().paid()) {
-      throw alreadyPaid(p, before.get());
+      throw alreadyPaid(payment, before.get());
     }
     try {
-      providers.run(p.id(), "cancelBoleto", resolved, target -> target.provider().cancel(target.credentials(), nn));
+      providers.run(payment.id(), "cancelBoleto", resolved, target -> target.provider().cancel(target.credentials(), nn));
     } catch (ProviderException e) {
       if (e.code() == ProviderException.Code.CONFLICT) {
-        Optional<BoletoStatus> after = findBoletoForCancel(p, resolved, nn);
+        Optional<BoletoStatus> after = findBoletoForCancel(payment, resolved, nn);
         if (after.isPresent() && after.get().paid()) {
-          throw alreadyPaid(p, after.get());
+          throw alreadyPaid(payment, after.get());
         }
         throw new DomainException("INVALID_STATE", "the bank no longer accepts cancelling this boleto");
       }
       if (e.code() == ProviderException.Code.NOT_FOUND) {
         return; // nothing to invalidate at the bank; the gateway side is still canceled below
       }
-      throw ProviderErrors.toDomain("PROVIDER_UNAVAILABLE", e, log, "cancelBoleto", p.id());
+      throw ProviderErrors.toDomain("PROVIDER_UNAVAILABLE", e, log, "cancelBoleto", payment.id());
     }
   }
 
@@ -208,16 +208,16 @@ public class PaymentService {
    * A request caller: a timeout or a 503 on the query must reach the merchant as PROVIDER_*, not as
    * a raw ProviderException (a 500), and the payment stays PENDING because nothing was decided.
    */
-  private Optional<BoletoStatus> findBoletoForCancel(Payment p, ResolvedProvider<BoletoMethodProvider> resolved, String nn) {
+  private Optional<BoletoStatus> findBoletoForCancel(Payment payment, ResolvedProvider<BoletoMethodProvider> resolved, String nn) {
     try {
-      return providers.call(p.id(), "findBoleto", resolved, target -> target.provider().find(target.credentials(), nn));
+      return providers.call(payment.id(), "findBoleto", resolved, target -> target.provider().find(target.credentials(), nn));
     } catch (ProviderException e) {
-      throw ProviderErrors.toDomain("PROVIDER_UNAVAILABLE", e, log, "findBoleto", p.id());
+      throw ProviderErrors.toDomain("PROVIDER_UNAVAILABLE", e, log, "findBoleto", payment.id());
     }
   }
 
-  private DomainException alreadyPaid(Payment p, BoletoStatus status) {
-    if (settleBoleto(p.merchantId(), p.id(), status, EventSource.RECONCILIATION) == Settlement.COMPLETED) {
+  private DomainException alreadyPaid(Payment payment, BoletoStatus status) {
+    if (settleBoleto(payment.merchantId(), payment.id(), status, EventSource.RECONCILIATION) == Settlement.COMPLETED) {
       return new DomainException("ALREADY_PAID", "the bank shows this boleto paid; the payment is now COMPLETED");
     }
     // settleBoleto refused to complete (an amount mismatch, say) and opened a divergence. The cancel
@@ -239,47 +239,47 @@ public class PaymentService {
    * nothing, so a merchant never gets a second {@code payment.completed}.
    */
   public Settlement settle(MerchantId merchantId, String paymentId, ReceivedPix pix, EventSource by) {
-    return tx.execute(s -> {
+    return transactionTemplate.execute(s -> {
       Optional<Payment> found = payments.findByMerchantAndId(merchantId, paymentId);
       if (found.isEmpty()) {
         return Settlement.UNKNOWN_PAYMENT;
       }
-      Payment p = found.get();
-      if ((p.status() == PaymentStatus.PENDING || p.status() == PaymentStatus.EXPIRED) && pix.amount().cents() != p.amount().cents()) {
+      Payment payment = found.get();
+      if ((payment.status() == PaymentStatus.PENDING || payment.status() == PaymentStatus.EXPIRED) && pix.amount().cents() != payment.amount().cents()) {
         // A charge has a fixed amount; a Pix of another amount is not "the payment". Completing it
         // would tell the merchant to ship an order of 159.90 against 1.00. No transition, nothing to
         // the merchant; a human decides.
-        payments.save(p, List.of(p.recordIgnored("pix " + pix.endToEndId() + " of " + pix.amount().cents() + " cents, charge is " + p.amount().cents(), by).orElseThrow()));
-        openDivergence(p, "AMOUNT_MISMATCH", "pix " + pix.endToEndId() + " paid " + pix.amount().cents() + " cents, charge is " + p.amount().cents());
+        payments.save(payment, List.of(payment.recordIgnored("pix " + pix.endToEndId() + " of " + pix.amount().cents() + " cents, charge is " + payment.amount().cents(), by).orElseThrow()));
+        openDivergence(payment, "AMOUNT_MISMATCH", "pix " + pix.endToEndId() + " paid " + pix.amount().cents() + " cents, charge is " + payment.amount().cents());
         return Settlement.IGNORED;
       }
-      if (p.status() == PaymentStatus.PENDING || p.status() == PaymentStatus.EXPIRED) {
-        Payment saved = payments.save(p, List.of(p.markCompleted(pix.endToEndId(), pix.amount(), pix.paidAt(), by)));
+      if (payment.status() == PaymentStatus.PENDING || payment.status() == PaymentStatus.EXPIRED) {
+        Payment saved = payments.save(payment, List.of(payment.markCompleted(pix.endToEndId(), pix.amount(), pix.paidAt(), by)));
         events.emit(saved.merchantId(), "payment.completed", saved);
         return Settlement.COMPLETED;
       }
-      if (p.status().terminal()) {
-        String knownE2e = p.pix() == null ? null : p.pix().endToEndId();
-        boolean sameAmount = p.paidAmount() != null && p.paidAmount().cents() == pix.amount().cents();
+      if (payment.status().terminal()) {
+        String knownE2e = payment.pix() == null ? null : payment.pix().endToEndId();
+        boolean sameAmount = payment.paidAmount() != null && payment.paidAmount().cents() == pix.amount().cents();
         // A Bolecode the boleto query completed via PIX without an endToEndId (GET /cob unreachable
         // at that moment) has no e2eid to compare: its QR is its only Pix side, so a Pix of the same
         // amount is the one the query already saw, not a second payment.
-        boolean completedByQueryViaPix = p.boleto() != null && p.boleto().paidVia() == PaidVia.PIX && knownE2e == null;
+        boolean completedByQueryViaPix = payment.boleto() != null && payment.boleto().paidVia() == PaidVia.PIX && knownE2e == null;
         boolean duplicate =
-            p.status() == PaymentStatus.COMPLETED && sameAmount && (Objects.equals(knownE2e, pix.endToEndId()) || completedByQueryViaPix);
-        String what = duplicate ? "duplicate e2eid " + pix.endToEndId() : "pix " + pix.endToEndId() + " on a " + p.status() + " payment";
-        payments.save(p, List.of(p.recordIgnored(what, by).orElseThrow()));
+            payment.status() == PaymentStatus.COMPLETED && sameAmount && (Objects.equals(knownE2e, pix.endToEndId()) || completedByQueryViaPix);
+        String what = duplicate ? "duplicate e2eid " + pix.endToEndId() : "pix " + pix.endToEndId() + " on a " + payment.status() + " payment";
+        payments.save(payment, List.of(payment.recordIgnored(what, by).orElseThrow()));
         if (!duplicate) {
           // Money arrived that the merchant will never hear about (FAILED/CANCELED), or a second,
           // different Pix on a COMPLETED charge. No legal transition moves the payment and nothing
           // goes to the merchant; a human decides (refund the payer, or reopen the order).
-          openDivergence(p, "PIX_RECEIVED", "paid at bank while " + p.status() + ": e2eid " + pix.endToEndId() + ", " + pix.amount().cents() + " cents");
+          openDivergence(payment, "PIX_RECEIVED", "paid at bank while " + payment.status() + ": e2eid " + pix.endToEndId() + ", " + pix.amount().cents() + " cents");
         }
         return Settlement.IGNORED;
       }
       // CREATED: the bank cannot have been paid for a charge it has not answered yet; failing makes
       // the caller's job retry once the PENDING write lands.
-      throw new IllegalStateException("pix for payment " + paymentId + " still in " + p.status());
+      throw new IllegalStateException("pix for payment " + paymentId + " still in " + payment.status());
     });
   }
 
@@ -299,23 +299,23 @@ public class PaymentService {
     if (found.isEmpty()) {
       return Settlement.UNKNOWN_PAYMENT;
     }
-    Payment p = found.get();
-    if (p.status() == PaymentStatus.CREATED) {
-      throw new IllegalStateException("pix for payment " + p.id() + " still in " + p.status());
+    Payment payment = found.get();
+    if (payment.status() == PaymentStatus.CREATED) {
+      throw new IllegalStateException("pix for payment " + payment.id() + " still in " + payment.status());
     }
-    ResolvedProvider<PixMethodProvider> resolved = providers.resolvePix(merchantId, p.environment(), p.provider());
+    ResolvedProvider<PixMethodProvider> resolved = providers.resolvePix(merchantId, payment.environment(), payment.provider());
     Optional<Charge> atBank =
-        providers.call(p.id(), "findCharge", resolved, target -> target.provider().find(target.credentials(), p.pix().txid()));
+        providers.call(payment.id(), "findCharge", resolved, target -> target.provider().find(target.credentials(), payment.pix().txid()));
     Optional<ReceivedPix> confirmed =
         atBank
             .filter(c -> c.status() == ChargeStatus.COMPLETED && c.received() != null)
             .flatMap(c -> c.received().stream().filter(x -> Objects.equals(x.endToEndId(), hinted.endToEndId())).findFirst());
     if (confirmed.isPresent()) {
-      return settle(merchantId, p.id(), confirmed.get(), EventSource.PROVIDER_WEBHOOK);
+      return settle(merchantId, payment.id(), confirmed.get(), EventSource.PROVIDER_WEBHOOK);
     }
     String bankSays = atBank.map(c -> c.status().name()).orElse("NOT_FOUND");
-    tx.executeWithoutResult(s -> {
-      Payment loaded = payments.findById(p.id()).orElseThrow();
+    transactionTemplate.executeWithoutResult(s -> {
+      Payment loaded = payments.findById(payment.id()).orElseThrow();
       payments.save(loaded, List.of(loaded.recordIgnored("unconfirmed webhook: e2eid " + hinted.endToEndId() + ", bank says " + bankSays, EventSource.PROVIDER_WEBHOOK).orElseThrow()));
       openDivergence(loaded, "UNCONFIRMED_WEBHOOK", "webhook said e2eid " + hinted.endToEndId() + " paid " + hinted.amount().cents() + " cents; bank says " + bankSays);
     });
@@ -331,21 +331,21 @@ public class PaymentService {
    * non-Pix channel, since the Bolecode QR itself settles the boleto — a human decides.
    */
   public Settlement settleBoleto(MerchantId merchantId, String paymentId, BoletoStatus status, EventSource by) {
-    return tx.execute(s -> {
+    return transactionTemplate.execute(s -> {
       Optional<Payment> found = payments.findByMerchantAndId(merchantId, paymentId);
       if (found.isEmpty()) {
         return Settlement.UNKNOWN_PAYMENT;
       }
-      Payment p = found.get();
-      if (p.method() != PaymentMethod.BOLECODE || p.boleto() == null) {
-        throw new IllegalStateException("settleBoleto on a " + p.method() + " payment " + paymentId);
+      Payment payment = found.get();
+      if (payment.method() != PaymentMethod.BOLECODE || payment.boleto() == null) {
+        throw new IllegalStateException("settleBoleto on a " + payment.method() + " payment " + paymentId);
       }
-      String nn = p.boleto().nossoNumero();
+      String nn = payment.boleto().nossoNumero();
       long paidCents = status.paidAmount() == null ? -1 : status.paidAmount().cents();
-      if (p.status() == PaymentStatus.PENDING || p.status() == PaymentStatus.EXPIRED) {
-        if (paidCents != p.amount().cents()) {
-          payments.save(p, List.of(p.recordIgnored("boleto " + nn + " paid " + paidCents + " cents, charge is " + p.amount().cents(), by).orElseThrow()));
-          openDivergence(p, "AMOUNT_MISMATCH", "boleto " + nn + " paid " + paidCents + " cents at the bank, charge is " + p.amount().cents());
+      if (payment.status() == PaymentStatus.PENDING || payment.status() == PaymentStatus.EXPIRED) {
+        if (paidCents != payment.amount().cents()) {
+          payments.save(payment, List.of(payment.recordIgnored("boleto " + nn + " paid " + paidCents + " cents, charge is " + payment.amount().cents(), by).orElseThrow()));
+          openDivergence(payment, "AMOUNT_MISMATCH", "boleto " + nn + " paid " + paidCents + " cents at the bank, charge is " + payment.amount().cents());
           return Settlement.IGNORED;
         }
         Instant paidAt = status.paidAt() == null ? clock.instant() : status.paidAt();
@@ -354,15 +354,15 @@ public class PaymentService {
         // refund they are owed. The query has no endToEndId; BoletoPollingService asks GET /cob for it
         // first, so reaching this with a Pix channel means it stays unknown.
         PaymentEvent completion = isPixChannel(status.paidChannel())
-            ? p.markCompleted(null, status.paidAmount(), paidAt, by)
-            : p.markCompletedByBoleto(status.paidAmount(), paidAt, status.paidChannel(), by);
-        Payment saved = payments.save(p, List.of(completion));
+            ? payment.markCompleted(null, status.paidAmount(), paidAt, by)
+            : payment.markCompletedByBoleto(status.paidAmount(), paidAt, status.paidChannel(), by);
+        Payment saved = payments.save(payment, List.of(completion));
         events.emit(saved.merchantId(), "payment.completed", saved);
         return Settlement.COMPLETED;
       }
-      if (p.status() == PaymentStatus.COMPLETED) {
-        if (p.boleto().paidVia() == PaidVia.BOLETO) {
-          payments.save(p, List.of(p.recordIgnored("boleto " + nn + " already settled", by).orElseThrow()));
+      if (payment.status() == PaymentStatus.COMPLETED) {
+        if (payment.boleto().paidVia() == PaidVia.BOLETO) {
+          payments.save(payment, List.of(payment.recordIgnored("boleto " + nn + " already settled", by).orElseThrow()));
           return Settlement.IGNORED;
         }
         // Paying the QR of a Bolecode settles the boleto at the bank too, so "paid" after a Pix
@@ -371,24 +371,24 @@ public class PaymentService {
         String channel = status.paidChannel();
         if (channel == null || channel.isBlank()) {
           log.warn("boleto {} of payment {} paid at the bank without a payment channel; assumed its own pix", nn, paymentId);
-          payments.save(p, List.of(p.recordIgnored("boleto " + nn + " paid at the bank, no channel, on a payment completed via PIX", by).orElseThrow()));
+          payments.save(payment, List.of(payment.recordIgnored("boleto " + nn + " paid at the bank, no channel, on a payment completed via PIX", by).orElseThrow()));
           return Settlement.IGNORED;
         }
         if (isPixChannel(channel)) {
-          payments.save(p, List.of(p.recordIgnored("boleto " + nn + " settled by its own pix (" + channel + ")", by).orElseThrow()));
+          payments.save(payment, List.of(payment.recordIgnored("boleto " + nn + " settled by its own pix (" + channel + ")", by).orElseThrow()));
           return Settlement.IGNORED;
         }
-        payments.save(p, List.of(p.recordIgnored("boleto " + nn + " paid at the bank via " + channel + " on a payment completed via PIX", by).orElseThrow()));
-        openDivergence(p, "DOUBLE_PAYMENT", "paid via PIX (e2eid " + (p.pix() == null ? null : p.pix().endToEndId()) + ") and boleto " + nn + " paid " + paidCents + " cents via " + channel);
+        payments.save(payment, List.of(payment.recordIgnored("boleto " + nn + " paid at the bank via " + channel + " on a payment completed via PIX", by).orElseThrow()));
+        openDivergence(payment, "DOUBLE_PAYMENT", "paid via PIX (e2eid " + (payment.pix() == null ? null : payment.pix().endToEndId()) + ") and boleto " + nn + " paid " + paidCents + " cents via " + channel);
         return Settlement.IGNORED;
       }
-      if (p.status().terminal()) {
+      if (payment.status().terminal()) {
         // Money arrived for a charge the merchant will never hear about again (FAILED/CANCELED).
-        payments.save(p, List.of(p.recordIgnored("boleto " + nn + " paid at the bank while " + p.status(), by).orElseThrow()));
-        openDivergence(p, "BOLETO_PAID", "boleto " + nn + " paid " + paidCents + " cents at the bank while " + p.status());
+        payments.save(payment, List.of(payment.recordIgnored("boleto " + nn + " paid at the bank while " + payment.status(), by).orElseThrow()));
+        openDivergence(payment, "BOLETO_PAID", "boleto " + nn + " paid " + paidCents + " cents at the bank while " + payment.status());
         return Settlement.IGNORED;
       }
-      throw new IllegalStateException("boleto settlement for payment " + paymentId + " still in " + p.status());
+      throw new IllegalStateException("boleto settlement for payment " + paymentId + " still in " + payment.status());
     });
   }
 
@@ -407,8 +407,8 @@ public class PaymentService {
    * identical divergences before anyone looked at the first. The check is the database's (partial
    * unique index, V201), not a scan of every OPEN row.
    */
-  public boolean openDivergence(Payment p, String providerStatus, String detail) {
-    return divergences.open(p, providerStatus, detail);
+  public boolean openDivergence(Payment payment, String providerStatus, String detail) {
+    return divergences.open(payment, providerStatus, detail);
   }
 }
 

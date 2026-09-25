@@ -33,19 +33,19 @@ public class OutboxRelay {
 
   private final OutboxRepository outbox;
   private final MerchantEvents events;
-  private final TransactionTemplate tx;
+  private final TransactionTemplate transactionTemplate;
   private final PaymentsProperties props;
 
-  public OutboxRelay(OutboxRepository outbox, MerchantEvents events, TransactionTemplate tx, PaymentsProperties props) {
+  public OutboxRelay(OutboxRepository outbox, MerchantEvents events, TransactionTemplate transactionTemplate, PaymentsProperties props) {
     this.outbox = outbox;
     this.events = events;
-    this.tx = tx;
+    this.transactionTemplate = transactionTemplate;
     this.props = props;
   }
 
   @Scheduled(fixedDelayString = "${gateway.payments.outbox-relay-ms:1000}")
   public void relay() {
-    List<OutboxMessage> claimed = tx.execute(s -> outbox.claimPending(BATCH, props.outboxLease()));
+    List<OutboxMessage> claimed = transactionTemplate.execute(s -> outbox.claimPending(BATCH, props.outboxLease()));
     if (claimed == null) {
       return;
     }

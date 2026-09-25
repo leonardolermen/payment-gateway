@@ -12,7 +12,7 @@ public class BoletoNumberRepositoryImpl implements BoletoNumberRepository {
   /** 8 digits: the issue OpenAPI says "máximo 08 caracteres" and the query schema pins minLength = maxLength = 8. */
   private static final long MAX = 99_999_999L;
 
-  @PersistenceContext private EntityManager em;
+  @PersistenceContext private EntityManager entityManager;
 
   /**
    * One statement: the upsert takes the row lock, increments and returns, so two concurrent
@@ -31,7 +31,7 @@ public class BoletoNumberRepositoryImpl implements BoletoNumberRepository {
   public String next(MerchantId merchantId) {
     Number value =
         (Number)
-            em.createNativeQuery(
+            entityManager.createNativeQuery(
                     """
                     INSERT INTO payments.boleto_numbers (merchant_id, next_value) VALUES (:merchantId, 1)
                     ON CONFLICT (merchant_id) DO UPDATE SET next_value = payments.boleto_numbers.next_value + 1

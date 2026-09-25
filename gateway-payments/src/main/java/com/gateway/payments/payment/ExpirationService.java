@@ -34,7 +34,7 @@ public class ExpirationService {
   private final PaymentService paymentService;
   private final PaymentEvents events;
   private final PaymentsProperties props;
-  private final TransactionTemplate tx;
+  private final TransactionTemplate transactionTemplate;
 
   public ExpirationService(
       PaymentRepository payments,
@@ -42,25 +42,25 @@ public class ExpirationService {
       PaymentService paymentService,
       PaymentEvents events,
       PaymentsProperties props,
-      TransactionTemplate tx) {
+      TransactionTemplate transactionTemplate) {
     this.payments = payments;
     this.providers = providers;
     this.paymentService = paymentService;
     this.events = events;
     this.props = props;
-    this.tx = tx;
+    this.transactionTemplate = transactionTemplate;
   }
 
   /** Sweep for PENDING charges past expiry + grace; the per-payment job is the normal path, this is the net. */
   public int expireDue(Instant now) {
     List<Payment> due = payments.findPendingOlderThan(now.minus(props.expirationGrace()), BATCH);
     int changed = 0;
-    for (Payment p : due) {
+    for (Payment payment : due) {
       try {
-        if (expireOne(p.id(), now)) changed++;
+        if (expireOne(payment.id(), now)) changed++;
       } catch (RuntimeException e) {
         // One bank hiccup must not stop the sweep for every other merchant's charges.
-        log.warn("could not expire payment {}", p.id(), e);
+        log.warn("could not expire payment {}", payment.id(), e);
       }
     }
     return changed;
@@ -75,47 +75,47 @@ public class ExpirationService {
    */
   public int sweepStuckCreated(Instant now) {
     int changed = 0;
-    for (Payment p : payments.findByStatusCreatedBefore(PaymentStatus.CREATED, now.minus(props.stuckCreatedAfter()), BATCH)) {
+    for (Payment payment : payments.findByStatusCreatedBefore(PaymentStatus.CREATED, now.minus(props.stuckCreatedAfter()), BATCH)) {
       try {
-        if (p.method() == PaymentMethod.BOLECODE) {
+        if (payment.method() == PaymentMethod.BOLECODE) {
           // Same idea as Pix, with the query: the number is ours, so the bank can say whether the
           // issue landed. Empty after stuckCreatedAfter (the bank's 202 long past) is FAILED.
-          ResolvedProvider<BoletoMethodProvider> resolved = providers.resolveBoleto(p.merchantId(), p.environment(), p.provider());
-          String nn = p.boleto().nossoNumero();
+          ResolvedProvider<BoletoMethodProvider> resolved = providers.resolveBoleto(payment.merchantId(), payment.environment(), payment.provider());
+          String nn = payment.boleto().nossoNumero();
           Optional<BoletoStatus> atBank =
-              providers.call(p.id(), "findBoleto", resolved, target -> target.provider().find(target.credentials(), nn));
+              providers.call(payment.id(), "findBoleto", resolved, target -> target.provider().find(target.credentials(), nn));
           if (atBank.isEmpty()) {
-            paymentService.markFailed(p.id(), "PROVIDER_TIMEOUT", EventSource.SYSTEM);
+            paymentService.markFailed(payment.id(), "PROVIDER_TIMEOUT", EventSource.SYSTEM);
           } else {
-            paymentService.adoptBolecodeFromStatus(p.id(), resolved, atBank.get(), EventSource.SYSTEM);
+            paymentService.adoptBolecodeFromStatus(payment.id(), resolved, atBank.get(), EventSource.SYSTEM);
             if (atBank.get().paid()) {
-              paymentService.settleBoleto(p.merchantId(), p.id(), atBank.get(), EventSource.RECONCILIATION);
+              paymentService.settleBoleto(payment.merchantId(), payment.id(), atBank.get(), EventSource.RECONCILIATION);
             }
           }
           // Counted from the row, not assumed: every branch above may be a no-op (markFailed and the
           // adoption both leave a payment that is no longer CREATED alone), and counting those made
           // the sweep report work it did not do.
-          if (payments.findById(p.id()).map(x -> x.status() != PaymentStatus.CREATED).orElse(false)) {
+          if (payments.findById(payment.id()).map(x -> x.status() != PaymentStatus.CREATED).orElse(false)) {
             changed++;
           }
           continue;
         }
-        ResolvedProvider<PixMethodProvider> resolved = providers.resolvePix(p.merchantId(), p.environment(), p.provider());
+        ResolvedProvider<PixMethodProvider> resolved = providers.resolvePix(payment.merchantId(), payment.environment(), payment.provider());
         Optional<Charge> atBank =
-            providers.call(p.id(), "findCharge", resolved, target -> target.provider().find(target.credentials(), p.id()));
+            providers.call(payment.id(), "findCharge", resolved, target -> target.provider().find(target.credentials(), payment.id()));
 
         if (atBank.isEmpty()) {
-          paymentService.markFailed(p.id(), "PROVIDER_TIMEOUT", EventSource.SYSTEM);
+          paymentService.markFailed(payment.id(), "PROVIDER_TIMEOUT", EventSource.SYSTEM);
         } else {
-          int fallback = (int) java.time.Duration.between(p.createdAt(), p.expiresAt()).toSeconds();
-          paymentService.adoptPending(p.id(), atBank.get(), fallback, EventSource.SYSTEM);
+          int fallback = (int) java.time.Duration.between(payment.createdAt(), payment.expiresAt()).toSeconds();
+          paymentService.adoptPending(payment.id(), atBank.get(), fallback, EventSource.SYSTEM);
           if (atBank.get().status() == ChargeStatus.COMPLETED && atBank.get().firstPix().isPresent()) {
-            paymentService.settle(p.merchantId(), p.id(), atBank.get().firstPix().get(), EventSource.RECONCILIATION);
+            paymentService.settle(payment.merchantId(), payment.id(), atBank.get().firstPix().get(), EventSource.RECONCILIATION);
           }
         }
         changed++;
       } catch (RuntimeException e) {
-        log.warn("could not resolve stuck CREATED payment {}", p.id(), e);
+        log.warn("could not resolve stuck CREATED payment {}", payment.id(), e);
       }
     }
     return changed;
@@ -123,36 +123,36 @@ public class ExpirationService {
 
   /** Returns whether the payment changed state. A payment no longer PENDING (or not yet due) is a no-op. */
   public boolean expireOne(String paymentId, Instant now) {
-    Payment p = payments.findById(paymentId).orElse(null);
-    if (p == null || p.status() != PaymentStatus.PENDING || p.expiresAt().plus(props.expirationGrace()).isAfter(now)) {
+    Payment payment = payments.findById(paymentId).orElse(null);
+    if (payment == null || payment.status() != PaymentStatus.PENDING || payment.expiresAt().plus(props.expirationGrace()).isAfter(now)) {
       return false;
     }
-    if (p.method() == PaymentMethod.BOLECODE) {
-      return expireBolecode(p, providers.resolveBoleto(p.merchantId(), p.environment(), p.provider()));
+    if (payment.method() == PaymentMethod.BOLECODE) {
+      return expireBolecode(payment, providers.resolveBoleto(payment.merchantId(), payment.environment(), payment.provider()));
     }
 
-    ResolvedProvider<PixMethodProvider> resolved = providers.resolvePix(p.merchantId(), p.environment(), p.provider());
+    ResolvedProvider<PixMethodProvider> resolved = providers.resolvePix(payment.merchantId(), payment.environment(), payment.provider());
     Optional<Charge> atBank =
-        providers.call(p.id(), "findCharge", resolved, target -> target.provider().find(target.credentials(), p.id()));
+        providers.call(payment.id(), "findCharge", resolved, target -> target.provider().find(target.credentials(), payment.id()));
     if (atBank.isPresent() && atBank.get().status() == ChargeStatus.COMPLETED) {
       if (atBank.get().firstPix().isEmpty()) {
         // Paid, but without the pix[] that says by whom and how much: we cannot complete it, and
         // expiring a charge the bank calls paid would be wrong. Left PENDING for the webhook or the
         // next reconciliation to bring the details.
-        log.warn("bank reports payment {} COMPLETED without pix[]; leaving it PENDING", p.id());
+        log.warn("bank reports payment {} COMPLETED without pix[]; leaving it PENDING", payment.id());
         return false;
       }
-      paymentService.settle(p.merchantId(), p.id(), atBank.get().firstPix().get(), EventSource.RECONCILIATION);
+      paymentService.settle(payment.merchantId(), payment.id(), atBank.get().firstPix().get(), EventSource.RECONCILIATION);
       return true;
     }
     if (atBank.isPresent() && atBank.get().status() == ChargeStatus.ACTIVE) {
       try {
         // Best effort: the bank expires the QR on its own clock anyway; removing it just closes
         // the window between our expiry and the bank's.
-        providers.run(p.id(), "cancelCharge", resolved, target -> target.provider().cancel(target.credentials(), p.id()));
+        providers.run(payment.id(), "cancelCharge", resolved, target -> target.provider().cancel(target.credentials(), payment.id()));
       } catch (ProviderException e) {
         if (e.code() != ProviderException.Code.INVALID && e.code() != ProviderException.Code.NOT_FOUND) {
-          log.info("could not remove expired charge {} at the bank: {}", p.id(), e.getMessage());
+          log.info("could not remove expired charge {} at the bank: {}", payment.id(), e.getMessage());
         }
       }
     }
@@ -164,23 +164,23 @@ public class ExpirationService {
    * both the barcode and the QR, so no baixa is sent — it would only add a call that can fail. The
    * query still runs first: a payment made on the last day is credited on the next business day.
    */
-  private boolean expireBolecode(Payment p, ResolvedProvider<BoletoMethodProvider> resolved) {
-    String nn = p.boleto().nossoNumero();
+  private boolean expireBolecode(Payment payment, ResolvedProvider<BoletoMethodProvider> resolved) {
+    String nn = payment.boleto().nossoNumero();
     Optional<BoletoStatus> atBank =
-        providers.call(p.id(), "findBoleto", resolved, target -> target.provider().find(target.credentials(), nn));
+        providers.call(payment.id(), "findBoleto", resolved, target -> target.provider().find(target.credentials(), nn));
     if (atBank.isPresent() && atBank.get().paid()) {
-      return paymentService.settleBoleto(p.merchantId(), p.id(), atBank.get(), EventSource.RECONCILIATION) == PaymentService.Settlement.COMPLETED;
+      return paymentService.settleBoleto(payment.merchantId(), payment.id(), atBank.get(), EventSource.RECONCILIATION) == PaymentService.Settlement.COMPLETED;
     }
     if (atBank.isPresent() && atBank.get().situation() == BoletoSituation.AWAITING_CREDIT) {
-      log.info("boleto {} of payment {} awaiting credit at the bank; not expiring yet", nn, p.id());
+      log.info("boleto {} of payment {} awaiting credit at the bank; not expiring yet", nn, payment.id());
       return false;
     }
-    return markExpired(p.id());
+    return markExpired(payment.id());
   }
 
   private boolean markExpired(String paymentId) {
     return Boolean.TRUE.equals(
-        tx.execute(s -> {
+        transactionTemplate.execute(s -> {
           Payment loaded = payments.findById(paymentId).orElseThrow();
           if (loaded.status() != PaymentStatus.PENDING) {
             return false; // a webhook or a poll got there while we were asking the bank

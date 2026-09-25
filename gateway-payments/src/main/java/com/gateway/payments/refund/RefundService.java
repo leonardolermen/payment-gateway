@@ -56,7 +56,7 @@ public class RefundService {
   private final ProviderGateway providers;
   private final PaymentEvents events;
   private final PaymentService paymentService;
-  private final TransactionTemplate tx;
+  private final TransactionTemplate transactionTemplate;
   private final Clock clock;
 
   public RefundService(
@@ -66,7 +66,7 @@ public class RefundService {
       ProviderGateway providers,
       PaymentEvents events,
       PaymentService paymentService,
-      TransactionTemplate tx,
+      TransactionTemplate transactionTemplate,
       Clock clock) {
     this.refunds = refunds;
     this.payments = payments;
@@ -74,7 +74,7 @@ public class RefundService {
     this.providers = providers;
     this.events = events;
     this.paymentService = paymentService;
-    this.tx = tx;
+    this.transactionTemplate = transactionTemplate;
     this.clock = clock;
   }
 
@@ -87,7 +87,7 @@ public class RefundService {
     ResolvedProvider<PixMethodProvider> resolved = providers.resolvePix(merchantId, payment.environment(), payment.provider());
 
     Refund refund =
-        tx.execute(s -> {
+        transactionTemplate.execute(s -> {
           Payment locked = payments.findByIdForUpdate(paymentId).orElseThrow();
           if (locked.status() != PaymentStatus.COMPLETED) {
             throw new DomainException("INVALID_STATE", "only a completed payment can be refunded, this one is " + locked.status());
@@ -139,7 +139,7 @@ public class RefundService {
         result = new RefundResult(refund.id(), RefundStatus.PROCESSING, refund.amount(), null, clock.instant(), null);
       } else {
         String code = "PROVIDER_DECLINED";
-        tx.executeWithoutResult(s -> {
+        transactionTemplate.executeWithoutResult(s -> {
           Refund loaded = refunds.findById(refund.id()).orElseThrow();
           loaded.markFailed(ProviderErrors.message(code));
           events.emitRefund(merchantId, "refund.failed", refunds.save(loaded), payment);
@@ -149,7 +149,7 @@ public class RefundService {
     }
 
     Refund processing =
-        tx.execute(s -> {
+        transactionTemplate.execute(s -> {
           Refund loaded = refunds.findById(refund.id()).orElseThrow();
           loaded.markProcessing();
           Refund saved = refunds.save(loaded);
@@ -192,7 +192,7 @@ public class RefundService {
    * ({@code refund_completed}/{@code refund_failed}) so it bumps the payment's version.
    */
   public void applyProviderUpdate(RefundResult result) {
-    tx.executeWithoutResult(s -> {
+    transactionTemplate.executeWithoutResult(s -> {
       Refund probe = refunds.findById(result.refundId()).orElse(null);
       if (probe == null) {
         log.warn("provider update for unknown refund {}", result.refundId());
@@ -237,7 +237,7 @@ public class RefundService {
    * {@code REFUND_UNKNOWN} divergence, in one transaction so neither exists without the other.
    */
   public void giveUp(String refundId) {
-    tx.executeWithoutResult(s -> {
+    transactionTemplate.executeWithoutResult(s -> {
       Refund probe = refunds.findById(refundId).orElse(null);
       if (probe == null) {
         return;
@@ -271,7 +271,7 @@ public class RefundService {
     String paymentE2e = payment.pix() == null ? null : payment.pix().endToEndId();
     if (!refund.merchantId().equals(merchantId) || endToEndId == null || !endToEndId.equals(paymentE2e)) {
       log.warn("webhook refund update for refund {} does not match its merchant or payment; ignored", refund.id());
-      tx.executeWithoutResult(
+      transactionTemplate.executeWithoutResult(
           s -> paymentService.openDivergence(
               payment,
               "UNCONFIRMED_REFUND_WEBHOOK",

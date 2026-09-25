@@ -89,13 +89,13 @@ public final class Payment {
       int expiresInSeconds,
       Clock clock) {
     String id = Ulid.next();
-    Payment p =
+    Payment payment =
         new Payment(id, PaymentMethod.PIX, merchantId, environment, provider, amount, reference, description, customerDocumentHash, clock.instant(), clock);
-    p.expiresAt = clock.instant().plusSeconds(expiresInSeconds);
-    p.version = 1;
-    p.createdEvent = new PaymentEvent(
-        Ulid.next(), id, p.version, "created", EventSource.API, "{\"amount\":" + amount.cents() + ",\"method\":\"PIX\"}", p.createdAt);
-    return p;
+    payment.expiresAt = clock.instant().plusSeconds(expiresInSeconds);
+    payment.version = 1;
+    payment.createdEvent = new PaymentEvent(
+        Ulid.next(), id, payment.version, "created", EventSource.API, "{\"amount\":" + amount.cents() + ",\"method\":\"PIX\"}", payment.createdAt);
+    return payment;
   }
 
   /**
@@ -107,15 +107,15 @@ public final class Payment {
       MerchantId merchantId, ProviderEnvironment environment, String provider, Money amount, String reference, String description,
       String customerDocumentHash, BoletoDetails boleto, Instant expiresAt, Clock clock) {
     String id = Ulid.next();
-    Payment p = new Payment(
+    Payment payment = new Payment(
         id, PaymentMethod.BOLECODE, merchantId, environment, provider, amount, reference, description, customerDocumentHash, clock.instant(), clock);
-    p.pix = new PixDetails(null, null, null, null);
-    p.boleto = boleto;
-    p.expiresAt = expiresAt;
-    p.version = 1;
-    p.createdEvent = new PaymentEvent(Ulid.next(), id, p.version, "created", EventSource.API,
-        "{\"amount\":" + amount.cents() + ",\"method\":\"BOLECODE\",\"nossoNumero\":" + json(boleto.nossoNumero()) + "}", p.createdAt);
-    return p;
+    payment.pix = new PixDetails(null, null, null, null);
+    payment.boleto = boleto;
+    payment.expiresAt = expiresAt;
+    payment.version = 1;
+    payment.createdEvent = new PaymentEvent(Ulid.next(), id, payment.version, "created", EventSource.API,
+        "{\"amount\":" + amount.cents() + ",\"method\":\"BOLECODE\",\"nossoNumero\":" + json(boleto.nossoNumero()) + "}", payment.createdAt);
+    return payment;
   }
 
   private PaymentEvent transition(PaymentStatus to, EventSource by, String type, String payload) {
@@ -220,25 +220,25 @@ public final class Payment {
     if (s == null) {
       return "null";
     }
-    StringBuilder sb = new StringBuilder(s.length() + 2).append('"');
+    StringBuilder stringBuilder = new StringBuilder(s.length() + 2).append('"');
     for (int i = 0; i < s.length(); i++) {
       char c = s.charAt(i);
       switch (c) {
-        case '"' -> sb.append("\\\"");
-        case '\\' -> sb.append("\\\\");
-        case '\n' -> sb.append("\\n");
-        case '\r' -> sb.append("\\r");
-        case '\t' -> sb.append("\\t");
+        case '"' -> stringBuilder.append("\\\"");
+        case '\\' -> stringBuilder.append("\\\\");
+        case '\n' -> stringBuilder.append("\\n");
+        case '\r' -> stringBuilder.append("\\r");
+        case '\t' -> stringBuilder.append("\\t");
         default -> {
           if (c < 0x20) {
-            sb.append(String.format("\\u%04x", (int) c));
+            stringBuilder.append(String.format("\\u%04x", (int) c));
           } else {
-            sb.append(c);
+            stringBuilder.append(c);
           }
         }
       }
     }
-    return sb.append('"').toString();
+    return stringBuilder.append('"').toString();
   }
 
   /**
@@ -386,16 +386,16 @@ public final class Payment {
       String id, MerchantId merchantId, ProviderEnvironment environment, String provider, PaymentMethod method, PaymentStatus status,
       Money amount, String reference, String description, String customerDocumentHash, PixDetails pix, BoletoDetails boleto,
       Instant expiresAt, Instant paidAt, Money paidAmount, Money refundedAmount, long version, Instant createdAt, Instant updatedAt, Clock clock) {
-    Payment p = new Payment(id, method, merchantId, environment, provider, amount, reference, description, customerDocumentHash, createdAt, clock);
-    p.status = status;
-    p.pix = pix;
-    p.boleto = boleto;
-    p.expiresAt = expiresAt;
-    p.paidAt = paidAt;
-    p.paidAmount = paidAmount;
-    p.refundedAmount = refundedAmount == null ? Money.ZERO_BRL : refundedAmount;
-    p.version = version;
-    p.updatedAt = updatedAt;
-    return p;
+    Payment payment = new Payment(id, method, merchantId, environment, provider, amount, reference, description, customerDocumentHash, createdAt, clock);
+    payment.status = status;
+    payment.pix = pix;
+    payment.boleto = boleto;
+    payment.expiresAt = expiresAt;
+    payment.paidAt = paidAt;
+    payment.paidAmount = paidAmount;
+    payment.refundedAmount = refundedAmount == null ? Money.ZERO_BRL : refundedAmount;
+    payment.version = version;
+    payment.updatedAt = updatedAt;
+    return payment;
   }
 }

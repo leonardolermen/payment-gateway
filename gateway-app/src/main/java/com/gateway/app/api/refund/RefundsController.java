@@ -29,8 +29,8 @@ public class RefundsController {
     if (cents != null && cents <= 0) {
       throw new IllegalArgumentException("amount must be a positive number of cents");
     }
-    Refund r = refunds.request(MerchantContext.current().merchantId(), paymentId, cents == null ? null : Money.brl(cents));
-    return ResponseEntity.status(HttpStatus.CREATED).header(IdempotencyFilter.RESOURCE_ID_HEADER, r.id()).body(RefundResponse.from(r));
+    Refund refund = refunds.request(MerchantContext.current().merchantId(), paymentId, cents == null ? null : Money.brl(cents));
+    return ResponseEntity.status(HttpStatus.CREATED).header(IdempotencyFilter.RESOURCE_ID_HEADER, refund.id()).body(RefundResponse.from(refund));
   }
 
   @GetMapping("/v1/payments/{paymentId}/refunds")

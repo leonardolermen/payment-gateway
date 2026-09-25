@@ -28,7 +28,7 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   private final PaymentJpaRepository jpa;
   private final PaymentEventJpaRepository eventsJpa;
 
-  @PersistenceContext private EntityManager em;
+  @PersistenceContext private EntityManager entityManager;
 
   public PaymentRepositoryImpl(PaymentJpaRepository jpa, PaymentEventJpaRepository eventsJpa) {
     this.jpa = jpa;
@@ -73,7 +73,7 @@ public class PaymentRepositoryImpl implements PaymentRepository {
       // persist, not jpa.save: the id is already assigned (a ULID), so save() would go through
       // Hibernate's merge path (a SELECT to check whether the row exists, then an INSERT) — an
       // unnecessary round trip for a row we know is brand new. persist() inserts directly.
-      em.persist(e);
+      entityManager.persist(e);
     } else {
       int updated =
           jpa.updateIfVersionMatches(
@@ -95,7 +95,7 @@ public class PaymentRepositoryImpl implements PaymentRepository {
     for (PaymentEvent event : newEvents) {
       // Same reasoning as the payment row above: every event is a brand-new row with an assigned
       // id, so persist() (direct INSERT) instead of save() (SELECT-then-INSERT/UPDATE merge).
-      em.persist(toEventEntity(event));
+      entityManager.persist(toEventEntity(event));
     }
     return p;
   }

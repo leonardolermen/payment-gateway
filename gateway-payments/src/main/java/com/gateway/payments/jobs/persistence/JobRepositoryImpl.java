@@ -17,7 +17,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class JobRepositoryImpl implements JobRepository {
   private final JobJpaRepository jpa;
 
-  @PersistenceContext private EntityManager em;
+  @PersistenceContext private EntityManager entityManager;
 
   public JobRepositoryImpl(JobJpaRepository jpa) {
     this.jpa = jpa;
@@ -28,7 +28,7 @@ public class JobRepositoryImpl implements JobRepository {
   @Transactional
   public boolean enqueue(Job j) {
     int inserted =
-        em.createNativeQuery(
+        entityManager.createNativeQuery(
                 """
                 INSERT INTO payments.jobs (id, type, ref_id, next_run_at, attempts, status, claimed_at, last_error, created_at)
                 VALUES (:id, :type, :refId, :nextRunAt, :attempts, :status, :claimedAt, :lastError, :createdAt)

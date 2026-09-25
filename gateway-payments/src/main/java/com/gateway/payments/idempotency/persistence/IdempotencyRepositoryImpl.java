@@ -14,7 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class IdempotencyRepositoryImpl implements IdempotencyRepository {
   private final IdempotencyJpaRepository jpa;
 
-  @PersistenceContext private EntityManager em;
+  @PersistenceContext private EntityManager entityManager;
 
   public IdempotencyRepositoryImpl(IdempotencyJpaRepository jpa) {
     this.jpa = jpa;
@@ -35,7 +35,7 @@ public class IdempotencyRepositoryImpl implements IdempotencyRepository {
   @Transactional
   public boolean insertIfAbsent(IdempotencyKey k) {
     int inserted =
-        em.createNativeQuery(
+        entityManager.createNativeQuery(
                 """
                 INSERT INTO payments.idempotency_keys
                   (merchant_id, key, request_hash, status, response_code, response_body, resource_id, created_at)

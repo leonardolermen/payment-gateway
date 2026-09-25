@@ -105,11 +105,11 @@ public class ItauPixProvider implements PixMethodProvider {
 
   @Override
   public Charge issue(ProviderCredentials c, PixIssueRequest request) {
-    ItauCredentials ic = creds(c);
+    ItauCredentials credentials = creds(c);
     CobRequest cob = CobRequest.forCharge(
-        request.amount(), request.expiresInSeconds(), ic.pixKey(), request.payerDocument(), request.payerName(), request.description());
+        request.amount(), request.expiresInSeconds(), credentials.pixKey(), request.payerDocument(), request.payerName(), request.description());
 
-    return toCharge(client(c).putCob(ic, request.txid(), cob));
+    return toCharge(client(c).putCob(credentials, request.txid(), cob));
   }
 
   @Override public Optional<Charge> find(ProviderCredentials c, String txid) {
@@ -130,13 +130,13 @@ public class ItauPixProvider implements PixMethodProvider {
 
   /** Walks every page: reconciliation that silently stops at page 0 would call paid charges unpaid. */
   @Override public List<Charge> listCharges(ProviderCredentials c, Instant from, Instant to) {
-    ItauCredentials ic = creds(c);
+    ItauCredentials credentials = creds(c);
     List<Charge> out = new ArrayList<>();
     int page = 0;
     while (true) {
-      CobList l = client(c).listCob(ic, from, to, page, PAGE_SIZE);
-      if (l.cobs() != null) l.cobs().forEach(cob -> out.add(toCharge(cob)));
-      int pages = l.parametros() == null || l.parametros().paginacao() == null ? 1 : l.parametros().paginacao().quantidadeDePaginas();
+      CobList cobList = client(c).listCob(credentials, from, to, page, PAGE_SIZE);
+      if (cobList.cobs() != null) cobList.cobs().forEach(cob -> out.add(toCharge(cob)));
+      int pages = cobList.parametros() == null || cobList.parametros().paginacao() == null ? 1 : cobList.parametros().paginacao().quantidadeDePaginas();
       if (++page >= pages) {
         break;
       }
@@ -145,13 +145,13 @@ public class ItauPixProvider implements PixMethodProvider {
   }
 
   @Override public ProviderWebhookEvent parseWebhook(byte[] body) {
-    WebhookPayload p;
+    WebhookPayload webhookPayload;
     try {
-      p = mapper.readValue(body, WebhookPayload.class);
+      webhookPayload = mapper.readValue(body, WebhookPayload.class);
     } catch (RuntimeException e) {
       throw new IllegalArgumentException("unreadable Itaú webhook", e);
     }
-    if (p == null || p.pix() == null) {
+    if (webhookPayload == null || webhookPayload.pix() == null) {
       throw new IllegalArgumentException("Itaú webhook without pix[]");
     }
 
@@ -160,7 +160,7 @@ public class ItauPixProvider implements PixMethodProvider {
     Map<String, String> txids = new HashMap<>();
     Map<String, String> refundE2e = new HashMap<>();
 
-    for (PixItem it : p.pix()) {
+    for (PixItem it : webhookPayload.pix()) {
 
       if (it == null || it.endToEndId() == null) {
         // endToEndId is the dedup key; an item without it cannot be recorded or matched.
@@ -200,7 +200,7 @@ public class ItauPixProvider implements PixMethodProvider {
   }
 
   static RefundResult toRefund(DevolucaoResponse d) {
-    RefundStatus s = switch (d.status() == null ? "" : d.status()) {
+    RefundStatus refundStatus = switch (d.status() == null ? "" : d.status()) {
       case "DEVOLVIDO" -> RefundStatus.COMPLETED;
       case "NAO_REALIZADO" -> RefundStatus.FAILED;
       default -> RefundStatus.PROCESSING;
@@ -209,17 +209,17 @@ public class ItauPixProvider implements PixMethodProvider {
     Instant requested = d.horario() == null ? null : d.horario().solicitacao();
     Instant settled = d.horario() == null ? null : d.horario().liquidacao();
     // motivo is only a failure reason when the refund failed; on DEVOLVIDO the bank fills it with prose.
-    return new RefundResult(d.id(), s, PixAmounts.fromItau(d.valor()), s == RefundStatus.FAILED ? d.motivo() : null, requested, settled);
+    return new RefundResult(d.id(), refundStatus, PixAmounts.fromItau(d.valor()), refundStatus == RefundStatus.FAILED ? d.motivo() : null, requested, settled);
   }
 
   /** Both spellings: the OpenAPI enum says REMOVIDA_…, the portal prose says REMOVIDO_… (NOTES.md). */
-  static ChargeStatus toStatus(String s) {
-    return switch (s == null ? "" : s) {
+  static ChargeStatus toStatus(String refundStatus) {
+    return switch (refundStatus == null ? "" : refundStatus) {
       case "ATIVA" -> ChargeStatus.ACTIVE;
       case "CONCLUIDA" -> ChargeStatus.COMPLETED;
       case "REMOVIDA_PELO_USUARIO_RECEBEDOR", "REMOVIDO_PELO_USUARIO_RECEBEDOR" -> ChargeStatus.REMOVED_BY_MERCHANT;
       case "REMOVIDA_PELO_PSP", "REMOVIDO_PELO_PSP" -> ChargeStatus.REMOVED_BY_PSP;
-      default -> throw new ProviderException(ProviderException.Code.UNKNOWN, 200, null, "unknown charge status: " + s);
+      default -> throw new ProviderException(ProviderException.Code.UNKNOWN, 200, null, "unknown charge status: " + refundStatus);
     };
   }
 }
