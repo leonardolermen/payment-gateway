@@ -262,3 +262,33 @@ também enxerga os txids `BL…`.
   8 dígitos). Custo: uma linha por merchant com `UPDATE … RETURNING`.
 - **Sem devolução por boleto.** A API não devolve; fingir com transferência seria dinheiro
   saindo por um caminho que o gateway não controla.
+
+## 11. Emendas ao escrever o plano (2026-09-25, lidas nos OpenAPIs)
+
+O plano (`docs/superpowers/plans/2026-09-25-plano-c-bolecode.md`) foi escrito contra os JSONs e
+achou cinco pontos em que esta spec estava errada ou incompleta. Vale o que está aqui:
+
+1. **Id da baixa não é o UUID.** `PATCH /boletos/{id_boleto}/baixa` recebe agência (4) + conta (7)
+   + DAC (1) + carteira (3) + nosso número (8-16), 23 a 31 dígitos. `BoletoProvider.cancel`
+   recebe `nossoNumero` e monta o id com `beneficiary_id + wallet_code + nossoNumero`.
+2. **Fórmula do txid.** O OpenAPI diz `BL` + agência (4) + conta (7) + carteira (3) + nosso
+   número com zeros à esquerda até 15 (`^BL[0-9]{31}$`). A fórmula de §1 (com `00` e
+   `0000000`) só coincide para contas de 5 dígitos úteis. O gateway usa a do OpenAPI, só na
+   adoção após timeout, e confirma com `GET /cob/{txid}` (divergência `PIX_TXID_UNCONFIRMED`
+   se o banco não conhecer).
+3. **Erros não são RFC 7807.** As três APIs de boleto respondem `{codigo, mensagem,
+   campos[{campo, mensagem, valor}]}`. `BoletoErrors` separado do `ItauErrors`; `campos[].valor`
+   nunca vai para mensagem nem log (ecoa o documento do pagador).
+4. **Casamento do webhook.** `WebhookInboxService` casa por id do pagamento, o que só funciona
+   porque no Pix `txid == id`. Entra `PaymentRepository.findByMerchantAndTxid`, usado pelo
+   webhook e pela janela Pix da reconciliação.
+5. **Bloco de pagamento da consulta** é a lista `dado_boleto.pagamentos_cobranca[]`, não
+   `pagamento`; a consulta também devolve `qrcode_pix.emv`, usado como EMV de fallback na
+   adoção. `BoletoStatus` ganha `pixCopiaECola`.
+
+Menores: `ProviderException.Code` ganha `CONFLICT` e `CREDENTIALS_INCOMPLETE`;
+`ProviderGateway.Resolved` mantém o componente `provider` para o Pix e ganha `boleto`;
+`ItauTokenClient` já aceita token URL por chamada, só `ItauEndpoints` muda; timeout na emissão
+sem boleto na consulta deixa `CREATED` para o sweeper (a API responde 202 "em andamento"),
+não `FAILED` imediato; `x-itau-apikey` é obrigatório nas APIs de consulta e baixa e o sandbox
+não emite um — enviado quando presente, confirmado no smoke.
