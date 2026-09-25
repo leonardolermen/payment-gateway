@@ -1,0 +1,13 @@
+{
+  "id": "123456",
+  "rtrId": "D12345678202009091000abcde123456",
+  "valor": "7.89",
+  "natureza": "ORIGINAL",
+  "descricao": "Devolução de cobrança",
+  "horario": {
+    "solicitacao": "2020-09-11T15:25:59.411Z",
+    "liquidacao": "2020-09-11T15:27:23.411Z"
+  },
+  "status": "DEVOLVIDO",
+  "motivo": "Devolução solicitada pelo usuário recebedor do pagamento original"
+}

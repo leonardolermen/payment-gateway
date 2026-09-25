@@ -1,0 +1,32 @@
+sequenceDiagram
+  autonumber
+  participant M as Merchant
+  participant API as app: PaymentsController + IdempotencyFilter
+  participant PS as payments: PaymentService
+  participant DB as PostgreSQL (payments)
+  participant PG as ProviderGateway
+  participant IT as providers: ItauPixProvider
+  participant BANK as Itaú
+
+  M->>API: POST /v1/payments {amount, reference} + Idempotency-Key
+  API->>DB: INSERT idempotency_keys (IN_PROGRESS) ON CONFLICT DO NOTHING
+  alt key already DONE with same body hash
+    API-->>M: replay of the stored 201 (Idempotent-Replayed: true)
+  else key IN_PROGRESS / different hash
+    API-->>M: 409 IN_PROGRESS / 422 IDEMPOTENCY_KEY_REUSED
+  end
+  API->>PS: createCharge(merchant, env, amount, …)
+  PS->>PG: resolve(merchant, env, ITAU) — credentials decrypted for this call only
+  PS->>DB: tx: Payment CREATED (id = txid) + event 'created'
+  PS->>IT: createCharge(credentials, txid, amount)  (outside any transaction)
+  IT->>BANK: PUT /cob/{txid}  (Bearer token, x-itau-apikey)
+  alt 201
+    BANK-->>IT: ATIVA + pixCopiaECola
+  else timeout / unavailable
+    IT->>BANK: GET /cob/{txid} — did the PUT land?
+    BANK-->>IT: found (adopt) / not found (FAILED, best-effort cancel)
+  end
+  PS->>DB: tx: PENDING + event + outbox 'payment.pending' + job EXPIRE_PAYMENT
+  API->>DB: idempotency key DONE with the response body
+  API-->>M: 201 {id, status: PENDING, pix.copia_e_cola, expires_at}
+  Note over DB,M: OutboxRelay → MerchantEvents → webhook-delivery → signed POST to the merchant

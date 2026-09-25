@@ -14,7 +14,10 @@ public class ArchitectureTest {
 
   @ArchTest
   static void importSeesTheModules(JavaClasses classes) {
-    assertThat(classes.size()).as("ArchUnit imported too few classes; the rules would pass vacuously").isGreaterThan(30);
+    // 169 main classes as of Plan B (`find gateway-*/src/main -name '*.java' | wc -l`); the guard sits
+    // at roughly half that so a module accidentally dropped from the scan still trips it well before
+    // the count could coincidentally clear the old `> 30`, which every module alone already cleared.
+    assertThat(classes.size()).as("ArchUnit imported too few classes; the rules would pass vacuously").isGreaterThan(60);
   }
 
   @ArchTest
@@ -36,6 +39,20 @@ public class ArchitectureTest {
   static final ArchRule onlyPaymentsKnowsProviders =
       noClasses().that().resideOutsideOfPackages("com.gateway.payments..", "com.gateway.providers..", "com.gateway.app..")
           .should().dependOnClassesThat().resideInAPackage("com.gateway.providers..");
+
+  @ArchTest
+  static final ArchRule paymentsDoesNotImportProviders =
+      noClasses().that().resideInAPackage("com.gateway.payments..").should().dependOnClassesThat().resideInAPackage("com.gateway.providers..");
+
+  @ArchTest
+  static final ArchRule providersOnlyKnowsKernel =
+      noClasses().that().resideInAPackage("com.gateway.providers..")
+          .should().dependOnClassesThat().resideInAnyPackage("com.gateway.merchants..", "com.gateway.payments..", "com.gateway.orders..", "com.gateway.app..");
+
+  @ArchTest
+  static final ArchRule itauVocabularyStaysInProviders =
+      noClasses().that().resideOutsideOfPackage("com.gateway.providers..")
+          .should().haveSimpleNameContaining("Itau");
 
   @ArchTest
   static final ArchRule jpaEntitiesArePackagePrivate =

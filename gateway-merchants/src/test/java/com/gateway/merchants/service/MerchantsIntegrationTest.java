@@ -29,6 +29,18 @@ class MerchantsIntegrationTest {
   @Autowired JdbcTemplate jdbc;
 
   @Test
+  void inboundWebhookTokenResolvesItsMerchantAndSurvivesSuspension() {
+    var m = merchants.create("Token Store");
+    assertThat(m.inboundWebhookToken()).hasSize(26);
+    assertThat(merchants.findByInboundWebhookToken(m.inboundWebhookToken())).map(x -> x.id()).contains(m.id());
+    // The token is the URL registered at the bank; a status change must not silently rotate it.
+    assertThat(merchants.suspend(m.id()).inboundWebhookToken()).isEqualTo(m.inboundWebhookToken());
+    assertThat(merchants.findByInboundWebhookToken("0".repeat(26))).isEmpty();
+    assertThat(merchants.findByInboundWebhookToken("short")).isEmpty();
+    assertThat(merchants.findByInboundWebhookToken(null)).isEmpty();
+  }
+
+  @Test
   void issuesAuthenticatesAndRotates() {
     Merchant m = merchants.create("Acme Store");
     ApiKey.Issued k1 = apiKeys.issue(m.id(), ApiKeyEnvironment.LIVE);

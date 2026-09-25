@@ -1,0 +1,7 @@
+{
+  "type": "https://pix.bcb.gov.br/api/v2/error/CobOperacaoInvalida",
+  "title": "Operação inválida.",
+  "status": 400,
+  "detail": "A cobrança não está ATIVA.",
+  "violacoes": []
+}

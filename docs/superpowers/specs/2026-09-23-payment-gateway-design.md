@@ -190,7 +190,10 @@ lock, não a thread.
 Vocabulário Pix: devolução, `PUT /pix/{e2eid}/devolucao/{id}`, até 90 dias,
 múltiplas parciais, soma ≤ valor original. Entidade própria `Refund` com
 `REQUESTED → PROCESSING → COMPLETED | FAILED`; `refund_id` também
-determinístico a partir do id interno.
+determinístico a partir do id interno. **No Itaú a devolução é assíncrona**:
+o `PUT` devolve `EM_PROCESSAMENTO`; o estado final vem por `GET
+…/devolucao/{id}` (job com backoff) ou pelo webhook de devolução, quando o
+merchant o tiver habilitado com o banco.
 
 ## 4. Providers
 
@@ -217,14 +220,24 @@ webhook com `endToEndId`, status `ATIVA/CONCLUIDA/REMOVIDA_*`). O que varia é
   sobre JDK `HttpClient` (amigo de virtual threads), timeouts explícitos
   (connect 3 s, read 10 s), **sem retry automático** — retry é decisão do
   domínio porque envolve o `GET /cob/{txid}` antes.
-- `AuthStrategy` — o que varia. Itaú: OAuth2 client-credentials + mTLS com
-  certificado do merchant; token cacheado por `(merchant, provider)` com
-  refresh antes de expirar.
+- `AuthStrategy` — o que varia. Itaú (doc oficial, `docs/providers/itau/NOTES.md`):
+  OAuth2 client-credentials **sobre mTLS** em `sts.itau.com.br/as/token.oauth2`
+  com o certificado dinâmico do merchant, token de 300 s cacheado por credencial
+  e renovado antes de expirar; toda chamada leva `Authorization: Bearer` e
+  `x-itau-apikey`. A credencial do merchant no Itaú tem seis valores:
+  `client_id`, `client_secret`, `x_itau_apikey`, certificado PEM, chave privada
+  PEM e a chave Pix recebedora — todos cifrados no envelope de `merchants`.
 - `ItauPixProvider = PixApiClient(base Itaú) + ItauAuth + ItauWebhookVerifier`.
   Santander depois é outro trio com o mesmo `PixApiClient`.
-- `FakePixProvider` — sandbox do próprio gateway (ambiente `test` do
-  merchant) e o segundo provider que prova a abstração. Também é o que faz a
-  suíte não falar com a rede.
+- **Sem provider fake** (decisão de 2026-09-24): o ambiente `TEST` do merchant
+  aponta para o **sandbox do Itaú** (`sandbox.devportal.itau.com.br/…/v2`) com
+  as credenciais de sandbox do merchant; sem credencial, a chamada falha com
+  `PROVIDER_CREDENTIALS_MISSING`. A suíte não fala com a rede porque os testes
+  usam WireMock com fixtures copiadas dos exemplos do OpenAPI oficial do Itaú
+  e validam cada request nosso contra o schema dele. Rejeitado: um fake com
+  lógica própria — ele "passa" no que o Itaú recusa. Custo se errado: sem
+  sandbox habilitado, nada roda ponta a ponta fora dos testes até o merchant
+  ter credenciais.
 - Normalização de erro do provider: `PAYMENT_DECLINED`,
   `PROVIDER_UNAVAILABLE`, `INVALID_PAYMENT`, `TIMEOUT`,
   `UNKNOWN_PROVIDER_ERROR`, sempre com o erro bruto preservado em
@@ -270,7 +283,14 @@ não método vazio.
 
 **Entrada (do provider).** `POST /v1/providers/{provider}/webhooks/{merchant_token}`
 — o token identifica o merchant (é o que se cadastra no banco ao configurar
-o webhook); o provider verifica origem conforme sua `AuthStrategy`. Fluxo:
+o webhook). **O Itaú não assina com HMAC: autentica por mTLS**, apresentando
+um certificado cliente da CA dele. Decisão (2026-09-24): o Tomcat embutido
+abre um **segundo connector** (porta própria, `client-auth=need`, truststore
+= CA do Itaú) que só serve esse path; o connector principal continua sem
+client cert. Rejeitado: proxy reverso validando o cert e repassando o DN num
+header — é o padrão com infra, mas hoje não há infra, e o header é falsificável
+se o proxy sumir. Custo se errado: com um ALB na frente, trocar o connector por
+confiança no header do proxy é uma configuração. Fluxo:
 grava cru em `webhook_inbox` → `202` imediato → job processa → dedup por
 `(provider, e2eid)` → transição. **Nunca na thread do request**: o banco tem
 timeout curto e reenvia se demorar.
@@ -355,7 +375,7 @@ orders.plans(id, merchant_id, name, amount, interval, interval_count, allowed_me
 orders.subscriptions(id, merchant_id, plan_id, customer_ref, status, collection_mode, billing_anchor_day, current_cycle_start, current_cycle_end, next_billing_at, grace_days)
 orders.subscription_cycles(id, subscription_id, n, order_id, period_start, period_end, status)
 
-payments.payments(id, merchant_id, provider, method, status, amount, currency, reference, customer_document_enc, customer_document_hash, details JSONB, expires_at, paid_at, refunded_amount, version, created_at, updated_at)
+payments.payments(id, merchant_id, environment, provider, method, status, amount, currency, reference, customer_document_enc, customer_document_hash, details JSONB, expires_at, paid_at, refunded_amount, version, created_at, updated_at)
         UNIQUE(provider, (details->>'txid'))
 payments.payment_events(id, payment_id, sequence, type, source, payload, created_at)               UNIQUE(payment_id, sequence)
 payments.refunds(id, payment_id, amount, status, provider_refund_id, created_at)

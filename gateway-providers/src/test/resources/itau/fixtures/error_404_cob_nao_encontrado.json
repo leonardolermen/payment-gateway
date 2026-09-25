@@ -1,0 +1,6 @@
+{
+  "type": "https://pix.bcb.gov.br/api/v2/error/CobNaoEncontrado",
+  "title": "Cobrança não encontrada.",
+  "status": 404,
+  "detail": "Nenhuma cobrança encontrada para o txid informado."
+}

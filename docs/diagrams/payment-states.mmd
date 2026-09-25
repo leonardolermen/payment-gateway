@@ -1,0 +1,12 @@
+stateDiagram-v2
+  [*] --> CREATED: POST /v1/payments
+  CREATED --> PENDING: bank accepted (API) / adopted by sweeper (SYSTEM)
+  CREATED --> FAILED: bank refused, or timeout and charge not found
+  PENDING --> COMPLETED: webhook or reconciliation
+  PENDING --> EXPIRED: expiration job (after asking the bank)
+  PENDING --> CANCELED: POST /cancel
+  EXPIRED --> COMPLETED: late settlement — the bank wins
+  COMPLETED --> COMPLETED: refunds are a projection (refunded_amount), not a transition
+  COMPLETED --> [*]
+  CANCELED --> [*]
+  FAILED --> [*]
