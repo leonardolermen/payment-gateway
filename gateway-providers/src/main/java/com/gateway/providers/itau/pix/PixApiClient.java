@@ -121,7 +121,9 @@ class PixApiClient {
 
     // Only the Pix API's own "not found" is an answer. A 404 from a wrong base URL or a proxy page
     // would otherwise read as "charge does not exist" and reconciliation would drop paid charges.
-    if (status == 404 && emptyOn404 && ItauErrors.isPixNotFound(res.body())) return Optional.empty();
+    if (status == 404 && emptyOn404 && ItauErrors.isPixNotFound(res.body())) {
+      return Optional.empty();
+    }
 
     // A rejected token must not be reused: the next call fetches a fresh one (and a fresh HttpClient).
     if (status == 401) tokens.evict(creds.fingerprint());
@@ -133,6 +135,10 @@ class PixApiClient {
     return fromMdc != null && ITAU_UUID.matcher(fromMdc).matches() ? fromMdc : UUID.randomUUID().toString();
   }
 
-  private static String seg(String s) { return URLEncoder.encode(s, StandardCharsets.UTF_8).replace("+", "%20"); }
-  private static String enc(String s) { return URLEncoder.encode(s, StandardCharsets.UTF_8); }
+  private static String seg(String s) {
+    return URLEncoder.encode(s, StandardCharsets.UTF_8).replace("+", "%20");
+  }
+  private static String enc(String s) {
+    return URLEncoder.encode(s, StandardCharsets.UTF_8);
+  }
 }

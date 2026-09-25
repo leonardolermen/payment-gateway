@@ -60,7 +60,9 @@ public class ApiKeyService {
    */
   @Transactional(readOnly = true)
   public Optional<Authenticated> authenticate(String plainKey) {
-    if (ApiKey.environmentOf(plainKey).isEmpty()) return Optional.empty();
+    if (ApiKey.environmentOf(plainKey).isEmpty()) {
+      return Optional.empty();
+    }
     byte[] hash = ApiKey.hashOf(plainKey, props.apiKeyPepper()).getBytes(StandardCharsets.UTF_8);
     Instant now = Instant.now();
     return repo.findByPrefix(ApiKey.prefixOf(plainKey)).stream()
@@ -77,5 +79,7 @@ public class ApiKeyService {
   }
 
   @Transactional(readOnly = true)
-  public List<ApiKey> list(MerchantId merchantId) { return repo.findByMerchant(merchantId); }
+  public List<ApiKey> list(MerchantId merchantId) {
+    return repo.findByMerchant(merchantId);
+  }
 }

@@ -43,9 +43,13 @@ public class MtlsPortFilter extends OncePerRequestFilter {
 
   /** Error dispatches on the mTLS port are fenced too, or an error page could render an API route there. */
   @Override
-  protected boolean shouldNotFilterErrorDispatch() { return false; }
+  protected boolean shouldNotFilterErrorDispatch() {
+    return false;
+  }
 
-  static boolean isProviderPath(String path) { return path.equals("/v1/providers") || path.startsWith("/v1/providers/"); }
+  static boolean isProviderPath(String path) {
+    return path.equals("/v1/providers") || path.startsWith("/v1/providers/");
+  }
 
   @Override
   protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain) throws ServletException, IOException {

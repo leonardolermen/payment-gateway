@@ -16,7 +16,13 @@ public record ProviderCredential(String id, MerchantId merchantId, Provider prov
     Instant now = Instant.now();
     return new ProviderCredential(Ulid.next(), m, p, e, payload, true, now, now);
   }
-  public ProviderCredential withPayload(Encrypted next) { return new ProviderCredential(id, merchantId, provider, environment, next, active, createdAt, Instant.now()); }
-  public ProviderCredential deactivate() { return new ProviderCredential(id, merchantId, provider, environment, payload, false, createdAt, Instant.now()); }
-  @Override public String toString() { return "ProviderCredential[" + id + ", " + merchantId.value() + ", " + provider + ", " + environment + ", payload=***]"; }
+  public ProviderCredential withPayload(Encrypted next) {
+    return new ProviderCredential(id, merchantId, provider, environment, next, active, createdAt, Instant.now());
+  }
+  public ProviderCredential deactivate() {
+    return new ProviderCredential(id, merchantId, provider, environment, payload, false, createdAt, Instant.now());
+  }
+  @Override public String toString() {
+    return "ProviderCredential[" + id + ", " + merchantId.value() + ", " + provider + ", " + environment + ", payload=***]";
+  }
 }

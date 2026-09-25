@@ -30,15 +30,21 @@ class BoletoQueryClient {
     String q = "?id_beneficiario=" + BoletoHttp.enc(c.beneficiaryId()) + "&codigo_carteira=" + BoletoHttp.enc(c.walletCode()) + "&nosso_numero=" + BoletoHttp.enc(nossoNumero);
     HttpResponse<String> res = http.send(c, http.request("/boletos" + q).GET());
     int status = res.statusCode();
-    if (status == 404) return Optional.empty();
-    if (status != 200) throw BoletoErrors.from(status, res.body());
+    if (status == 404) {
+      return Optional.empty();
+    }
+    if (status != 200) {
+      throw BoletoErrors.from(status, res.body());
+    }
     BoletoQueryResponse body;
     try {
       body = mapper.readValue(res.body(), BoletoQueryResponse.class);
     } catch (RuntimeException e) {
       throw new ProviderException(ProviderException.Code.UNKNOWN, "unreadable provider response", e);
     }
-    if (body == null || body.data() == null) return Optional.empty();
+    if (body == null || body.data() == null) {
+      return Optional.empty();
+    }
     return body.data().stream().filter(item -> item.individual(nossoNumero).isPresent()).findFirst();
   }
 }

@@ -28,7 +28,9 @@ public record ItauCredentials(
 
   public ItauCredentials {
     requireNonBlank(clientId, "client_id");
-    if (clientSecret == null) throw new IllegalArgumentException("missing required field: client_secret");
+    if (clientSecret == null) {
+      throw new IllegalArgumentException("missing required field: client_secret");
+    }
     requireNonBlank(pixKey, "pix_key");
     if (apiKey != null && !API_KEY.matcher(apiKey).matches()) {
       // The value is not echoed: a key with a stray character is still the merchant's live key, and
@@ -44,28 +46,44 @@ public record ItauCredentials(
       throw new IllegalArgumentException("beneficiary_id must be 12 digits (agencia + conta + DAC)");
     }
     if (walletCode == null) walletCode = DEFAULT_WALLET;
-    if (!WALLET.matcher(walletCode).matches()) throw new IllegalArgumentException("wallet_code must be 3 digits");
+    if (!WALLET.matcher(walletCode).matches()) {
+      throw new IllegalArgumentException("wallet_code must be 3 digits");
+    }
     if (speciesCode == null) speciesCode = DEFAULT_SPECIES;
-    if (!SPECIES.matcher(speciesCode).matches()) throw new IllegalArgumentException("species_code must be 2 digits");
+    if (!SPECIES.matcher(speciesCode).matches()) {
+      throw new IllegalArgumentException("species_code must be 2 digits");
+    }
   }
 
   private static void requireNonBlank(String value, String field) {
-    if (value == null || value.isBlank()) throw new IllegalArgumentException("missing required field: " + field);
+    if (value == null || value.isBlank()) {
+      throw new IllegalArgumentException("missing required field: " + field);
+    }
   }
 
-  public boolean hasCertificate() { return certificatePem != null && privateKeyPem != null; }
+  public boolean hasCertificate() {
+    return certificatePem != null && privateKeyPem != null;
+  }
 
-  public boolean hasBeneficiary() { return beneficiaryId != null; }
+  public boolean hasBeneficiary() {
+    return beneficiaryId != null;
+  }
 
   /** Called when the endpoint requires mTLS (LIVE): fails fast instead of at the first handshake. */
   public void requireProductionShape() {
-    if (!hasCertificate()) throw new IllegalArgumentException("production credential missing certificate_pem/private_key_pem");
-    if (apiKey == null) throw new IllegalArgumentException("production credential missing x_itau_apikey");
+    if (!hasCertificate()) {
+      throw new IllegalArgumentException("production credential missing certificate_pem/private_key_pem");
+    }
+    if (apiKey == null) {
+      throw new IllegalArgumentException("production credential missing x_itau_apikey");
+    }
   }
 
   /** Called before an issue: a boleto needs the beneficiary account, and the bank's 400 would name a field the merchant never sent. */
   public void requireBoletoShape() {
-    if (!hasBeneficiary()) throw new IllegalArgumentException("beneficiary_id");
+    if (!hasBeneficiary()) {
+      throw new IllegalArgumentException("beneficiary_id");
+    }
   }
 
   /**
@@ -94,9 +112,15 @@ public record ItauCredentials(
   public static ItauCredentials parse(byte[] json) {
     String fingerprint = sha256Hex(json);
     Raw raw = new ObjectMapper().readValue(json, Raw.class);
-    if (raw.clientId == null || raw.clientId.isBlank()) throw new IllegalArgumentException("missing required field: client_id");
-    if (raw.clientSecret == null || raw.clientSecret.isBlank()) throw new IllegalArgumentException("missing required field: client_secret");
-    if (raw.pixKey == null || raw.pixKey.isBlank()) throw new IllegalArgumentException("missing required field: pix_key");
+    if (raw.clientId == null || raw.clientId.isBlank()) {
+      throw new IllegalArgumentException("missing required field: client_id");
+    }
+    if (raw.clientSecret == null || raw.clientSecret.isBlank()) {
+      throw new IllegalArgumentException("missing required field: client_secret");
+    }
+    if (raw.pixKey == null || raw.pixKey.isBlank()) {
+      throw new IllegalArgumentException("missing required field: pix_key");
+    }
     return new ItauCredentials(
         raw.clientId,
         Secret.of(raw.clientSecret),

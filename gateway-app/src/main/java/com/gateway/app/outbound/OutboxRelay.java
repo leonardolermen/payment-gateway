@@ -46,7 +46,9 @@ public class OutboxRelay {
   @Scheduled(fixedDelayString = "${gateway.payments.outbox-relay-ms:1000}")
   public void relay() {
     List<OutboxMessage> claimed = tx.execute(s -> outbox.claimPending(BATCH, props.outboxLease()));
-    if (claimed == null) return;
+    if (claimed == null) {
+      return;
+    }
     // Delivery is ordered per partition key (a payment's events). Once message N of a key fails,
     // emitting N+1 in the same batch would deliver it ahead of N's retry: every later message of
     // that key is released unsent, and the whole key retries together, in order, next tick.

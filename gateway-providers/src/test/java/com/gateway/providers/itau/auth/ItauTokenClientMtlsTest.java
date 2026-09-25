@@ -40,7 +40,9 @@ public class ItauTokenClientMtlsTest {
         + "\"certificate_pem\":" + json(certs.clientCertPem()) + ",\"private_key_pem\":" + json(certs.clientKeyPem()) + ",\"pix_key\":\"60701190000104\"}").getBytes());
   }
   // BouncyCastle's PEMWriter emits \r\n on Windows; unescaped \r is an illegal control char in JSON.
-  public static String json(String s) { return "\"" + s.replace("\\", "\\\\").replace("\r", "\\r").replace("\n", "\\n").replace("\"", "\\\"") + "\""; }
+  public static String json(String s) {
+    return "\"" + s.replace("\\", "\\\\").replace("\r", "\\r").replace("\n", "\\n").replace("\"", "\\\"") + "\"";
+  }
   URI tokenUrl() { return URI.create("https://localhost:" + server.httpsPort() + "/as/token.oauth2"); }
 
   @Test void postsClientCredentialsOverMtlsAndCachesUntilNearExpiry() {
@@ -124,8 +126,14 @@ public class ItauTokenClientMtlsTest {
   static final class MutableClock extends Clock {
     private Instant now; MutableClock(Instant i) { now = i; }
     void advance(Duration d) { now = now.plus(d); }
-    @Override public ZoneId getZone() { return ZoneOffset.UTC; }
-    @Override public Clock withZone(ZoneId z) { return this; }
-    @Override public Instant instant() { return now; }
+    @Override public ZoneId getZone() {
+      return ZoneOffset.UTC;
+    }
+    @Override public Clock withZone(ZoneId z) {
+      return this;
+    }
+    @Override public Instant instant() {
+      return now;
+    }
   }
 }

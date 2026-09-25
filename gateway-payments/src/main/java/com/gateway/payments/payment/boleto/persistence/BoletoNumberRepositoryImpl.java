@@ -41,7 +41,9 @@ public class BoletoNumberRepositoryImpl implements BoletoNumberRepository {
                 .setParameter("merchantId", merchantId.value())
                 .getSingleResult();
     long n = value.longValue();
-    if (n > MAX) throw new IllegalStateException("nosso numero exhausted for merchant " + merchantId.value());
+    if (n > MAX) {
+      throw new IllegalStateException("nosso numero exhausted for merchant " + merchantId.value());
+    }
     return String.format("%08d", n);
   }
 }

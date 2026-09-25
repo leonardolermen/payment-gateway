@@ -13,12 +13,16 @@ public final class MerchantContext {
 
   private MerchantContext() {}
 
-  static void set(HttpServletRequest req, Current current) { req.setAttribute(ATTRIBUTE, current); }
+  static void set(HttpServletRequest req, Current current) {
+    req.setAttribute(ATTRIBUTE, current);
+  }
 
   public static Current current() {
     var attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
     Object a = attrs == null ? null : attrs.getRequest().getAttribute(ATTRIBUTE);
-    if (a == null) throw new UnauthenticatedException("no authenticated merchant on this request");
+    if (a == null) {
+      throw new UnauthenticatedException("no authenticated merchant on this request");
+    }
     return (Current) a;
   }
 }

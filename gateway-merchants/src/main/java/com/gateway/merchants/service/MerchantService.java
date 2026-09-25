@@ -18,7 +18,9 @@ public class MerchantService {
   @Transactional public Merchant activate(MerchantId id) { return repo.save(get(id).activate()); }
   /** Empty for an unknown token: the webhook answers 404 either way, so existence does not leak. */
   @Transactional(readOnly = true) public Optional<Merchant> findByInboundWebhookToken(String token) {
-    if (token == null || token.length() != 26) return Optional.empty();
+    if (token == null || token.length() != 26) {
+      return Optional.empty();
+    }
     return repo.findByInboundWebhookToken(token);
   }
   @Transactional(readOnly = true) public List<Merchant> list() { return repo.findAll(); }

@@ -38,7 +38,9 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
     return total;
   }
 
-  private String nn(Payment p) { return p.boleto().nossoNumero(); }
+  private String nn(Payment p) {
+    return p.boleto().nossoNumero();
+  }
 
   private List<Map<String, Object>> divergences(String paymentId) {
     return jdbc.queryForList("SELECT provider_status, status FROM payments.reconciliation_divergences WHERE payment_id = ? ORDER BY created_at", paymentId);

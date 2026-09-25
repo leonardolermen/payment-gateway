@@ -69,6 +69,10 @@ final class BoletoHttp {
     return fromMdc != null && ITAU_UUID.matcher(fromMdc).matches() ? fromMdc : UUID.randomUUID().toString();
   }
 
-  static String seg(String s) { return URLEncoder.encode(s, StandardCharsets.UTF_8).replace("+", "%20"); }
-  static String enc(String s) { return URLEncoder.encode(s, StandardCharsets.UTF_8); }
+  static String seg(String s) {
+    return URLEncoder.encode(s, StandardCharsets.UTF_8).replace("+", "%20");
+  }
+  static String enc(String s) {
+    return URLEncoder.encode(s, StandardCharsets.UTF_8);
+  }
 }

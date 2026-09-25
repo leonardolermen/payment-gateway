@@ -66,7 +66,9 @@ class PixApiClientContractTest {
   static PixApiClient client(Duration readTimeout) {
     return new PixApiClient(new ItauTokenClient(Clock.systemUTC(), Duration.ofSeconds(3), Duration.ofSeconds(3)), endpoints(), null, readTimeout);
   }
-  static PixApiClient client() { return client(Duration.ofSeconds(5)); }
+  static PixApiClient client() {
+    return client(Duration.ofSeconds(5));
+  }
 
   @Test void putCobSendsHeadersAndBodyAndParses201() {
     server.stubFor(put("/v2/cob/" + TXID)

@@ -30,7 +30,9 @@ class BoletoInstructionClient {
     HttpRequest.Builder b = http.request("/boletos/" + BoletoHttp.seg(idBoleto) + "/baixa").method("PATCH", HttpRequest.BodyPublishers.noBody());
     HttpResponse<String> res = http.send(c, b);
     int status = res.statusCode();
-    if (status == 200 || status == 202 || status == 204) return;
+    if (status == 200 || status == 202 || status == 204) {
+      return;
+    }
     if (status == 422 && BoletoErrors.mentionsAlreadyPaid(res.body())) {
       ProviderException declined = BoletoErrors.from(status, res.body());
       throw new ProviderException(ProviderException.Code.CONFLICT, status, declined.providerType(), declined.getMessage());

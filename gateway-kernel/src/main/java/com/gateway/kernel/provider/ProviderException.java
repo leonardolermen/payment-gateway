@@ -25,7 +25,13 @@ public class ProviderException extends RuntimeException {
     super(message, cause);
     this.code = code; this.httpStatus = 0; this.providerType = null;
   }
-  public Code code() { return code; }
-  public int httpStatus() { return httpStatus; }
-  public String providerType() { return providerType; }
+  public Code code() {
+    return code;
+  }
+  public int httpStatus() {
+    return httpStatus;
+  }
+  public String providerType() {
+    return providerType;
+  }
 }

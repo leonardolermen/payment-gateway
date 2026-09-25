@@ -36,7 +36,9 @@ class RequestSchemaValidationTest {
   static Path patched;
 
   static synchronized Path patchedOpenApi() throws Exception {
-    if (patched != null) return patched;
+    if (patched != null) {
+      return patched;
+    }
     var api = (com.fasterxml.jackson.databind.node.ObjectNode) M2.readTree(Files.readString(OPENAPI));
     var pessoa = (com.fasterxml.jackson.databind.node.ObjectNode) api.at("/components/schemas/pessoa");
     var props = (com.fasterxml.jackson.databind.node.ObjectNode) pessoa.get("properties");

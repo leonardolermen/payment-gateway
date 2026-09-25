@@ -55,7 +55,9 @@ class BoletoPixApiClientContractTest {
     ItauEndpoints e = ItauEndpoints.custom(URI.create(server.baseUrl() + "/v1"), URI.create(server.baseUrl() + "/api/oauth/jwt"), false);
     return new BoletoPixApiClient(new ItauTokenClient(Clock.systemUTC(), Duration.ofSeconds(3), Duration.ofSeconds(3)), e, null, readTimeout);
   }
-  static BoletoPixApiClient client() { return client(Duration.ofSeconds(5)); }
+  static BoletoPixApiClient client() {
+    return client(Duration.ofSeconds(5));
+  }
 
   /** The bank's minimal example, built from our request: same payer, same number, same amount and dates. */
   static BoletoPixRequest exampleRequest() {

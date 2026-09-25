@@ -40,7 +40,9 @@ public class ProviderCredentialRepositoryImpl implements ProviderCredentialRepos
         .map(ProviderCredentialRepositoryImpl::toDomain);
   }
 
-  @Override public List<ProviderCredential> findByMerchant(MerchantId merchantId) { return jpa.findByMerchantId(merchantId.value()).stream().map(ProviderCredentialRepositoryImpl::toDomain).toList(); }
+  @Override public List<ProviderCredential> findByMerchant(MerchantId merchantId) {
+    return jpa.findByMerchantId(merchantId.value()).stream().map(ProviderCredentialRepositoryImpl::toDomain).toList();
+  }
 
   private static ProviderCredential toDomain(ProviderCredentialEntity e) {
     Encrypted payload = new Encrypted(e.nonce, e.ciphertext, e.encryptedDek, e.dekNonce);

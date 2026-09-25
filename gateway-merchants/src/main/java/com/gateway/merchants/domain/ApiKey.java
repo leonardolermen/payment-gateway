@@ -39,17 +39,25 @@ public record ApiKey(String id, MerchantId merchantId, ApiKeyEnvironment environ
     }
   }
 
-  public static String prefixOf(String plainKey) { return plainKey.substring(0, Math.min(12, plainKey.length())); }
+  public static String prefixOf(String plainKey) {
+    return plainKey.substring(0, Math.min(12, plainKey.length()));
+  }
 
   public static Optional<ApiKeyEnvironment> environmentOf(String plainKey) {
     for (ApiKeyEnvironment e : ApiKeyEnvironment.values()) if (plainKey != null && plainKey.startsWith(e.keyPrefix())) return Optional.of(e);
     return Optional.empty();
   }
 
-  public ApiKey revoke() { return new ApiKey(id, merchantId, environment, prefix, hash, false, expiresAt, createdAt); }
+  public ApiKey revoke() {
+    return new ApiKey(id, merchantId, environment, prefix, hash, false, expiresAt, createdAt);
+  }
 
   /** Rotation: the old key gets a deadline (up to 24 h) instead of dying on the spot. */
-  public ApiKey expiringAt(Instant when) { return new ApiKey(id, merchantId, environment, prefix, hash, active, when, createdAt); }
+  public ApiKey expiringAt(Instant when) {
+    return new ApiKey(id, merchantId, environment, prefix, hash, active, when, createdAt);
+  }
 
-  public boolean isValid(Instant now) { return active && (expiresAt == null || now.isBefore(expiresAt)); }
+  public boolean isValid(Instant now) {
+    return active && (expiresAt == null || now.isBefore(expiresAt));
+  }
 }

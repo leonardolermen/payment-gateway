@@ -13,7 +13,9 @@ public final class BoletoDetailsJson {
   private BoletoDetailsJson() {}
 
   public static String write(BoletoDetails b) {
-    if (b == null) return "null";
+    if (b == null) {
+      return "null";
+    }
     return "{\"nossoNumero\":" + str(b.nossoNumero())
         + ",\"idBoletoIndividual\":" + str(b.idBoletoIndividual())
         + ",\"linhaDigitavel\":" + str(b.linhaDigitavel())
@@ -26,25 +28,35 @@ public final class BoletoDetailsJson {
 
   /** Null for {@code null}, an absent block, or a document without {@code nossoNumero} (a Pix payment). */
   public static BoletoDetails read(String json) {
-    if (json == null || json.isBlank() || json.trim().equals("null")) return null;
+    if (json == null || json.isBlank() || json.trim().equals("null")) {
+      return null;
+    }
     String nossoNumero = field(json, "nossoNumero");
-    if (nossoNumero == null) return null;
+    if (nossoNumero == null) {
+      return null;
+    }
     String via = field(json, "paidVia");
     return new BoletoDetails(nossoNumero, field(json, "idBoletoIndividual"), field(json, "linhaDigitavel"), field(json, "codigoBarras"),
         date(field(json, "dueDate")), date(field(json, "paymentLimitDate")), via == null ? null : PaidVia.valueOf(via));
   }
 
-  private static LocalDate date(String s) { return s == null ? null : LocalDate.parse(s); }
+  private static LocalDate date(String s) {
+    return s == null ? null : LocalDate.parse(s);
+  }
 
   // \s* after ':' because Postgres reformats jsonb on the way out (see PixDetailsJson).
   private static String field(String json, String key) {
     Matcher m = Pattern.compile("\"" + key + "\":\\s*(null|\"((?:\\\\.|[^\"\\\\])*)\")").matcher(json);
-    if (!m.find()) return null;
+    if (!m.find()) {
+      return null;
+    }
     return m.group(2) == null ? null : unescape(m.group(2));
   }
 
   private static String str(String s) {
-    if (s == null) return "null";
+    if (s == null) {
+      return "null";
+    }
     StringBuilder sb = new StringBuilder(s.length() + 2).append('"');
     for (int i = 0; i < s.length(); i++) {
       char c = s.charAt(i);

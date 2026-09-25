@@ -36,11 +36,17 @@ public class ItauBoletoProvider implements BoletoMethodProvider {
         new BoletoInstructionClient(tokens, e.instruction(), trustStore, readTimeout));
   }
 
-  @Override public String id() { return "ITAU"; }
+  @Override public String id() {
+    return "ITAU";
+  }
 
-  @Override public PaymentMethod method() { return PaymentMethod.BOLECODE; }
+  @Override public PaymentMethod method() {
+    return PaymentMethod.BOLECODE;
+  }
 
-  private Clients clients(ProviderCredentials c) { return c.environment() == ProviderEnvironment.LIVE ? live : test; }
+  private Clients clients(ProviderCredentials c) {
+    return c.environment() == ProviderEnvironment.LIVE ? live : test;
+  }
 
   /** A credential without the beneficiary is the merchant's configuration problem, not the bank's: CREDENTIALS_INCOMPLETE names the field. */
   private static ItauCredentials boletoCreds(ProviderCredentials c) {
@@ -53,7 +59,9 @@ public class ItauBoletoProvider implements BoletoMethodProvider {
     return ic;
   }
 
-  @Override public void requireIssueCredentials(ProviderCredentials c) { boletoCreds(c); }
+  @Override public void requireIssueCredentials(ProviderCredentials c) {
+    boletoCreds(c);
+  }
 
   @Override public IssuedBoleto issue(ProviderCredentials c, BoletoIssueRequest r) {
     ItauCredentials ic = boletoCreds(c);
@@ -74,7 +82,9 @@ public class ItauBoletoProvider implements BoletoMethodProvider {
     clients(c).instruction().baixa(ic, baixaId(ic, nossoNumero));
   }
 
-  @Override public String pixTxidFor(ProviderCredentials c, String nossoNumero) { return pixTxid(boletoCreds(c), nossoNumero); }
+  @Override public String pixTxidFor(ProviderCredentials c, String nossoNumero) {
+    return pixTxid(boletoCreds(c), nossoNumero);
+  }
 
   private static final Pattern DIGITS = Pattern.compile("\\d+");
 

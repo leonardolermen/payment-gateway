@@ -103,12 +103,16 @@ class BolecodeFlowIntegrationTest {
   }
 
   @AfterAll
-  static void stop() { sink.stop(0); ITAU.stop(); }
+  static void stop() {
+    sink.stop(0); ITAU.stop();
+  }
 
   @LocalServerPort int port;
   @Autowired JdbcTemplate jdbc;
 
-  private RestTestClient http() { return RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build(); }
+  private RestTestClient http() {
+    return RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build();
+  }
 
   private static String fixture(String name) {
     try (InputStream in = BolecodeFlowIntegrationTest.class.getResourceAsStream("/itau/fixtures/" + name)) {

@@ -85,7 +85,9 @@ class WebhooksIntegrationTest {
   @Autowired MerchantEvents events;
   @Autowired HmacSigner signer;
 
-  private RestTestClient http() { return RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build(); }
+  private RestTestClient http() {
+    return RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build();
+  }
 
   private RestTestClient.RequestBodySpec adminPost(String uri) {
     return http().post().uri(uri).header("X-Admin-Key", "test-admin").contentType(MediaType.APPLICATION_JSON);
@@ -100,7 +102,9 @@ class WebhooksIntegrationTest {
     return new String[] {(String) m.get("id"), (String) k.get("key")};
   }
 
-  private String url() { return "http://localhost:" + sink.getAddress().getPort() + "/hook"; }
+  private String url() {
+    return "http://localhost:" + sink.getAddress().getPort() + "/hook";
+  }
 
   @Test
   @SuppressWarnings("unchecked")

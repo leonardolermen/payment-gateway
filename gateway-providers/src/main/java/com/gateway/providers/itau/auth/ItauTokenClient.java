@@ -38,7 +38,9 @@ public class ItauTokenClient {
     String key = creds.fingerprint() + "|" + tokenUrl;
     Entry e = cache.get(key);
     Instant now = clock.instant();
-    if (e != null && e.token() != null && e.token().usableAt(now)) return e.token();
+    if (e != null && e.token() != null && e.token().usableAt(now)) {
+      return e.token();
+    }
     HttpClient http = e != null ? e.http() : newHttpClient(creds, endpoints.mutualTls(), trustStore);
     AccessToken fresh = fetch(http, creds, tokenUrl, now);
     cache.put(key, new Entry(http, fresh));
@@ -53,7 +55,9 @@ public class ItauTokenClient {
   }
 
   /** Also the HttpClient: a credential replaced by the merchant must not keep the old key alive. */
-  public void evict(String fingerprint) { cache.keySet().removeIf(k -> k.startsWith(fingerprint + "|")); }
+  public void evict(String fingerprint) {
+    cache.keySet().removeIf(k -> k.startsWith(fingerprint + "|"));
+  }
 
   public HttpClient httpClientFor(ItauCredentials creds, ItauEndpoints endpoints, KeyStore trustStore) {
     tokenFor(creds, endpoints, trustStore);
@@ -74,15 +78,25 @@ public class ItauTokenClient {
       if (e instanceof InterruptedException) Thread.currentThread().interrupt();
       throw new ProviderException(ProviderException.Code.UNAVAILABLE, "token request failed: " + e.getMessage(), e);
     }
-    if (res.statusCode() == 401 || res.statusCode() == 403) throw new ProviderException(ProviderException.Code.UNAUTHENTICATED, res.statusCode(), null, "STS rejected the credentials");
-    if (res.statusCode() >= 500) throw new ProviderException(ProviderException.Code.UNAVAILABLE, res.statusCode(), null, "STS unavailable");
-    if (res.statusCode() != 200) throw new ProviderException(ProviderException.Code.UNKNOWN, res.statusCode(), null, "unexpected STS status");
+    if (res.statusCode() == 401 || res.statusCode() == 403) {
+      throw new ProviderException(ProviderException.Code.UNAUTHENTICATED, res.statusCode(), null, "STS rejected the credentials");
+    }
+    if (res.statusCode() >= 500) {
+      throw new ProviderException(ProviderException.Code.UNAVAILABLE, res.statusCode(), null, "STS unavailable");
+    }
+    if (res.statusCode() != 200) {
+      throw new ProviderException(ProviderException.Code.UNKNOWN, res.statusCode(), null, "unexpected STS status");
+    }
     JsonNode body = mapper.readTree(res.body());
     String token = body.path("access_token").asText(null);
-    if (token == null || token.isBlank()) throw new ProviderException(ProviderException.Code.UNKNOWN, 200, null, "STS response without access_token");
+    if (token == null || token.isBlank()) {
+      throw new ProviderException(ProviderException.Code.UNKNOWN, 200, null, "STS response without access_token");
+    }
     long expiresIn = body.path("expires_in").asLong(300);
     return new AccessToken(token, now.plusSeconds(expiresIn));
   }
 
-  private static String enc(String s) { return URLEncoder.encode(s, StandardCharsets.UTF_8); }
+  private static String enc(String s) {
+    return URLEncoder.encode(s, StandardCharsets.UTF_8);
+  }
 }

@@ -32,7 +32,9 @@ class BolecodeLifecycleIntegrationTest extends ServiceIntegrationTestBase {
   @Autowired RefundService refunds;
   @Autowired BoletoPollingService polling;
 
-  private String nn(Payment p) { return p.boleto().nossoNumero(); }
+  private String nn(Payment p) {
+    return p.boleto().nossoNumero();
+  }
 
   private java.util.List<String> divergences(String paymentId) {
     return jdbc.queryForList("SELECT provider_status FROM payments.reconciliation_divergences WHERE payment_id = ? ORDER BY created_at", String.class, paymentId);

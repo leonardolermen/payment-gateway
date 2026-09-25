@@ -55,16 +55,22 @@ public class ItauPixProvider implements PixMethodProvider {
     try {
       var certs = java.security.cert.CertificateFactory.getInstance("X.509")
           .generateCertificates(new java.io.ByteArrayInputStream(pem.getBytes(java.nio.charset.StandardCharsets.US_ASCII)));
-      if (certs.isEmpty()) throw new IllegalArgumentException("no certificate in the Itaú trust store PEM");
+      if (certs.isEmpty()) {
+        throw new IllegalArgumentException("no certificate in the Itaú trust store PEM");
+      }
       return PemKeyStores.trustStoreFrom(certs.stream().map(c -> (java.security.cert.X509Certificate) c).toList());
     } catch (java.security.cert.CertificateException e) {
       throw new IllegalArgumentException("invalid Itaú trust store PEM: " + e.getMessage(), e);
     }
   }
 
-  @Override public String id() { return "ITAU"; }
+  @Override public String id() {
+    return "ITAU";
+  }
 
-  @Override public PaymentMethod method() { return PaymentMethod.PIX; }
+  @Override public PaymentMethod method() {
+    return PaymentMethod.PIX;
+  }
 
   /**
    * Pix needs the key the charge is collected into. Without this check a credential missing it only
@@ -90,8 +96,12 @@ public class ItauPixProvider implements PixMethodProvider {
     }
   }
 
-  private PixApiClient client(ProviderCredentials c) { return c.environment() == ProviderEnvironment.LIVE ? live : test; }
-  private static ItauCredentials creds(ProviderCredentials c) { return ItauCredentials.parse(c.payload()); }
+  private PixApiClient client(ProviderCredentials c) {
+    return c.environment() == ProviderEnvironment.LIVE ? live : test;
+  }
+  private static ItauCredentials creds(ProviderCredentials c) {
+    return ItauCredentials.parse(c.payload());
+  }
 
   @Override
   public Charge issue(ProviderCredentials c, PixIssueRequest request) {
@@ -102,7 +112,9 @@ public class ItauPixProvider implements PixMethodProvider {
     return toCharge(client(c).putCob(ic, request.txid(), cob));
   }
 
-  @Override public Optional<Charge> find(ProviderCredentials c, String txid) { return client(c).getCob(creds(c), txid).map(ItauPixProvider::toCharge); }
+  @Override public Optional<Charge> find(ProviderCredentials c, String txid) {
+    return client(c).getCob(creds(c), txid).map(ItauPixProvider::toCharge);
+  }
 
   @Override public void cancel(ProviderCredentials c, String txid) {
     client(c).patchCob(creds(c), txid, Map.of("status", "REMOVIDA_PELO_USUARIO_RECEBEDOR"));
@@ -125,7 +137,9 @@ public class ItauPixProvider implements PixMethodProvider {
       CobList l = client(c).listCob(ic, from, to, page, PAGE_SIZE);
       if (l.cobs() != null) l.cobs().forEach(cob -> out.add(toCharge(cob)));
       int pages = l.parametros() == null || l.parametros().paginacao() == null ? 1 : l.parametros().paginacao().quantidadeDePaginas();
-      if (++page >= pages) break;
+      if (++page >= pages) {
+        break;
+      }
     }
     return out;
   }
@@ -137,7 +151,9 @@ public class ItauPixProvider implements PixMethodProvider {
     } catch (RuntimeException e) {
       throw new IllegalArgumentException("unreadable Itaú webhook", e);
     }
-    if (p == null || p.pix() == null) throw new IllegalArgumentException("Itaú webhook without pix[]");
+    if (p == null || p.pix() == null) {
+      throw new IllegalArgumentException("Itaú webhook without pix[]");
+    }
 
     List<ReceivedPix> received = new ArrayList<>();
     List<RefundResult> refunds = new ArrayList<>();
@@ -179,7 +195,9 @@ public class ItauPixProvider implements PixMethodProvider {
     return new Charge(r.txid(), toStatus(r.status()), PixAmounts.fromItau(r.valor().original()), r.pixCopiaECola(), r.location(), created, exp, pix);
   }
 
-  static ReceivedPix toReceived(PixItem i) { return new ReceivedPix(i.endToEndId(), PixAmounts.fromItau(i.valor()), i.horario(), i.infoPagador()); }
+  static ReceivedPix toReceived(PixItem i) {
+    return new ReceivedPix(i.endToEndId(), PixAmounts.fromItau(i.valor()), i.horario(), i.infoPagador());
+  }
 
   static RefundResult toRefund(DevolucaoResponse d) {
     RefundStatus s = switch (d.status() == null ? "" : d.status()) {

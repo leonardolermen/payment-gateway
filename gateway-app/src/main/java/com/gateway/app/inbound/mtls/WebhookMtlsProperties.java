@@ -20,7 +20,9 @@ public record WebhookMtlsProperties(
     allowedSubjects = allowedSubjects == null ? List.of() : allowedSubjects.stream().filter(s -> s != null && !s.isBlank()).toList();
   }
 
-  public boolean enabled() { return port > 0; }
+  public boolean enabled() {
+    return port > 0;
+  }
 
   /**
    * Readiness guard: an enabled connector without key material would either fail deep inside Tomcat
@@ -28,7 +30,9 @@ public record WebhookMtlsProperties(
    * requirement. Failing here names the property to set.
    */
   public void requireKeyMaterial() {
-    if (!enabled()) return;
+    if (!enabled()) {
+      return;
+    }
     if (keystore == null || keystore.isBlank() || truststore == null || truststore.isBlank()) {
       throw new IllegalStateException("gateway.webhooks.mtls.port=" + port + " but gateway.webhooks.mtls.keystore/truststore are not set"
           + " (WEBHOOK_MTLS_KEYSTORE, WEBHOOK_MTLS_TRUSTSTORE); set them, or set WEBHOOK_MTLS_PORT=0 to disable the inbound webhook connector");
@@ -37,7 +41,9 @@ public record WebhookMtlsProperties(
 
   /** The URL a merchant registers at the bank, or null when the connector is off. */
   public String inboundWebhookUrl(String token) {
-    if (!enabled()) return null;
+    if (!enabled()) {
+      return null;
+    }
     String host = publicHost == null || publicHost.isBlank() ? "localhost" : publicHost;
     return "https://" + host + ":" + port + "/v1/providers/itau/webhooks/" + token;
   }

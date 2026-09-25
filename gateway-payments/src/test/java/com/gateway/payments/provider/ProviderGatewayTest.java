@@ -105,24 +105,40 @@ class ProviderGatewayTest {
 
   /** A provider with the Pix product and nothing else: the shape that used to make callers unwrap an Optional. */
   private static final class PixOnlyProvider implements PixMethodProvider {
-    @Override public String id() { return "ITAU"; }
+    @Override public String id() {
+      return "ITAU";
+    }
 
-    @Override public PaymentMethod method() { return PaymentMethod.PIX; }
+    @Override public PaymentMethod method() {
+      return PaymentMethod.PIX;
+    }
 
     @Override public void requireIssueCredentials(ProviderCredentials credentials) {}
 
-    @Override public Charge issue(ProviderCredentials credentials, PixIssueRequest request) { throw new UnsupportedOperationException(); }
+    @Override public Charge issue(ProviderCredentials credentials, PixIssueRequest request) {
+      throw new UnsupportedOperationException();
+    }
 
-    @Override public Optional<Charge> find(ProviderCredentials credentials, String bankReference) { return Optional.empty(); }
+    @Override public Optional<Charge> find(ProviderCredentials credentials, String bankReference) {
+      return Optional.empty();
+    }
 
     @Override public void cancel(ProviderCredentials credentials, String bankReference) {}
 
-    @Override public RefundResult requestRefund(ProviderCredentials credentials, RefundRequest request) { throw new UnsupportedOperationException(); }
+    @Override public RefundResult requestRefund(ProviderCredentials credentials, RefundRequest request) {
+      throw new UnsupportedOperationException();
+    }
 
-    @Override public Optional<RefundResult> findRefund(ProviderCredentials credentials, String endToEndId, String refundId) { return Optional.empty(); }
+    @Override public Optional<RefundResult> findRefund(ProviderCredentials credentials, String endToEndId, String refundId) {
+      return Optional.empty();
+    }
 
-    @Override public List<Charge> listCharges(ProviderCredentials credentials, Instant from, Instant to) { return List.of(); }
+    @Override public List<Charge> listCharges(ProviderCredentials credentials, Instant from, Instant to) {
+      return List.of();
+    }
 
-    @Override public ProviderWebhookEvent parseWebhook(byte[] body) { throw new UnsupportedOperationException(); }
+    @Override public ProviderWebhookEvent parseWebhook(byte[] body) {
+      throw new UnsupportedOperationException();
+    }
   }
 }

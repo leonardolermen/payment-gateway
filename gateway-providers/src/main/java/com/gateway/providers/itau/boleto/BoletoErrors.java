@@ -43,25 +43,39 @@ public final class BoletoErrors {
 
   static Code code(int status) {
     if (status == 202) return Code.TIMEOUT; // "operação em andamento": the bank has not decided yet, treat like a lost answer
-    if (status == 400 || status == 422) return Code.DECLINED;
-    if (status == 401 || status == 403) return Code.UNAUTHENTICATED;
-    if (status == 404 || status == 410) return Code.NOT_FOUND;
-    if (status == 504) return Code.TIMEOUT;
-    if (status >= 500) return Code.UNAVAILABLE;
+    if (status == 400 || status == 422) {
+      return Code.DECLINED;
+    }
+    if (status == 401 || status == 403) {
+      return Code.UNAUTHENTICATED;
+    }
+    if (status == 404 || status == 410) {
+      return Code.NOT_FOUND;
+    }
+    if (status == 504) {
+      return Code.TIMEOUT;
+    }
+    if (status >= 500) {
+      return Code.UNAVAILABLE;
+    }
 
     return Code.UNKNOWN;
   }
 
   /** The 422 of a baixa on a boleto the bank already settled says "pago"/"liquidado" in its text (no schema, no code). */
   public static boolean mentionsAlreadyPaid(String body) {
-    if (body == null) return false;
+    if (body == null) {
+      return false;
+    }
     String plain = Normalizer.normalize(body, Normalizer.Form.NFD).replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
 
     return plain.contains("pago") || plain.contains("liquidado");
   }
 
   private static BoletoProblem parse(String body) {
-    if (body == null || body.isBlank()) return null;
+    if (body == null || body.isBlank()) {
+      return null;
+    }
 
     try {
       return MAPPER.readValue(body, BoletoProblem.class);
@@ -70,5 +84,7 @@ public final class BoletoErrors {
     }
   }
 
-  private static String truncate(String s) { return s.length() <= MAX_RAW ? s : s.substring(0, MAX_RAW) + "…"; }
+  private static String truncate(String s) {
+    return s.length() <= MAX_RAW ? s : s.substring(0, MAX_RAW) + "…";
+  }
 }

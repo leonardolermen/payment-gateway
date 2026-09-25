@@ -50,7 +50,9 @@ public final class EnvelopeCipher {
     }
   }
 
-  private byte[] nonce() { byte[] n = new byte[NONCE_BYTES]; random.nextBytes(n); return n; }
+  private byte[] nonce() {
+    byte[] n = new byte[NONCE_BYTES]; random.nextBytes(n); return n;
+  }
 
   private static byte[] gcm(int mode, SecretKey key, byte[] nonce, String aad, byte[] input) throws GeneralSecurityException {
     Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");

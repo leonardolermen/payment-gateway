@@ -30,7 +30,9 @@ public final class PemKeyStores {
       X509Certificate cert = (X509Certificate) CertificateFactory.getInstance("X.509")
           .generateCertificate(new ByteArrayInputStream(certificatePem.getBytes()));
       PrivateKey key = readPrivateKey(privateKeyPem);
-      if (!keyMatches(cert, key)) throw new IllegalArgumentException("private key does not match the certificate");
+      if (!keyMatches(cert, key)) {
+        throw new IllegalArgumentException("private key does not match the certificate");
+      }
       char[] pw = new char[0];
       KeyStore ks = KeyStore.getInstance("PKCS12");
       ks.load(null, null);
@@ -68,8 +70,12 @@ public final class PemKeyStores {
     try (PEMParser p = new PEMParser(new StringReader(pem))) {
       Object o = p.readObject();
       JcaPEMKeyConverter c = new JcaPEMKeyConverter();
-      if (o instanceof PrivateKeyInfo info) return c.getPrivateKey(info);
-      if (o instanceof PEMKeyPair pair) return c.getKeyPair(pair).getPrivate();
+      if (o instanceof PrivateKeyInfo info) {
+        return c.getPrivateKey(info);
+      }
+      if (o instanceof PEMKeyPair pair) {
+        return c.getKeyPair(pair).getPrivate();
+      }
       throw new IllegalArgumentException("unsupported private key PEM: " + (o == null ? "empty" : o.getClass().getSimpleName()));
     }
   }

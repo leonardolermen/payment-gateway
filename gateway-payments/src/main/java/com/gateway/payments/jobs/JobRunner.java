@@ -75,7 +75,9 @@ public class JobRunner {
   /** Returns how many jobs were claimed (not how many succeeded) — callers loop until 0. */
   public int runDue(Instant now) {
     List<Job> claimed = tx.execute(s -> jobs.claimDue(now, BATCH, props.jobLease(), props.reconcileLease()));
-    if (claimed == null) return 0;
+    if (claimed == null) {
+      return 0;
+    }
     for (Job job : claimed) {
       Job next;
       try {

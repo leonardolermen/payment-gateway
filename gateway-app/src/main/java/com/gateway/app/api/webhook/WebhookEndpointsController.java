@@ -61,7 +61,9 @@ public class WebhookEndpointsController {
     return EndpointResponse.from(service.deactivate(id).orElseThrow(() -> new NotFoundException("endpoint", id.toString())));
   }
 
-  private String tenant() { return MerchantContext.current().merchantId().value(); }
+  private String tenant() {
+    return MerchantContext.current().merchantId().value();
+  }
 
   /** Id belonging to another merchant looks exactly like a missing one: 404, not 403 — the endpoint's existence is not this merchant's to know. */
   private WebhookEndpoint mine(UUID id) {

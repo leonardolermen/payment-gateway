@@ -35,8 +35,12 @@ public class ProviderCredentialService {
    * row swapped with the same merchant's TEST row decrypted fine, so TEST code could end up holding
    * LIVE bank credentials. A mismatch throws {@link SecurityException} from the cipher.
    */
-  private static String aad(MerchantId m, Provider p, ApiKeyEnvironment e) { return m.value() + "|" + p + "|" + e; }
+  private static String aad(MerchantId m, Provider p, ApiKeyEnvironment e) {
+    return m.value() + "|" + p + "|" + e;
+  }
 
   @Transactional(readOnly = true)
-  public List<ProviderCredential> list(MerchantId m) { return repo.findByMerchant(m); }
+  public List<ProviderCredential> list(MerchantId m) {
+    return repo.findByMerchant(m);
+  }
 }

@@ -120,7 +120,9 @@ class PaymentsFlowIntegrationTest {
   @Autowired WebhookInboxService webhookInbox;
   @Autowired JdbcTemplate jdbc;
 
-  private RestTestClient http() { return RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build(); }
+  private RestTestClient http() {
+    return RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build();
+  }
 
   private static String fixture(String name) {
     try (InputStream in = PaymentsFlowIntegrationTest.class.getResourceAsStream("/itau/fixtures/" + name)) {

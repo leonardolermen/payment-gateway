@@ -23,7 +23,9 @@ public final class ItauDates {
   }
 
   public static LocalDate date(String yyyyMmDd) {
-    if (yyyyMmDd == null || yyyyMmDd.isBlank()) return null;
+    if (yyyyMmDd == null || yyyyMmDd.isBlank()) {
+      return null;
+    }
     try { return LocalDate.parse(yyyyMmDd); } catch (DateTimeParseException e) { return null; }
   }
 }

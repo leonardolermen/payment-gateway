@@ -20,13 +20,19 @@ public final class BoletoText {
   private BoletoText() {}
 
   /** {@code pessoa.nome_pessoa}: letters and spaces only. */
-  public static String name(String s, int max) { return clean(s, NOT_NAME, max); }
+  public static String name(String s, int max) {
+    return clean(s, NOT_NAME, max);
+  }
 
   /** Address lines, city, district, {@code texto_uso_beneficiario}: letters, digits, space, {@code - . ,}. */
-  public static String text(String s, int max) { return clean(s, NOT_TEXT, max); }
+  public static String text(String s, int max) {
+    return clean(s, NOT_TEXT, max);
+  }
 
   private static String clean(String s, Pattern notAllowed, int max) {
-    if (s == null) return null;
+    if (s == null) {
+      return null;
+    }
     String out = FORBIDDEN_WORDS.matcher(s).replaceAll("");
     out = notAllowed.matcher(out).replaceAll("");
     out = SPACES.matcher(out.trim()).replaceAll(" ");

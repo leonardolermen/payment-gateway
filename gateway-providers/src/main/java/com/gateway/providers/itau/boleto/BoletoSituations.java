@@ -14,7 +14,9 @@ public final class BoletoSituations {
   private BoletoSituations() {}
 
   public static BoletoSituation parse(String raw) {
-    if (raw == null) throw new ProviderException(ProviderException.Code.UNKNOWN, 200, null, "boleto without situacao_geral_boleto");
+    if (raw == null) {
+      throw new ProviderException(ProviderException.Code.UNKNOWN, 200, null, "boleto without situacao_geral_boleto");
+    }
     String plain = Normalizer.normalize(raw, Normalizer.Form.NFD).replaceAll("\\p{M}", "").trim().toLowerCase(Locale.ROOT);
     return switch (plain) {
       case "em aberto" -> BoletoSituation.OPEN;

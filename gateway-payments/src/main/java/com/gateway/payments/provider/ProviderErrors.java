@@ -30,7 +30,9 @@ public final class ProviderErrors {
 
   public static String message(String code) {
     String m = MESSAGES.get(code);
-    if (m == null) throw new IllegalArgumentException("no fixed message for " + code);
+    if (m == null) {
+      throw new IllegalArgumentException("no fixed message for " + code);
+    }
     return m;
   }
 }

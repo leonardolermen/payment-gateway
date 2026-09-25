@@ -55,7 +55,9 @@ public class IdempotencyFilter extends OncePerRequestFilter {
 
   @Override
   protected boolean shouldNotFilter(HttpServletRequest req) {
-    if (!"POST".equals(req.getMethod())) return true;
+    if (!"POST".equals(req.getMethod())) {
+      return true;
+    }
     String path = RequestPath.of(req).normalized();
     return !(path.equals("/v1/payments") || PAYMENT_ACTION.matcher(path).matches());
   }
@@ -153,11 +155,21 @@ public class IdempotencyFilter extends OncePerRequestFilter {
     @Override public ServletInputStream getInputStream() {
       ByteArrayInputStream in = new ByteArrayInputStream(body);
       return new ServletInputStream() {
-        @Override public int read() { return in.read(); }
-        @Override public int read(byte[] b, int off, int len) { return in.read(b, off, len); }
-        @Override public boolean isFinished() { return in.available() == 0; }
-        @Override public boolean isReady() { return true; }
-        @Override public void setReadListener(ReadListener listener) { throw new UnsupportedOperationException(); }
+        @Override public int read() {
+          return in.read();
+        }
+        @Override public int read(byte[] b, int off, int len) {
+          return in.read(b, off, len);
+        }
+        @Override public boolean isFinished() {
+          return in.available() == 0;
+        }
+        @Override public boolean isReady() {
+          return true;
+        }
+        @Override public void setReadListener(ReadListener listener) {
+          throw new UnsupportedOperationException();
+        }
       };
     }
 

@@ -15,12 +15,16 @@ public final class MasterKey {
   private final SecretKey key;
 
   private MasterKey(byte[] bytes) {
-    if (bytes.length != 32) throw new IllegalArgumentException("master key must be 32 bytes, got " + bytes.length);
+    if (bytes.length != 32) {
+      throw new IllegalArgumentException("master key must be 32 bytes, got " + bytes.length);
+    }
     this.key = new SecretKeySpec(bytes, "AES");
   }
 
   public static MasterKey fromBase64(String base64) {
-    if (base64 == null || base64.isBlank()) throw new IllegalArgumentException("GATEWAY_MASTER_KEY is missing");
+    if (base64 == null || base64.isBlank()) {
+      throw new IllegalArgumentException("GATEWAY_MASTER_KEY is missing");
+    }
     return new MasterKey(Base64.getDecoder().decode(base64.trim()));
   }
 
@@ -32,5 +36,7 @@ public final class MasterKey {
 
   SecretKey key() { return key; }
 
-  @Override public String toString() { return "MasterKey[***]"; }
+  @Override public String toString() {
+    return "MasterKey[***]";
+  }
 }

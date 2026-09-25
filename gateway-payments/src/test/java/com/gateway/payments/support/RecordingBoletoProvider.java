@@ -52,21 +52,35 @@ public class RecordingBoletoProvider implements BoletoMethodProvider {
     this.pix = pix;
   }
 
-  @Override public String id() { return "ITAU"; }
+  @Override public String id() {
+    return "ITAU";
+  }
 
-  @Override public PaymentMethod method() { return PaymentMethod.BOLECODE; }
+  @Override public PaymentMethod method() {
+    return PaymentMethod.BOLECODE;
+  }
 
-  public void failNextIssueWith(ProviderException e) { this.failNextIssue = e; }
+  public void failNextIssueWith(ProviderException e) {
+    this.failNextIssue = e;
+  }
 
   /** The POST reached the bank and issued the boleto, but the caller sees {@code e} (a timeout, a 503, a 202). */
-  public void landNextIssueThenFailWith(ProviderException e) { this.landThenFail = e; }
+  public void landNextIssueThenFailWith(ProviderException e) {
+    this.landThenFail = e;
+  }
 
   /** The next issue creates no Pix side at the bank, so GET /cob on the derived txid finds nothing. */
-  public void skipNextPixRegistration() { this.skipPix = true; }
+  public void skipNextPixRegistration() {
+    this.skipPix = true;
+  }
 
-  public void refuseNextIssueCredentials() { this.refuseCredentials = true; }
+  public void refuseNextIssueCredentials() {
+    this.refuseCredentials = true;
+  }
 
-  public void failNextFindWith(String nossoNumero, ProviderException e) { failFind.put(nossoNumero, e); }
+  public void failNextFindWith(String nossoNumero, ProviderException e) {
+    failFind.put(nossoNumero, e);
+  }
 
   /**
    * One merchant's boleto only: every test merchant's first boleto is 00000001 and POLL_BOLETO jobs
@@ -76,7 +90,9 @@ public class RecordingBoletoProvider implements BoletoMethodProvider {
     failFind.put(InMemoryCredentialLookup.beneficiaryOf(merchant) + ":" + nossoNumero, e);
   }
 
-  public void markPaid(String nossoNumero, Money amount, Instant at) { markPaid(nossoNumero, amount, at, "01"); }
+  public void markPaid(String nossoNumero, Money amount, Instant at) {
+    markPaid(nossoNumero, amount, at, "01");
+  }
 
   /** {@code channel} is what the query's meio de pagamento carries; null models a bank that omits it. */
   public void markPaid(String nossoNumero, Money amount, Instant at, String channel) {
@@ -93,7 +109,9 @@ public class RecordingBoletoProvider implements BoletoMethodProvider {
   }
 
   /** Whatever the bank does between two calls of a test's flow, run right after the next find answers. */
-  public void afterNextFind(String nossoNumero, Runnable then) { afterNextFind.put(nossoNumero, then); }
+  public void afterNextFind(String nossoNumero, Runnable then) {
+    afterNextFind.put(nossoNumero, then);
+  }
 
   public void setSituation(String nossoNumero, BoletoSituation situation) {
     String k = key(nossoNumero);
@@ -101,16 +119,26 @@ public class RecordingBoletoProvider implements BoletoMethodProvider {
     boletos.put(k, new BoletoStatus(situation, s.paidAmount(), s.paidAt(), s.paidChannel(), s.idBoletoIndividual(), s.linhaDigitavel(), s.codigoBarras(), s.paymentLimitDate(), s.pixCopiaECola()));
   }
 
-  public void remove(String nossoNumero) { boletos.remove(key(nossoNumero)); }
+  public void remove(String nossoNumero) {
+    boletos.remove(key(nossoNumero));
+  }
 
   /** Puts a boleto back as the bank shows it: an issue the bank registered after the gateway had already given up on it. */
-  public void restore(String nossoNumero, BoletoStatus status) { boletos.put(key(nossoNumero), status); }
+  public void restore(String nossoNumero, BoletoStatus status) {
+    boletos.put(key(nossoNumero), status);
+  }
 
-  public BoletoStatus status(String nossoNumero) { return boletos.get(key(nossoNumero)); }
+  public BoletoStatus status(String nossoNumero) {
+    return boletos.get(key(nossoNumero));
+  }
 
-  private String key(String nossoNumero) { return latest.getOrDefault(nossoNumero, BENEFICIARY + ":" + nossoNumero); }
+  private String key(String nossoNumero) {
+    return latest.getOrDefault(nossoNumero, BENEFICIARY + ":" + nossoNumero);
+  }
 
-  public List<String> callsFor(String key) { return calls.stream().filter(c -> c.endsWith(":" + key)).toList(); }
+  public List<String> callsFor(String key) {
+    return calls.stream().filter(c -> c.endsWith(":" + key)).toList();
+  }
 
   /**
    * The calls for one merchant's boleto, as {@code op:nossoNumero}. Every test merchant's first
@@ -127,7 +155,9 @@ public class RecordingBoletoProvider implements BoletoMethodProvider {
   }
 
   private static String beneficiary(ProviderCredentials c) {
-    if (c == null) return BENEFICIARY;
+    if (c == null) {
+      return BENEFICIARY;
+    }
     Matcher m = BENEFICIARY_ID.matcher(new String(c.payload(), StandardCharsets.UTF_8));
     return m.find() ? m.group(1) : BENEFICIARY;
   }
@@ -167,7 +197,9 @@ public class RecordingBoletoProvider implements BoletoMethodProvider {
     calls.add("findBoleto:" + beneficiary(c) + ":" + nossoNumero);
     ProviderException fail = failFind.remove(beneficiary(c) + ":" + nossoNumero);
     if (fail == null) fail = failFind.remove(nossoNumero);
-    if (fail != null) throw fail;
+    if (fail != null) {
+      throw fail;
+    }
     Optional<BoletoStatus> answer = Optional.ofNullable(boletos.get(beneficiary(c) + ":" + nossoNumero));
     Runnable then = afterNextFind.remove(nossoNumero);
     if (then != null) then.run();
@@ -178,8 +210,12 @@ public class RecordingBoletoProvider implements BoletoMethodProvider {
     calls.add("cancelBoleto:" + beneficiary(c) + ":" + nossoNumero);
     String k = beneficiary(c) + ":" + nossoNumero;
     BoletoStatus s = boletos.get(k);
-    if (s == null) throw new ProviderException(ProviderException.Code.NOT_FOUND, 404, "404", "not found");
-    if (s.paid()) throw new ProviderException(ProviderException.Code.CONFLICT, 422, "422", "Boleto já liquidado");
+    if (s == null) {
+      throw new ProviderException(ProviderException.Code.NOT_FOUND, 404, "404", "not found");
+    }
+    if (s.paid()) {
+      throw new ProviderException(ProviderException.Code.CONFLICT, 422, "422", "Boleto já liquidado");
+    }
     boletos.put(k, new BoletoStatus(BoletoSituation.CANCELED, s.paidAmount(), s.paidAt(), s.paidChannel(), s.idBoletoIndividual(), s.linhaDigitavel(), s.codigoBarras(), s.paymentLimitDate(), s.pixCopiaECola()));
   }
 

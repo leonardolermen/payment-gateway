@@ -46,12 +46,16 @@ public record BoletoQueryItem(@JsonProperty("id_boleto") String idBoleto, @JsonP
   public record QrcodePix(String emv) {}
 
   public Optional<Individual> individual(String nossoNumero) {
-    if (dadoBoleto == null || dadoBoleto.dadosIndividuaisBoleto() == null) return Optional.empty();
+    if (dadoBoleto == null || dadoBoleto.dadosIndividuaisBoleto() == null) {
+      return Optional.empty();
+    }
     return dadoBoleto.dadosIndividuaisBoleto().stream().filter(i -> nossoNumero.equals(i.numeroNossoNumero())).findFirst();
   }
 
   public Optional<Pagamento> lastPayment() {
-    if (dadoBoleto == null || dadoBoleto.pagamentosCobranca() == null || dadoBoleto.pagamentosCobranca().isEmpty()) return Optional.empty();
+    if (dadoBoleto == null || dadoBoleto.pagamentosCobranca() == null || dadoBoleto.pagamentosCobranca().isEmpty()) {
+      return Optional.empty();
+    }
     return Optional.of(dadoBoleto.pagamentosCobranca().getLast());
   }
 }

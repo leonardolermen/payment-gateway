@@ -33,7 +33,9 @@ class AuthenticationIntegrationTest {
 
   @LocalServerPort int port;
 
-  private RestTestClient http() { return RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build(); }
+  private RestTestClient http() {
+    return RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build();
+  }
 
   private RestTestClient.RequestBodySpec adminPost(String uri) {
     return http().post().uri(uri).header("X-Admin-Key", "test-admin").contentType(org.springframework.http.MediaType.APPLICATION_JSON);

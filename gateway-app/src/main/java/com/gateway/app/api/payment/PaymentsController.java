@@ -58,13 +58,17 @@ public class PaymentsController {
   public List<PaymentResponse> list(
       @RequestParam(defaultValue = "20") int limit, @RequestParam(required = false) String cursor, @RequestParam(required = false) String reference) {
 
-    if (limit <= 0 || limit > MAX_PAGE) throw new IllegalArgumentException("limit must be between 1 and " + MAX_PAGE);
+    if (limit <= 0 || limit > MAX_PAGE) {
+      throw new IllegalArgumentException("limit must be between 1 and " + MAX_PAGE);
+    }
 
     var merchantId = MerchantContext.current().merchantId();
 
     if (reference != null) {
 
-      if (cursor != null) throw new IllegalArgumentException("cursor and reference cannot be combined");
+      if (cursor != null) {
+        throw new IllegalArgumentException("cursor and reference cannot be combined");
+      }
       return payments.listByReference(merchantId, reference, limit).stream().map(PaymentResponse::from).toList();
     }
 

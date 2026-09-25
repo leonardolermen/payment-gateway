@@ -25,7 +25,9 @@ public record RequestPath(String raw, String normalized) {
 
   /** Anything that makes the routed path differ from what a plain prefix check sees. */
   public boolean suspicious() {
-    if (raw.indexOf(';') >= 0 || raw.indexOf('%') >= 0 || raw.indexOf('\\') >= 0) return true;
+    if (raw.indexOf(';') >= 0 || raw.indexOf('%') >= 0 || raw.indexOf('\\') >= 0) {
+      return true;
+    }
     for (String segment : raw.split("/", -1)) if (segment.equals("..") || segment.equals(".")) return true;
     return !raw.equals(normalized);
   }

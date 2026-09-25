@@ -30,7 +30,9 @@ public class MtlsWebhookConnector implements WebServerFactoryCustomizer<TomcatSe
 
   @Override
   public void customize(TomcatServletWebServerFactory factory) {
-    if (!props.enabled()) return;
+    if (!props.enabled()) {
+      return;
+    }
     Connector connector = new Connector(TomcatWebServerFactory.DEFAULT_PROTOCOL);
     connector.setPort(props.port());
     connector.setScheme("https");

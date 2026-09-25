@@ -36,7 +36,9 @@ public class MerchantsAdminController {
     this.mtls = mtls;
   }
 
-  private MerchantResponse response(Merchant m) { return MerchantResponse.from(m, mtls.inboundWebhookUrl(m.inboundWebhookToken())); }
+  private MerchantResponse response(Merchant m) {
+    return MerchantResponse.from(m, mtls.inboundWebhookUrl(m.inboundWebhookToken()));
+  }
 
   @PostMapping
   public ResponseEntity<MerchantResponse> create(@RequestBody MerchantRequest req) {

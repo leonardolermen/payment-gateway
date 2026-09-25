@@ -145,7 +145,9 @@ public final class Payment {
   }
 
   public PaymentEvent markPendingBolecode(PixDetails pixDetails, BoletoDetails boletoDetails, Instant expiresAt, EventSource by) {
-    if (method != PaymentMethod.BOLECODE) throw new IllegalStateException("markPendingBolecode on a " + method + " payment");
+    if (method != PaymentMethod.BOLECODE) {
+      throw new IllegalStateException("markPendingBolecode on a " + method + " payment");
+    }
     PaymentEvent event = transition(PaymentStatus.PENDING, by, "pending",
         "{\"txid\":" + json(pixDetails.txid()) + ",\"nossoNumero\":" + json(boletoDetails.nossoNumero()) + "}");
     this.pix = pixDetails;
@@ -170,7 +172,9 @@ public final class Payment {
 
   /** The barcode path: no endToEndId exists, the bank's payment record is the evidence. {@code paidChannel} is its codigo_meio_pagamento. */
   public PaymentEvent markCompletedByBoleto(Money paidAmount, Instant paidAt, String paidChannel, EventSource by) {
-    if (method != PaymentMethod.BOLECODE) throw new IllegalStateException("markCompletedByBoleto on a " + method + " payment");
+    if (method != PaymentMethod.BOLECODE) {
+      throw new IllegalStateException("markCompletedByBoleto on a " + method + " payment");
+    }
     PaymentEvent event = transition(PaymentStatus.COMPLETED, by, "completed",
         "{\"paidVia\":\"BOLETO\",\"paidAmount\":" + paidAmount.cents() + ",\"paidChannel\":" + json(paidChannel) + "}");
     this.boleto = boleto.withPaidVia(PaidVia.BOLETO);

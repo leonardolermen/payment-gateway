@@ -56,7 +56,9 @@ class ItauBoletoProviderTest {
         ItauBoletoEndpoints.forEnvironment(ProviderEnvironment.LIVE), test);
   }
 
-  static ProviderCredentials test(byte[] payload) { return new ProviderCredentials(payload, ProviderEnvironment.TEST); }
+  static ProviderCredentials test(byte[] payload) {
+    return new ProviderCredentials(payload, ProviderEnvironment.TEST);
+  }
 
   static BoletoIssueRequest request() {
     return new BoletoIssueRequest("00000001", Money.brl(123456), LocalDate.of(2026, 12, 31), LocalDate.of(2027, 1, 30),

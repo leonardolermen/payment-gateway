@@ -51,7 +51,6 @@ public class PaymentService {
   /** Plan B has one bank. The provider is resolved by name so a second one is a config change. */
   public static final String PROVIDER = "ITAU";
 
-
   private final PaymentRepository payments;
   private final Divergences divergences;
   private final ProviderGateway providers;
@@ -109,6 +108,7 @@ public class PaymentService {
   public Payment adoptPendingBolecode(String paymentId, IssuedBoleto issued, EventSource by) {
     return adoption.adoptBolecode(paymentId, issued, by);
   }
+
   /**
    * The issue's answer was lost; the query has the boleto's identity but not the Pix side. See
    * {@link BolecodeFromQuery}, which the sweeper reaches through here.
@@ -394,7 +394,9 @@ public class PaymentService {
 
   /** Whether the bank's payment channel is Pix; null or blank is not (the caller decides what an absent channel means). */
   public static boolean isPixChannel(String channel) {
-    if (channel == null || channel.isBlank()) return false;
+    if (channel == null || channel.isBlank()) {
+      return false;
+    }
     String plain = java.text.Normalizer.normalize(channel, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "").toLowerCase(java.util.Locale.ROOT);
     return plain.contains("pix");
   }

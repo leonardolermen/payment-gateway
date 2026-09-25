@@ -17,7 +17,9 @@ public final class Masker {
   private Masker() {}
 
   public static String mask(String s) {
-    if (s == null || s.isEmpty()) return s;
+    if (s == null || s.isEmpty()) {
+      return s;
+    }
     String r = BEARER.matcher(s).replaceAll("$1***");
     r = API_KEY.matcher(r).replaceAll("***");
     r = CPF.matcher(r).replaceAll("***");

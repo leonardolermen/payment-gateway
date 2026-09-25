@@ -131,12 +131,16 @@ class ItauWebhookMtlsIntegrationTest {
   }
 
   @AfterAll
-  static void stop() { ITAU.stop(); }
+  static void stop() {
+    ITAU.stop();
+  }
 
   @LocalServerPort int port;
   @Autowired JdbcTemplate jdbc;
 
-  private RestTestClient http() { return RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build(); }
+  private RestTestClient http() {
+    return RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build();
+  }
 
   private static String fixture(String name) {
     try (InputStream in = ItauWebhookMtlsIntegrationTest.class.getResourceAsStream("/itau/fixtures/" + name)) {
@@ -215,7 +219,9 @@ class ItauWebhookMtlsIntegrationTest {
         HttpResponse.BodyHandlers.ofString());
   }
 
-  private static String mtlsUrl(String path) { return "https://localhost:" + MTLS_PORT + path; }
+  private static String mtlsUrl(String path) {
+    return "https://localhost:" + MTLS_PORT + path;
+  }
 
   @Test
   @SuppressWarnings("unchecked")
@@ -265,13 +271,19 @@ class ItauWebhookMtlsIntegrationTest {
    */
   private static void tlsRefusal(Throwable t) {
     for (Throwable c = t; c != null; c = c.getCause()) {
-      if (c instanceof SSLException) return;
-      if (String.valueOf(c.getMessage()).contains("fatal alert")) return;
+      if (c instanceof SSLException) {
+        return;
+      }
+      if (String.valueOf(c.getMessage()).contains("fatal alert")) {
+        return;
+      }
     }
     throw new AssertionError("expected a TLS refusal in the cause chain", t);
   }
 
-  private int inboxRows() { return jdbc.queryForObject("SELECT count(*) FROM payments.webhook_inbox", Integer.class); }
+  private int inboxRows() {
+    return jdbc.queryForObject("SELECT count(*) FROM payments.webhook_inbox", Integer.class);
+  }
 
   @Test
   void oversizedBodyWithContentLengthIs413AndNothingIsStored() throws Exception {

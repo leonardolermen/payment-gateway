@@ -15,18 +15,26 @@ public final class Secret {
   private Secret(String value) { this.value = value; }
 
   public static Secret of(String value) {
-    if (value == null || value.isBlank()) throw new IllegalArgumentException("empty secret");
+    if (value == null || value.isBlank()) {
+      throw new IllegalArgumentException("empty secret");
+    }
     return new Secret(value);
   }
 
-  public String reveal() { return value; }
+  public String reveal() {
+    return value;
+  }
 
-  @Override public String toString() { return "***"; }
+  @Override public String toString() {
+    return "***";
+  }
 
   /** Constant-time comparison: comparing API keys with String.equals leaks the length of the common prefix. */
   @Override public boolean equals(Object o) {
     return o instanceof Secret s && MessageDigest.isEqual(value.getBytes(StandardCharsets.UTF_8), s.value.getBytes(StandardCharsets.UTF_8));
   }
 
-  @Override public int hashCode() { return Objects.hash(value); }
+  @Override public int hashCode() {
+    return Objects.hash(value);
+  }
 }

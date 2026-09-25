@@ -70,5 +70,7 @@ public class PixWebhookController {
     return json.writeValueAsString(h);
   }
 
-  private static void put(Map<String, String> h, String k, String v) { if (v != null) h.put(k, v); }
+  private static void put(Map<String, String> h, String k, String v) {
+    if (v != null) h.put(k, v);
+  }
 }
