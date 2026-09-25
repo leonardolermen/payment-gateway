@@ -72,6 +72,23 @@ Errors are RFC 7807 (`type`, `title`, `status`, `detail`, `violacoes[]`), e.g. `
 
 Charge status: `ATIVA`, `CONCLUIDA`, `REMOVIDA_PELO_USUARIO_RECEBEDOR`, `REMOVIDA_PELO_PSP` (portal prose shows `REMOVIDO_…`; the OpenAPI enum uses `REMOVIDA_…` — trust the enum, accept both when parsing). Refund status: `EM_PROCESSAMENTO`, `DEVOLVIDO`, `NAO_REALIZADO`. Refund nature: `ORIGINAL` (normal), `RETIRADA` (saque/troco), `MED_*` (set by the bank).
 
+## Sandbox verification (2026-09-25)
+
+Ran the gateway locally against the portal-hosted sandbox with credentials created in the portal (never committed; they live in the encrypted `TEST` credential of a local merchant):
+
+| call | result |
+|---|---|
+| `POST /api/oauth/jwt` (client credentials, no mTLS) | token issued |
+| `PUT /cob/{txid}` with `valor.original=1.00` | 201, `status=ATIVA`, `pixCopiaECola` and `location` under `spi-h.itau.com.br` |
+| `GET /cob/{txid}` | 200 |
+| `PATCH /cob/{txid}` `REMOVIDA_PELO_USUARIO_RECEBEDOR` | 200 |
+
+What it proves: the auth flow and the request/response contract are compatible with the real endpoint.
+
+What it does **not** prove: the sandbox is a static mock. It answered with the documentation's own example (`txid=bbba96ad…`, receiver "PMD BASHAR RIO") instead of echoing the txid we sent, and it accepts any `chave`. Paying the QR, receiving the inbound webhook, refunds and reconciliation can only be exercised in production or a fuller sandbox.
+
+Consequence noticed: the gateway stores the txid the bank returns (`PaymentService.adoptPending`), so against this mock the stored txid differs from the payment id. In production the bank echoes ours; a mismatch there should be treated as an invalid response, which is a pending follow-up.
+
 ## What this means for the gateway (Plan B)
 
 1. No fake provider. `TEST` environment = Itaú sandbox base URL with the merchant's sandbox credentials (plain OAuth at `/api/oauth/jwt`, no mTLS); without credentials the call fails with `PROVIDER_CREDENTIALS_MISSING`.

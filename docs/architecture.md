@@ -1,52 +1,54 @@
 # Architecture
 
-One deployable, four business modules, one library. The boundary between modules is enforced by `ArchitectureTest` (ArchUnit) — a diagram that lied would fail the build.
+One deployable, four business modules, one library. Deeper detail lives in the code and in
+`docs/superpowers/`; this page is the picture you show someone in five minutes.
+
+## The big picture
+
+![Overview](diagrams/overview.png)
+
+The gateway never touches money. It talks to the merchant's own bank account (the merchant's Itaú
+credentials, stored encrypted per merchant and environment), keeps the state of each payment, and
+tells the merchant what happened through signed webhooks.
 
 ## Modules and who may import whom
 
-![Modules and import rules](diagrams/modules.png)
+![Modules](diagrams/modules.png)
 
-<sub>Source: [`diagrams/modules.mmd`](diagrams/modules.mmd) — regenerate with `npx -y @mermaid-js/mermaid-cli -i docs/diagrams/modules.mmd -o docs/diagrams/modules.png -b white -s 2`.</sub>
-
-Rules the test enforces: `kernel` imports nothing; nobody imports `app`; `merchants`, `payments` (and later `orders`) do not import each other; only `app` imports `providers`; `payments` sees the bank only through `PixProvider`; Itaú vocabulary (`cob`, `txid`, `devolucao`) never leaves `gateway-providers`.
+`kernel` imports nothing; nobody imports `app`; `merchants` and `payments` do not import each other;
+only `app` imports `providers`. `ArchitectureTest` (ArchUnit) fails the build if a diagram lied.
 
 ## Creating a Pix charge
 
 ![Creating a Pix charge](diagrams/create-charge.png)
 
-<sub>Source: [`diagrams/create-charge.mmd`](diagrams/create-charge.mmd) — regenerate with `npx -y @mermaid-js/mermaid-cli -i docs/diagrams/create-charge.mmd -o docs/diagrams/create-charge.png -b white -s 2`.</sub>
+The payment is stored before the bank is called, so a timeout can never lose a charge the bank
+accepted: the gateway asks the bank before declaring failure.
 
 ## Getting paid
 
 ![Getting paid](diagrams/getting-paid.png)
 
-<sub>Source: [`diagrams/getting-paid.mmd`](diagrams/getting-paid.mmd) — regenerate with `npx -y @mermaid-js/mermaid-cli -i docs/diagrams/getting-paid.mmd -o docs/diagrams/getting-paid.png -b white -s 2`.</sub>
-
-Backstops that do not depend on the webhook:
-
-- **Expiration job** (`expires_at` + 5 min): asks the bank first (`GET /cob/{txid}`); only an unpaid charge becomes `EXPIRED`.
-- **Reconciliation job** (every 15 min): lists the bank's charges for the window; `PENDING|EXPIRED × CONCLUIDA` completes the payment; anything else contradictory opens a `reconciliation_divergences` row for a human.
-- **Refund polling** (every 5 min, up to 24 h): Itaú's refund is asynchronous; `EM_PROCESSAMENTO` is polled until `DEVOLVIDO`/`NAO_REALIZADO`.
+The webhook is a trigger, the bank is the truth: every notification is confirmed with the bank
+before the payment completes. Two jobs cover the case where the webhook never arrives: expiration
+(asks the bank first) and reconciliation (every 15 min, opens a divergence for a human on mismatch).
 
 ## Payment states
 
 ![Payment states](diagrams/payment-states.png)
 
-<sub>Source: [`diagrams/payment-states.mmd`](diagrams/payment-states.mmd) — regenerate with `npx -y @mermaid-js/mermaid-cli -i docs/diagrams/payment-states.mmd -o docs/diagrams/payment-states.png -b white -s 2`.</sub>
+Refunds are a projection (`refunded_amount`) on a completed payment, not a state. Every change
+appends an event; the current state is reconstructible from the log.
 
-Every transition is a row in `PaymentTransitions` with the sources allowed to trigger it; a test walks the whole cross product. Every change appends a `payment_events` row whose `sequence` is the aggregate's version (optimistic lock) — the current state is reconstructible from the log.
+## Environments
 
-## Environments and credentials
-
-| environment (from the API key) | provider endpoint | credential shape |
+| API key | provider endpoint | credential |
 |---|---|---|
-| `TEST` (`gk_test_…`) | Itaú sandbox, token at `/api/oauth/jwt`, no mTLS | `{client_id, client_secret, pix_key}` |
-| `LIVE` (`gk_live_…`) | Itaú production, STS token over mTLS, `x-itau-apikey` | `{client_id, client_secret, x_itau_apikey, certificate_pem, private_key_pem, pix_key}` |
+| `gk_test_…` | Itaú sandbox (plain OAuth2) | `client_id`, `client_secret`, `pix_key` |
+| `gk_live_…` | Itaú production (OAuth2 over mTLS) | the above + `x_itau_apikey`, certificate, private key |
 
-Credentials are stored per `(merchant, provider, environment)` in an AES-256-GCM envelope (fresh DEK per row, AAD = `merchant|provider|environment`, master key from `GATEWAY_MASTER_KEY`) and decrypted only for the duration of a bank call.
+Verified against the real sandbox on 2026-09-25: token, create charge, read, cancel. See
+`docs/providers/itau/NOTES.md` for what the sandbox does and does not prove.
 
-## Where things live
-
-- Specs and decisions: `docs/superpowers/specs/`, `docs/superpowers/DECISOES.md`
-- Bank facts: `docs/providers/itau/NOTES.md` (+ the official OpenAPI next to it)
-- Plans executed: `docs/superpowers/plans/`
+<sub>Diagram sources are the `.mmd` files next to the PNGs. Regenerate one with
+`npx -y @mermaid-js/mermaid-cli -i docs/diagrams/<name>.mmd -o docs/diagrams/<name>.png -b white -s 2`.</sub>

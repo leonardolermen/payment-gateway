@@ -1,17 +1,12 @@
 sequenceDiagram
-  autonumber
-  participant BANK as Itaú
-  participant MT as app: mTLS connector + ItauWebhookController
-  participant IN as payments: WebhookInboxService
-  participant DB as PostgreSQL
-  participant JR as JobRunner
+  participant B as Itaú
+  participant GW as Payment Gateway
   participant M as Merchant
 
-  BANK->>MT: POST /v1/providers/itau/webhooks/{token}/pix (client certificate from Itaú's CA)
-  MT->>IN: accept(raw headers + body)
-  IN->>DB: tx: webhook_inbox RECEIVED + job PROCESS_WEBHOOK
-  MT-->>BANK: 202 (well inside the bank's 5 s)
-  JR->>IN: process(inboxId)
-  IN->>DB: per Pix, in its own tx: payment PENDING|EXPIRED → COMPLETED (source PROVIDER_WEBHOOK), event, outbox 'payment.completed'
-  Note over IN,DB: duplicate e2eid → 'ignored' event · paid while FAILED/CANCELED → reconciliation divergence, nothing sent
-  DB-->>M: (relay) payment.completed, ordered after payment.pending by partition key
+  B->>GW: webhook: Pix received (mTLS)
+  GW-->>B: 202 (stored, processed later)
+  GW->>B: confirm charge status
+  B-->>GW: paid, amount, e2eid
+  GW->>GW: COMPLETED + outbox event
+  GW-)M: webhook payment.completed
+  Note over GW: Backstops without the webhook:<br/>expiration asks the bank · reconciliation every 15 min

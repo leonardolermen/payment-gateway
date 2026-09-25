@@ -1,51 +1,15 @@
 flowchart TB
-  subgraph app["gateway-app — the only deployable"]
-    REST["REST API<br/>/v1/payments, /v1/webhooks, /v1/admin, /v1/me"]
-    SEC["security<br/>PathSanityFilter · AdminKeyFilter · ApiKeyAuthFilter · RateLimitFilter"]
-    MTLS["mTLS connector :8443<br/>/v1/providers/itau/webhooks/{token}/pix"]
-    RELAY["OutboxRelay + JobScheduler<br/>(@Scheduled)"]
-    WIRING["ProviderWiring<br/>CredentialLookup adapter · Clock"]
-  end
+  APP["gateway-app<br/>REST, security, scheduling"]
+  PAY["gateway-payments<br/>charges, refunds, jobs"]
+  MER["gateway-merchants<br/>merchants, API keys, encrypted credentials"]
+  PROV["gateway-providers<br/>Itaú Pix client"]
+  KER["gateway-kernel<br/>shared types and provider contracts"]
+  WD[["webhook-delivery<br/>(library)"]]
 
-  subgraph payments["gateway-payments (schema: payments)"]
-    PS["PaymentService · RefundService<br/>IdempotencyService · ProviderGateway"]
-    WI["WebhookInboxService<br/>ExpirationService · ReconciliationService · RefundPollingService"]
-    JR["JobRunner"]
-    PD["domain: Payment (state table) · PaymentEvent · Refund · IdempotencyKey"]
-    PR["repositories: payments · payment_events · refunds · idempotency_keys<br/>outbox · jobs · webhook_inbox · provider_requests · reconciliation_divergences"]
-  end
-
-  subgraph merchants["gateway-merchants (schema: merchants)"]
-    MS["MerchantService · ApiKeyService · ProviderCredentialService"]
-    ENV["EnvelopeCipher (AES-256-GCM, DEK per row, master key)"]
-    MR["repositories: merchants · api_keys · provider_credentials"]
-  end
-
-  subgraph providers["gateway-providers"]
-    IP["ItauPixProvider"]
-    PAC["PixApiClient (Bacen/Itaú v2 contract)"]
-    TOK["ItauTokenClient (OAuth2 client credentials; mTLS in LIVE, plain in sandbox)"]
-  end
-
-  subgraph kernel["gateway-kernel — imports nothing"]
-    K1["Money · Ulid · MerchantId · Secret · DomainException"]
-    K2["provider contracts: PixProvider · CredentialLookup · Charge · RefundResult · ProviderException"]
-  end
-
-  WD[["com.barrier:webhook-delivery<br/>(signed outbound webhooks, retry, ordering)"]]
-  PG[("PostgreSQL<br/>one schema per module + webhook_delivery")]
-  ITAU(["Itaú Pix API<br/>sandbox / production"])
-
-  app --> payments
-  app --> merchants
-  app --> providers
-  app --> WD
-  payments --> kernel
-  merchants --> kernel
-  providers --> kernel
-  payments -. "only the interfaces<br/>PixProvider · CredentialLookup" .-> K2
-  PAC --> ITAU
-  TOK --> ITAU
-  PR --> PG
-  MR --> PG
-  WD --> PG
+  APP --> PAY
+  APP --> MER
+  APP --> PROV
+  APP --> WD
+  PAY --> KER
+  MER --> KER
+  PROV --> KER

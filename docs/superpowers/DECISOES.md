@@ -121,3 +121,14 @@ cima e o pagador receberia duas vezes. Agora: 503 é tratado como timeout (`PROC
 merchant e divergência `REFUND_UNKNOWN` na mesma transação. Uma palavra posterior do banco ainda move
 UNKNOWN para COMPLETED ou FAILED. Custo: o merchant fica sem poder devolver aquele valor até alguém olhar
 a divergência. Custo se errado (liberar a reserva): devolução em dobro, dinheiro que não volta.
+
+## 2026-09-25 — O sandbox do Itaú prova contrato, não comportamento
+Registrado, não decidido: a primeira chamada real ao sandbox (token em `/api/oauth/jwt`, `PUT /cob`,
+`GET /cob`, `PATCH /cob`) passou de ponta a ponta com credenciais do portal. Mas o sandbox é um mock
+estático — devolveu o `txid` e o recebedor do exemplo da documentação em vez de ecoar o nosso, e aceita
+qualquer `chave`. Consequência: "funciona no sandbox" cobre autenticação e formato de requisição; pagar
+o QR, webhook de entrada, devolução e reconciliação só se provam em produção. Achado: o gateway guarda o
+txid que o banco devolve (`PaymentService.adoptPending`) e não o que enviou; em produção são iguais, mas
+um txid diferente do enviado deveria ser resposta inválida, porque a recuperação por timeout consulta o
+banco pelo id do pagamento. Fica como pendência pequena. Diagramas de `docs/architecture.md` reduzidos a
+cinco figuras de alto nível: as anteriores listavam serviços e tabelas e ninguém conseguia ler.
