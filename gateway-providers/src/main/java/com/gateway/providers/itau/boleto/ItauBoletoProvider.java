@@ -15,6 +15,7 @@ import com.gateway.providers.itau.boleto.dto.BoletoQueryItem;
 import java.security.KeyStore;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 /** The only class that knows the three boleto APIs and the gateway's vocabulary at the same time. */
 public class ItauBoletoProvider implements BoletoProvider {
@@ -72,11 +73,30 @@ public class ItauBoletoProvider implements BoletoProvider {
 
   @Override public String pixTxidFor(ProviderCredentials c, String nossoNumero) { return pixTxid(boletoCreds(c), nossoNumero); }
 
+  private static final Pattern DIGITS = Pattern.compile("\\d+");
+
+  /**
+   * Both derivations concatenate the account data with the caller's nosso número; an unvalidated
+   * value either throws an unclassified IllegalArgumentException ({@code "0".repeat(negative)} for
+   * a txid over 15 digits) or silently builds a wrong id/txid the bank then 404s or misroutes on.
+   * {@code Code.INVALID} names the field so the merchant's response says which value was bad.
+   */
+  private static String validateNossoNumero(String nossoNumero, int min, int max) {
+    if (nossoNumero == null || !DIGITS.matcher(nossoNumero).matches() || nossoNumero.length() < min || nossoNumero.length() > max) {
+      throw new ProviderException(ProviderException.Code.INVALID, 0, "nosso_numero",
+          "nosso_numero must be " + min + "-" + max + " digits: " + nossoNumero);
+    }
+    return nossoNumero;
+  }
+
   /** cash_management OpenAPI, path {id_boleto}: agência (4) + conta (7) + DAC (1) + carteira (3) + nosso número (8-16). */
-  static String baixaId(ItauCredentials c, String nossoNumero) { return c.beneficiaryId() + c.walletCode() + nossoNumero; }
+  static String baixaId(ItauCredentials c, String nossoNumero) {
+    return c.beneficiaryId() + c.walletCode() + validateNossoNumero(nossoNumero, 8, 16);
+  }
 
   /** Issue OpenAPI, dados_qrcode.txid: "BL" + agência (4) + conta (7) + carteira (3) + nosso número (15) — beneficiary id without its DAC. */
   static String pixTxid(ItauCredentials c, String nossoNumero) {
+    validateNossoNumero(nossoNumero, 1, 15);
     return "BL" + c.beneficiaryId().substring(0, 11) + c.walletCode() + "0".repeat(15 - nossoNumero.length()) + nossoNumero;
   }
 

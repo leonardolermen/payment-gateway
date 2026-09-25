@@ -115,4 +115,22 @@ class ItauBoletoProviderTest {
     // {31} could never match a 29-digit string, so this is a typo in the brief fixed to the formula both sources agree on.
     assertThat(provider().pixTxidFor(test(CREDS), "00000001")).isEqualTo("BL" + "15000005206" + "109" + "000000000000001").matches("^BL[0-9]{29}$");
   }
+
+  @Test void pixTxidRejectsANossoNumeroOver15Digits() {
+    assertThatThrownBy(() -> provider().pixTxidFor(test(CREDS), "12345678901234567"))
+        .isInstanceOfSatisfying(ProviderException.class, e -> {
+          assertThat(e.code()).isEqualTo(ProviderException.Code.INVALID);
+          assertThat(e.providerType()).isEqualTo("nosso_numero");
+        });
+    assertThat(server.findAll(anyRequestedFor(urlMatching(".*")))).isEmpty();
+  }
+
+  @Test void baixaIdRejectsANonDigitNossoNumero() {
+    assertThatThrownBy(() -> provider().cancel(test(CREDS), "0000000A"))
+        .isInstanceOfSatisfying(ProviderException.class, e -> {
+          assertThat(e.code()).isEqualTo(ProviderException.Code.INVALID);
+          assertThat(e.providerType()).isEqualTo("nosso_numero");
+        });
+    assertThat(server.findAll(anyRequestedFor(urlMatching(".*")))).isEmpty();
+  }
 }
