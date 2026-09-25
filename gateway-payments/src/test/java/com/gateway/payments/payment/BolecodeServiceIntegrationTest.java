@@ -7,8 +7,8 @@ import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.money.Money;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.provider.ProviderException;
-import com.gateway.kernel.provider.boleto.Address;
-import com.gateway.kernel.provider.boleto.Payer;
+import com.gateway.payments.payment.create.PayerData;
+import com.gateway.payments.payment.create.PayerFactory;
 import com.gateway.payments.jobs.JobType;
 import com.gateway.payments.jobs.persistence.JobRepository;
 import com.gateway.payments.payment.boleto.BoletoDates;
@@ -79,7 +79,7 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
 
   @Test
   void incompletePayerIsRefusedNamingTheField() {
-    Payer noZip = new Payer("Joao", "12345678901", new Address("Rua A", "Centro", "Sao Paulo", "SP", null));
+    PayerData noZip = new PayerData("Joao", "12345678901", new PayerData.AddressData("Rua A", "Centro", "Sao Paulo", "SP", null));
     assertThatThrownBy(() -> paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, noZip, null, null)))
         .isInstanceOfSatisfying(DomainException.class, e -> {
           assertThat(e.code()).isEqualTo("CUSTOMER_REQUIRED");
@@ -87,10 +87,10 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
         });
     assertThatThrownBy(() -> paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, null, null, null)))
         .isInstanceOfSatisfying(DomainException.class, e -> assertThat(e.getMessage()).contains("customer"));
-    Payer badDoc = new Payer("Joao", "123", new Address("Rua A", "Centro", "Sao Paulo", "SP", "01310100"));
+    PayerData badDoc = new PayerData("Joao", "123", new PayerData.AddressData("Rua A", "Centro", "Sao Paulo", "SP", "01310100"));
     assertThatThrownBy(() -> paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, badDoc, null, null)))
         .isInstanceOfSatisfying(DomainException.class, e -> assertThat(e.getMessage()).contains("customer.document"));
-    Payer badState = new Payer("Joao", "12345678901", new Address("Rua A", "Centro", "Sao Paulo", "SPX", "01310100"));
+    PayerData badState = new PayerData("Joao", "12345678901", new PayerData.AddressData("Rua A", "Centro", "Sao Paulo", "SPX", "01310100"));
     assertThatThrownBy(() -> paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, badState, null, null)))
         .isInstanceOfSatisfying(DomainException.class, e -> assertThat(e.getMessage()).contains("customer.address.state"));
     assertThat(boletos.callsFor(merchant, "00000001")).isEmpty();
@@ -226,8 +226,8 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
 
   @Test
   void aLowercaseStateIsNormalizedNotRefused() {
-    Payer lower = new Payer("Joao", "12345678901", new Address("Rua A", "Centro", "Sao Paulo", "sp", "01310-100"));
-    assertThat(PaymentService.validatePayer(lower).address().state()).isEqualTo("SP");
+    PayerData lower = new PayerData("Joao", "12345678901", new PayerData.AddressData("Rua A", "Centro", "Sao Paulo", "sp", "01310-100"));
+    assertThat(PayerFactory.from(lower).address().state().value()).isEqualTo("SP");
     Payment p = paymentService.createBolecode(new PaymentService.CreateBolecode(merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, lower, null, null));
     assertThat(p.status()).isEqualTo(PaymentStatus.PENDING);
   }

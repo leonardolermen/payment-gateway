@@ -5,8 +5,7 @@ import com.gateway.payments.payment.PaymentService;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.money.Money;
 import com.gateway.kernel.provider.ProviderEnvironment;
-import com.gateway.kernel.provider.boleto.Address;
-import com.gateway.kernel.provider.boleto.Payer;
+import com.gateway.payments.payment.create.PayerData;
 import com.gateway.payments.TestApp;
 import com.gateway.payments.payment.Payment;
 import java.util.List;
@@ -49,8 +48,9 @@ public abstract class ServiceIntegrationTestBase {
         new PaymentService.CreateCharge(merchant, ProviderEnvironment.TEST, Money.brl(cents), "order-1", "a test charge", "123.456.789-09", null));
   }
 
-  protected static Payer payer() {
-    return new Payer("Joao da Silva", "12345678901", new Address("Rua das Flores 10", "Centro", "Sao Paulo", "SP", "01310100"));
+  protected static PayerData payer() {
+    return new PayerData("Joao da Silva", "12345678901",
+        new PayerData.AddressData("Rua das Flores 10", "Centro", "Sao Paulo", "SP", "01310100"));
   }
 
   protected Payment newBolecode(long cents) {

@@ -7,6 +7,12 @@ import com.gateway.kernel.money.Money;
 import com.gateway.kernel.provider.ProviderCredentials;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.provider.ProviderException;
+import com.gateway.kernel.address.Uf;
+import com.gateway.kernel.address.ZipCode;
+import com.gateway.kernel.party.Address;
+import com.gateway.kernel.party.Document;
+import com.gateway.kernel.party.Payer;
+import com.gateway.kernel.party.PersonName;
 import com.gateway.kernel.provider.boleto.*;
 import com.gateway.providers.itau.auth.ItauEndpoints;
 import com.gateway.providers.itau.auth.ItauTokenClient;
@@ -54,7 +60,7 @@ class ItauBoletoProviderTest {
 
   static BoletoIssueRequest request() {
     return new BoletoIssueRequest("00000001", Money.brl(123456), LocalDate.of(2026, 12, 31), LocalDate.of(2027, 1, 30),
-        new Payer("João da Silva", "12345678901", new Address("Rua das Flores", "Centro", "São Paulo", "SP", "01310100")), "Pedido 42");
+        new Payer(PersonName.of("João da Silva"), Document.of("12345678901"), new Address("Rua das Flores", "Centro", "São Paulo", Uf.of("SP"), ZipCode.of("01310100"))), "Pedido 42");
   }
 
   @Test void idIsItau() { assertThat(provider().id()).isEqualTo("ITAU"); }

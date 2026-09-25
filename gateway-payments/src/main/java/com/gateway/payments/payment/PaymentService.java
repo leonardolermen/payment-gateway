@@ -10,12 +10,13 @@ import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.money.Money;
-import com.gateway.kernel.provider.boleto.Address;
 import com.gateway.kernel.provider.boleto.BoletoIssueRequest;
 import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
 import com.gateway.kernel.provider.boleto.BoletoStatus;
 import com.gateway.kernel.provider.boleto.IssuedBoleto;
-import com.gateway.kernel.provider.boleto.Payer;
+import com.gateway.kernel.party.Payer;
+import com.gateway.payments.payment.create.PayerData;
+import com.gateway.payments.payment.create.PayerFactory;
 import com.gateway.kernel.provider.pix.Charge;
 import com.gateway.kernel.provider.pix.PixIssueRequest;
 import com.gateway.kernel.provider.pix.PixMethodProvider;
@@ -69,34 +70,8 @@ public class PaymentService {
       Integer expiresInSeconds) {}
 
   public record CreateBolecode(
-      MerchantId merchantId, ProviderEnvironment env, Money amount, String reference, String description, Payer payer, LocalDate dueDate, Integer paymentLimitDays) {}
-
-  private static final Pattern DIGITS_11_OR_14 = Pattern.compile("\\d{11}|\\d{14}");
-  private static final Pattern UF = Pattern.compile("[A-Z]{2}");
-  private static final Pattern CEP = Pattern.compile("\\d{8}");
-  private static final Pattern HAS_LETTER = Pattern.compile(".*\\p{L}.*");
-
-  /**
-   * A registered boleto needs a complete payer (issue OpenAPI: pessoa and endereco required, every
-   * address line required). Checked here, not at the edge: the 422 names the field in the API's own
-   * spelling and no row exists yet. Returns the payer with digits-only document and zip.
-   */
-  static Payer validatePayer(Payer payer) {
-    if (payer == null) throw new DomainException("CUSTOMER_REQUIRED", "customer is required for a BOLECODE payment");
-    if (payer.name() == null || !HAS_LETTER.matcher(payer.name()).matches()) throw new DomainException("CUSTOMER_REQUIRED", "customer.name is required");
-    String document = payer.document() == null ? "" : payer.document().replaceAll("\\D", "");
-    if (!DIGITS_11_OR_14.matcher(document).matches()) throw new DomainException("CUSTOMER_REQUIRED", "customer.document must be a CPF (11 digits) or CNPJ (14 digits)");
-    Address a = payer.address();
-    if (a == null) throw new DomainException("CUSTOMER_REQUIRED", "customer.address is required");
-    if (a.street() == null || a.street().isBlank()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.street is required");
-    if (a.district() == null || a.district().isBlank()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.district is required");
-    if (a.city() == null || a.city().isBlank()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.city is required");
-    String state = a.state() == null ? null : a.state().trim().toUpperCase(java.util.Locale.ROOT);
-    if (state == null || !UF.matcher(state).matches()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.state must be a two-letter UF");
-    String zip = a.zip() == null ? "" : a.zip().replaceAll("\\D", "");
-    if (!CEP.matcher(zip).matches()) throw new DomainException("CUSTOMER_REQUIRED", "customer.address.zip must be 8 digits");
-    return new Payer(payer.name(), document, new Address(a.street(), a.district(), a.city(), state, zip));
-  }
+      MerchantId merchantId, ProviderEnvironment env, Money amount, String reference, String description,
+      PayerData payer, LocalDate dueDate, Integer paymentLimitDays) {}
 
   private final PaymentRepository payments;
   private final ReconciliationDivergenceRepository divergences;
@@ -226,7 +201,7 @@ public class PaymentService {
       }
       throw e;
     }
-    Payer payer = validatePayer(cmd.payer());
+    Payer payer = PayerFactory.from(cmd.payer());
     LocalDate today = BoletoDates.today(clock);
     LocalDate due = cmd.dueDate() == null ? today.plusDays(props.boletoDefaultDueInDays()) : cmd.dueDate();
     if (due.isBefore(today)) throw new DomainException("INVALID_DUE_DATE", "due_date must be today or later (America/Sao_Paulo)");
@@ -241,7 +216,7 @@ public class PaymentService {
           String nossoNumero = boletoNumbers.next(cmd.merchantId());
           BoletoDetails details = new BoletoDetails(nossoNumero, null, null, null, due, limit, null);
           Payment p = Payment.createBolecode(cmd.merchantId(), cmd.env(), PROVIDER, cmd.amount(), cmd.reference(), cmd.description(),
-              hashDocument(payer.document()), details, BoletoDates.endOfDay(limit), clock);
+              hashDocument(payer.document().digits()), details, BoletoDates.endOfDay(limit), clock);
           return payments.save(p, List.of(p.createdEvent()));
         });
     String nossoNumero = payment.boleto().nossoNumero();

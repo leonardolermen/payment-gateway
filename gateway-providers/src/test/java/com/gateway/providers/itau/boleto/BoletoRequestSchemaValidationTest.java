@@ -3,9 +3,13 @@ package com.gateway.providers.itau.boleto;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.gateway.kernel.money.Money;
-import com.gateway.kernel.provider.boleto.Address;
+import com.gateway.kernel.address.Uf;
+import com.gateway.kernel.address.ZipCode;
+import com.gateway.kernel.party.Address;
+import com.gateway.kernel.party.Document;
+import com.gateway.kernel.party.PersonName;
 import com.gateway.kernel.provider.boleto.BoletoIssueRequest;
-import com.gateway.kernel.provider.boleto.Payer;
+import com.gateway.kernel.party.Payer;
 import com.gateway.providers.itau.auth.ItauCredentials;
 import com.gateway.providers.itau.boleto.dto.BoletoPixRequest;
 import com.networknt.schema.JsonSchema;
@@ -44,7 +48,7 @@ class BoletoRequestSchemaValidationTest {
 
   static BoletoIssueRequest request(String document) {
     return new BoletoIssueRequest("00000042", Money.brl(123456), LocalDate.of(2026, 12, 31), LocalDate.of(2027, 1, 30),
-        new Payer("João da Silva", document, new Address("Rua das Flores, 10", "Centro", "São Paulo", "SP", "01310100")), "Pedido 42");
+        new Payer(PersonName.of("João da Silva"), Document.of(document), new Address("Rua das Flores, 10", "Centro", "São Paulo", Uf.of("SP"), ZipCode.of("01310100"))), "Pedido 42");
   }
 
   @Test void issueBodyWithCpfIsValid() throws Exception {
@@ -57,7 +61,7 @@ class BoletoRequestSchemaValidationTest {
 
   @Test void sanitizedTextsStillValidate() throws Exception {
     BoletoIssueRequest dirty = new BoletoIssueRequest("00000042", Money.brl(100), LocalDate.of(2026, 12, 31), null,
-        new Payer("Ana & Cia (Ltda)", "12345678901", new Address("Av. Paulista, 1000 / 10º", "Bela Vista <x>", "São Paulo", "SP", "01310100")), "http://x alert #1");
+        new Payer(PersonName.of("Ana & Cia (Ltda)"), Document.of("12345678901"), new Address("Av. Paulista, 1000 / 10º", "Bela Vista <x>", "São Paulo", Uf.of("SP"), ZipCode.of("01310100"))), "http://x alert #1");
     assertThat(validate(BoletoPixRequest.forIssue(dirty, creds()))).isEmpty();
   }
 

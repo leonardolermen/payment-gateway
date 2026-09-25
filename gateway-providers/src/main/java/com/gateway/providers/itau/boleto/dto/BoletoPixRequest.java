@@ -58,7 +58,7 @@ public record BoletoPixRequest(
       @JsonProperty("texto_uso_beneficiario") String textoUsoBeneficiario) {}
 
   public static BoletoPixRequest forIssue(BoletoIssueRequest r, ItauCredentials c) {
-    String digits = r.payer().document().replaceAll("\\D", "");
+    String digits = r.payer().document().digits();
     TipoPessoa tipo = digits.length() == 14 ? new TipoPessoa("J", null, digits) : new TipoPessoa("F", digits, null);
     var address = r.payer().address();
     String amount = BoletoAmounts.toItau(r.amount());
@@ -72,10 +72,10 @@ public record BoletoPixRequest(
             c.speciesCode(),
             amount,
             new Pagador(
-                new Pessoa(BoletoText.name(r.payer().name(), 50), tipo),
+                new Pessoa(BoletoText.name(r.payer().name().value(), 50), tipo),
                 new Endereco(
                     BoletoText.text(address.street(), 45), BoletoText.text(address.district(), 15), BoletoText.text(address.city(), 20),
-                    address.state().toUpperCase(), address.zip().replaceAll("\\D", ""))),
+                    address.state().value(), address.zip().digits())),
             List.of(new DadoIndividual(
                 r.nossoNumero(), r.dueDate().toString(), amount,
                 r.paymentLimitDate() == null ? null : r.paymentLimitDate().toString(),

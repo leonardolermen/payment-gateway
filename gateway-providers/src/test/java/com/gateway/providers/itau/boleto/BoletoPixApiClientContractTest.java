@@ -5,9 +5,13 @@ import static org.assertj.core.api.Assertions.*;
 
 import com.gateway.kernel.money.Money;
 import com.gateway.kernel.provider.ProviderException;
-import com.gateway.kernel.provider.boleto.Address;
+import com.gateway.kernel.address.Uf;
+import com.gateway.kernel.address.ZipCode;
+import com.gateway.kernel.party.Address;
+import com.gateway.kernel.party.Document;
+import com.gateway.kernel.party.PersonName;
 import com.gateway.kernel.provider.boleto.BoletoIssueRequest;
-import com.gateway.kernel.provider.boleto.Payer;
+import com.gateway.kernel.party.Payer;
 import com.gateway.providers.itau.auth.ItauCredentials;
 import com.gateway.providers.itau.auth.ItauEndpoints;
 import com.gateway.providers.itau.auth.ItauTokenClient;
@@ -56,7 +60,7 @@ class BoletoPixApiClientContractTest {
   /** The bank's minimal example, built from our request: same payer, same number, same amount and dates. */
   static BoletoPixRequest exampleRequest() {
     return BoletoPixRequest.forIssue(new BoletoIssueRequest("12345678", Money.brl(123456), LocalDate.of(2026, 12, 31), null,
-        new Payer("João da Silva", "12345678901", new Address("Rua das Flores", "Centro", "São Paulo", "SP", "01310100")), null), creds());
+        new Payer(PersonName.of("João da Silva"), Document.of("12345678901"), new Address("Rua das Flores", "Centro", "São Paulo", Uf.of("SP"), ZipCode.of("01310100"))), null), creds());
   }
 
   @Test void postSendsHeadersAndTheBanksMinimalBodyAndParses200() {
@@ -83,7 +87,7 @@ class BoletoPixApiClientContractTest {
   @Test void sanitizedTextsAreWhatGoesOnTheWire() {
     server.stubFor(post("/v1/boletos-pix").willReturn(okJson(fixture("post_boletos_pix_200.json"))));
     BoletoPixRequest dirty = BoletoPixRequest.forIssue(new BoletoIssueRequest("12345678", Money.brl(100), LocalDate.of(2026, 12, 31), LocalDate.of(2027, 1, 30),
-        new Payer("Ana & Cia (Ltda)", "12345678000190", new Address("Av. Paulista, 1000 / 10", "Bela Vista <x>", "São Paulo", "SP", "01310100")), "javascript Pedido #42"), creds());
+        new Payer(PersonName.of("Ana & Cia (Ltda)"), Document.of("12345678000190"), new Address("Av. Paulista, 1000 / 10", "Bela Vista <x>", "São Paulo", Uf.of("SP"), ZipCode.of("01310100"))), "javascript Pedido #42"), creds());
     client().post(creds(), dirty);
     server.verify(postRequestedFor(urlEqualTo("/v1/boletos-pix"))
         .withRequestBody(matchingJsonPath("$.dado_boleto.pagador.pessoa.nome_pessoa", equalTo("Ana Cia Ltda")))
@@ -143,7 +147,7 @@ class BoletoPixApiClientContractTest {
     server.stubFor(post("/v1/boletos-pix").willReturn(okJson(fixture("post_boletos_pix_200.json"))));
     ItauCredentials noKey = ItauCredentials.parse("{\"client_id\":\"c\",\"client_secret\":\"s\",\"pix_key\":\"k\",\"beneficiary_id\":\"150000052061\"}".getBytes());
     client().post(noKey, BoletoPixRequest.forIssue(new BoletoIssueRequest("12345678", Money.brl(100), LocalDate.of(2026, 12, 31), null,
-        new Payer("João da Silva", "12345678901", new Address("Rua das Flores", "Centro", "São Paulo", "SP", "01310100")), null), noKey));
+        new Payer(PersonName.of("João da Silva"), Document.of("12345678901"), new Address("Rua das Flores", "Centro", "São Paulo", Uf.of("SP"), ZipCode.of("01310100"))), null), noKey));
     server.verify(postRequestedFor(urlEqualTo("/v1/boletos-pix")).withoutHeader("x-itau-apikey").withHeader("Authorization", equalTo("Bearer tok")));
   }
 }

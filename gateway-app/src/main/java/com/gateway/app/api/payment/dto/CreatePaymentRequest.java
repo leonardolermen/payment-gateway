@@ -1,6 +1,6 @@
 package com.gateway.app.api.payment.dto;
 
-import com.gateway.kernel.provider.boleto.Payer;
+import com.gateway.payments.payment.create.PayerData;
 import java.time.LocalDate;
 
 /**
@@ -34,11 +34,23 @@ public record CreatePaymentRequest(
 
   public boolean isBolecode() { return "BOLECODE".equals(method); }
 
-  /** The kernel's shape; null when there is no customer at all (the service answers CUSTOMER_REQUIRED). */
-  public Payer payer() {
-    if (customer == null) return null;
-    Address a = customer.address();
-    return new Payer(customer.name(), customer.document(),
-        a == null ? null : new com.gateway.kernel.provider.boleto.Address(a.street(), a.district(), a.city(), a.state(), a.zip()));
+  /**
+   * Copied, not validated: the domain owns the 422 that names the field, and it names it after the
+   * spelling the merchant sent. Null when there is no customer at all.
+   */
+  public PayerData payer() {
+    if (customer == null) {
+      return null;
+    }
+
+    Address address = customer.address();
+
+    return new PayerData(
+        customer.name(),
+        customer.document(),
+        address == null
+            ? null
+            : new PayerData.AddressData(
+                address.street(), address.district(), address.city(), address.state(), address.zip()));
   }
 }
