@@ -9,10 +9,13 @@ import com.gateway.payments.TestApp;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentEvent;
+import com.gateway.payments.payment.PaymentMethod;
 import com.gateway.payments.payment.PaymentStatus;
+import com.gateway.payments.payment.boleto.BoletoDetails;
 import com.gateway.payments.payment.pix.PixDetails;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Set;
@@ -201,5 +204,40 @@ class PaymentRepositoryIntegrationTest {
     List<PaymentEvent> events = repository.events(p.id());
     assertThat(events).extracting(PaymentEvent::sequence).containsExactly(1L, 2L, 3L);
     assertThat(events).extracting(PaymentEvent::type).containsExactly("created", "pending", "completed");
+  }
+
+  @Test
+  void aBolecodeRoundTripsWithBothBlocksAndIsFoundByTxid() {
+    BoletoDetails b = new BoletoDetails("00000007", null, null, null, LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 31), null);
+    Payment p = Payment.createBolecode(MerchantId.next(), ProviderEnvironment.TEST, "ITAU", Money.brl(500), "o-7", null, null, b, Instant.parse("2026-11-01T02:59:59Z"), clock);
+    tx().executeWithoutResult(s -> repository.save(p, List.of(p.createdEvent())));
+    tx().executeWithoutResult(s -> {
+      Payment loaded = repository.findById(p.id()).orElseThrow();
+      PaymentEvent ev = loaded.markPendingBolecode(new PixDetails("BL15000005206109000000000000007", "emv", null, null),
+          loaded.boleto().withIssued("uuid-7", "7".repeat(47), "7".repeat(44), null), Instant.parse("2026-11-01T02:59:59Z"), EventSource.API);
+      repository.save(loaded, List.of(ev));
+    });
+
+    Payment back = repository.findById(p.id()).orElseThrow();
+    assertThat(back.method()).isEqualTo(PaymentMethod.BOLECODE);
+    assertThat(back.boleto().nossoNumero()).isEqualTo("00000007");
+    assertThat(back.boleto().linhaDigitavel()).isEqualTo("7".repeat(47));
+    assertThat(back.boleto().paymentLimitDate()).isEqualTo(LocalDate.of(2026, 10, 31));
+    assertThat(back.pix().txid()).isEqualTo("BL15000005206109000000000000007");
+    assertThat(jdbc.queryForObject("SELECT method FROM payments.payments WHERE id = ?", String.class, p.id())).isEqualTo("BOLECODE");
+    assertThat(repository.findByMerchantAndTxid(p.merchantId(), "ITAU", "BL15000005206109000000000000007")).isPresent();
+    assertThat(repository.findByMerchantAndTxid(MerchantId.next(), "ITAU", "BL15000005206109000000000000007")).isEmpty();
+  }
+
+  @Test
+  void aPixPaymentStillReadsBackWithANullBoletoAndItsNestedTxid() {
+    Payment p = fresh();
+    tx().executeWithoutResult(s -> repository.save(p, List.of(p.createdEvent())));
+    Payment back = repository.findById(p.id()).orElseThrow();
+    assertThat(back.method()).isEqualTo(PaymentMethod.PIX);
+    assertThat(back.boleto()).isNull();
+    assertThat(back.pix().txid()).isEqualTo(p.id());
+    assertThat(jdbc.queryForObject("SELECT details->'pix'->>'txid' FROM payments.payments WHERE id = ?", String.class, p.id())).isEqualTo(p.id());
+    assertThat(repository.findByMerchantAndTxid(p.merchantId(), "ITAU", p.id())).isPresent();
   }
 }

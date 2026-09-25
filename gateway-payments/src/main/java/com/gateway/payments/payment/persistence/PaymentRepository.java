@@ -25,6 +25,12 @@ public interface PaymentRepository {
 
   List<Payment> listByMerchant(MerchantId merchantId, int limit, String cursorId);
 
+  /**
+   * By the bank's txid, scoped to the merchant. For Pix the txid is the payment id; for a Bolecode it
+   * is the bank's {@code BL…} — the webhook and the reconciliation must resolve both the same way.
+   */
+  Optional<Payment> findByMerchantAndTxid(MerchantId merchantId, String provider, String txid);
+
   /** Newest first, capped at {@code limit}. */
   List<Payment> listByMerchantAndReference(MerchantId merchantId, String reference, int limit);
 

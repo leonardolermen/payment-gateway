@@ -4,6 +4,7 @@ import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.ids.Ulid;
 import com.gateway.kernel.money.Money;
 import com.gateway.payments.outbox.OutboxMessage;
+import com.gateway.payments.payment.boleto.BoletoDetails;
 import com.gateway.payments.payment.pix.PixDetails;
 import com.gateway.payments.refund.Refund;
 import com.gateway.payments.outbox.persistence.OutboxRepository;
@@ -54,7 +55,7 @@ public class PaymentEvents {
     m.put("id", p.id());
     // Same spelling as the REST API (PaymentResponse): one resource, one vocabulary, whichever way it arrives.
     m.put("status", p.status().name());
-    m.put("method", "PIX");
+    m.put("method", p.method().name());
     m.put("provider", p.provider());
     m.put("environment", p.environment().name());
     m.put("amount", p.amount().cents());
@@ -68,6 +69,19 @@ public class PaymentEvents {
     pixJson.put("location", pix == null ? null : pix.location());
     pixJson.put("end_to_end_id", pix == null ? null : pix.endToEndId());
     m.put("pix", pixJson);
+    // Same keys as PaymentResponse.Boleto (gateway-app); null for a Pix payment so the key set is stable.
+    BoletoDetails boleto = p.boleto();
+    if (boleto == null) {
+      m.put("boleto", null);
+    } else {
+      Map<String, Object> boletoJson = new LinkedHashMap<>();
+      boletoJson.put("linha_digitavel", boleto.linhaDigitavel());
+      boletoJson.put("codigo_barras", boleto.codigoBarras());
+      boletoJson.put("due_date", boleto.dueDate() == null ? null : boleto.dueDate().toString());
+      boletoJson.put("payment_limit_date", boleto.paymentLimitDate() == null ? null : boleto.paymentLimitDate().toString());
+      boletoJson.put("paid_via", boleto.paidVia() == null ? null : boleto.paidVia().name());
+      m.put("boleto", boletoJson);
+    }
     m.put("expires_at", iso(p.expiresAt()));
     m.put("paid_at", iso(p.paidAt()));
     m.put("paid_amount", cents(p.paidAmount()));

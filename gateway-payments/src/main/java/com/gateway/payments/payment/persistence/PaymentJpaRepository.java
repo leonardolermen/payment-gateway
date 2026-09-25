@@ -36,6 +36,13 @@ interface PaymentJpaRepository extends JpaRepository<PaymentEntity, String> {
   java.util.List<PaymentEntity> findByMerchant(@Param("merchantId") String merchantId, @Param("cursorId") String cursorId, Limit limit);
 
   /**
+   * Native: the txid lives inside jsonb and the unique index (V203) is on this exact expression.
+   * Provider first because the index is (provider, txid); the merchant is checked by the caller.
+   */
+  @Query(value = "SELECT * FROM payments.payments WHERE provider = :provider AND details->'pix'->>'txid' = :txid", nativeQuery = true)
+  Optional<PaymentEntity> findByProviderAndTxid(@Param("provider") String provider, @Param("txid") String txid);
+
+  /**
    * The optimistic-lock write itself: {@code WHERE version = :expectedVersion}, {@code expected}
    * being the version the aggregate was loaded at (see {@code PaymentEntity}'s comment on why that
    * column is not {@code @Version}-managed). 0 rows affected means someone else saved first; the

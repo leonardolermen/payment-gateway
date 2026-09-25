@@ -22,8 +22,8 @@ class PaymentEntity {
   @Column(name = "reference", length = 140) String reference;
   @Column(name = "description", length = 140) String description;
   @Column(name = "customer_document_hash", length = 64) @JdbcTypeCode(SqlTypes.CHAR) String customerDocumentHash;
-  // details is method-specific JSON (pix{txid,pixCopiaECola,location,endToEndId}); the domain has no
-  // Jackson dependency (see Payment's javadoc), so the repository builds/parses this by hand.
+  // details is {"pix":{txid,pixCopiaECola,location,endToEndId},"boleto":{nossoNumero,...}|null} (V203); the
+  // domain has no Jackson dependency (see Payment's javadoc), so PaymentDetailsJson builds/parses this by hand.
   @Column(name = "details", nullable = false) @JdbcTypeCode(SqlTypes.JSON) String details;
   @Column(name = "expires_at") Instant expiresAt;
   @Column(name = "paid_at") Instant paidAt;
