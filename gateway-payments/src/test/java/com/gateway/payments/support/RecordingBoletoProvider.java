@@ -73,10 +73,13 @@ public class RecordingBoletoProvider implements BoletoProvider {
     failFind.put(InMemoryCredentialLookup.beneficiaryOf(merchant) + ":" + nossoNumero, e);
   }
 
-  public void markPaid(String nossoNumero, Money amount, Instant at) {
+  public void markPaid(String nossoNumero, Money amount, Instant at) { markPaid(nossoNumero, amount, at, "01"); }
+
+  /** {@code channel} is what the query's meio de pagamento carries; null models a bank that omits it. */
+  public void markPaid(String nossoNumero, Money amount, Instant at, String channel) {
     String k = key(nossoNumero);
     BoletoStatus s = boletos.get(k);
-    boletos.put(k, new BoletoStatus(BoletoSituation.PAID, amount, at, "01", s.idBoletoIndividual(), s.linhaDigitavel(), s.codigoBarras(), s.paymentLimitDate(), s.pixCopiaECola()));
+    boletos.put(k, new BoletoStatus(BoletoSituation.PAID, amount, at, channel, s.idBoletoIndividual(), s.linhaDigitavel(), s.codigoBarras(), s.paymentLimitDate(), s.pixCopiaECola()));
   }
 
   public void setSituation(String nossoNumero, BoletoSituation situation) {

@@ -121,22 +121,50 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
     assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.PENDING);
   }
 
-  @Test
-  void completedViaPixThenPaidByBoletoIsADoublePayment() {
+  private Payment completedViaPix(String e2e) {
     Payment p = newBolecode(12990);
-    bank.markPaid(p.pix().txid(), "E2E-QR", Money.brl(12990));
+    bank.markPaid(p.pix().txid(), e2e, Money.brl(12990));
     assertThat(paymentService.settle(merchant, p.id(), bank.findCharge(null, p.pix().txid()).orElseThrow().firstPix().orElseThrow(), EventSource.PROVIDER_WEBHOOK))
         .isEqualTo(PaymentService.Settlement.COMPLETED);
     assertThat(payments.findById(p.id()).orElseThrow().boleto().paidVia()).isEqualTo(PaidVia.PIX);
+    return p;
+  }
 
-    boletos.markPaid(nn(p), Money.brl(12990), clock.instant());
-    assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isTrue();
-
+  private void assertStillCompletedViaPix(Payment p) {
     Payment still = payments.findById(p.id()).orElseThrow();
     assertThat(still.status()).isEqualTo(PaymentStatus.COMPLETED);
     assertThat(still.boleto().paidVia()).isEqualTo(PaidVia.PIX);
-    assertThat(divergences(p.id())).extracting(d -> d.get("provider_status")).containsExactly("DOUBLE_PAYMENT");
     assertThat(outboxTypes(p.id())).containsExactly("payment.pending", "payment.completed");
+  }
+
+  @Test
+  void aBoletoSettledByItsOwnPixIsIgnored() {
+    // The Bolecode QR settles the boleto at the bank too: every Pix-paid Bolecode looks "paid" on the next poll.
+    Payment p = completedViaPix("E2E-QR");
+    boletos.markPaid(nn(p), Money.brl(12990), clock.instant(), "Pagamento via PIX");
+    assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isTrue();
+    assertStillCompletedViaPix(p);
+    assertThat(divergences(p.id())).isEmpty();
+    assertThat(payments.events(p.id()).getLast().type()).isEqualTo("ignored");
+  }
+
+  @Test
+  void completedViaPixThenPaidThroughAnotherChannelIsADoublePayment() {
+    Payment p = completedViaPix("E2E-QR3");
+    boletos.markPaid(nn(p), Money.brl(12990), clock.instant(), "Guichê de caixa");
+    assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isTrue();
+    assertStillCompletedViaPix(p);
+    assertThat(divergences(p.id())).extracting(d -> d.get("provider_status")).containsExactly("DOUBLE_PAYMENT");
+  }
+
+  @Test
+  void completedViaPixThenPaidWithoutAChannelIsIgnored() {
+    Payment p = completedViaPix("E2E-QR4");
+    boletos.markPaid(nn(p), Money.brl(12990), clock.instant(), null);
+    assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isTrue();
+    assertStillCompletedViaPix(p);
+    assertThat(divergences(p.id())).isEmpty();
+    assertThat(payments.events(p.id()).getLast().type()).isEqualTo("ignored");
   }
 
   @Test

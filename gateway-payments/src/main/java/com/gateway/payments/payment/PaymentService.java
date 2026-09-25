@@ -486,7 +486,8 @@ public class PaymentService {
    * (poll, expiration's pre-check, reconciliation, a cancel that lost to the payer). The same rules
    * as {@link #settle} for Pix: PENDING or EXPIRED completes, with the bank's amount and date and
    * {@code paidVia = BOLETO}; a different amount is a divergence, never a completion; a payment
-   * already COMPLETED via Pix means the payer paid twice (DOUBLE_PAYMENT) — a human decides.
+   * already COMPLETED via Pix (or with no paidVia) is DOUBLE_PAYMENT only when the bank names a
+   * non-Pix channel, since the Bolecode QR itself settles the boleto — a human decides.
    */
   public Settlement settleBoleto(MerchantId merchantId, String paymentId, BoletoStatus status, EventSource by) {
     return tx.execute(s -> {
@@ -516,8 +517,21 @@ public class PaymentService {
           payments.save(p, List.of(p.recordIgnored("boleto " + nn + " already settled", by).orElseThrow()));
           return Settlement.IGNORED;
         }
-        payments.save(p, List.of(p.recordIgnored("boleto " + nn + " paid at the bank on a payment completed via PIX", by).orElseThrow()));
-        openDivergence(p, "DOUBLE_PAYMENT", "paid via PIX (e2eid " + (p.pix() == null ? null : p.pix().endToEndId()) + ") and boleto " + nn + " paid " + paidCents + " cents");
+        // Paying the QR of a Bolecode settles the boleto at the bank too, so "paid" after a Pix
+        // completion is normally the same money. Only a channel that is not Pix is a second payment.
+        // The channel codes are unconfirmed until the sandbox smoke; a missing one is logged, not flagged.
+        String channel = status.paidChannel();
+        if (channel == null || channel.isBlank()) {
+          log.warn("boleto {} of payment {} paid at the bank without a payment channel; assumed its own pix", nn, paymentId);
+          payments.save(p, List.of(p.recordIgnored("boleto " + nn + " paid at the bank, no channel, on a payment completed via PIX", by).orElseThrow()));
+          return Settlement.IGNORED;
+        }
+        if (isPixChannel(channel)) {
+          payments.save(p, List.of(p.recordIgnored("boleto " + nn + " settled by its own pix (" + channel + ")", by).orElseThrow()));
+          return Settlement.IGNORED;
+        }
+        payments.save(p, List.of(p.recordIgnored("boleto " + nn + " paid at the bank via " + channel + " on a payment completed via PIX", by).orElseThrow()));
+        openDivergence(p, "DOUBLE_PAYMENT", "paid via PIX (e2eid " + (p.pix() == null ? null : p.pix().endToEndId()) + ") and boleto " + nn + " paid " + paidCents + " cents via " + channel);
         return Settlement.IGNORED;
       }
       if (p.status().terminal()) {
@@ -528,6 +542,11 @@ public class PaymentService {
       }
       throw new IllegalStateException("boleto settlement for payment " + paymentId + " still in " + p.status());
     });
+  }
+
+  private static boolean isPixChannel(String channel) {
+    String plain = java.text.Normalizer.normalize(channel, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "").toLowerCase(java.util.Locale.ROOT);
+    return plain.contains("pix");
   }
 
   /**
