@@ -28,4 +28,6 @@ class BoletoFixturesFromOpenApiTest {
 
   @Test void query200() throws Exception { assertThat(fixture("get_boletos_200.json")).isEqualTo(example("query", "/components/examples/query_200_boletos_get_response/value")); }
   @Test void query404() throws Exception { assertThat(fixture("get_boletos_404.json")).isEqualTo(example("query", "/components/responses/404/content/application~1json/examples/404/value")); }
+
+  @Test void baixa200() throws Exception { assertThat(fixture("patch_baixa_200.json")).isEqualTo(example("instruction", "/components/examples/200_instrucao/value/value")); }
 }
