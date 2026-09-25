@@ -21,6 +21,7 @@ import com.gateway.kernel.provider.ProviderException;
 import com.gateway.payments.jobs.Job;
 import com.gateway.payments.payment.boleto.BoletoDates;
 import com.gateway.payments.payment.boleto.BoletoDetails;
+import com.gateway.payments.payment.boleto.PaidVia;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepository;
 import com.gateway.payments.payment.pix.PixDetails;
 import com.gateway.payments.jobs.persistence.JobRepository;
@@ -34,6 +35,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.HexFormat;
 import java.util.List;
@@ -477,6 +479,55 @@ public class PaymentService {
           "webhook said e2eid " + hinted.endToEndId() + " paid " + hinted.amount().cents() + " cents; bank says " + bankSays);
     });
     return Settlement.IGNORED;
+  }
+
+  /**
+   * The bank's boleto query says "paid" for {@code paymentId}, from whichever path saw it first
+   * (poll, expiration's pre-check, reconciliation, a cancel that lost to the payer). The same rules
+   * as {@link #settle} for Pix: PENDING or EXPIRED completes, with the bank's amount and date and
+   * {@code paidVia = BOLETO}; a different amount is a divergence, never a completion; a payment
+   * already COMPLETED via Pix means the payer paid twice (DOUBLE_PAYMENT) — a human decides.
+   */
+  public Settlement settleBoleto(MerchantId merchantId, String paymentId, BoletoStatus status, EventSource by) {
+    return tx.execute(s -> {
+      Optional<Payment> found = payments.findByMerchantAndId(merchantId, paymentId);
+      if (found.isEmpty()) {
+        return Settlement.UNKNOWN_PAYMENT;
+      }
+      Payment p = found.get();
+      if (p.method() != PaymentMethod.BOLECODE || p.boleto() == null) {
+        throw new IllegalStateException("settleBoleto on a " + p.method() + " payment " + paymentId);
+      }
+      String nn = p.boleto().nossoNumero();
+      long paidCents = status.paidAmount() == null ? -1 : status.paidAmount().cents();
+      if (p.status() == PaymentStatus.PENDING || p.status() == PaymentStatus.EXPIRED) {
+        if (paidCents != p.amount().cents()) {
+          payments.save(p, List.of(p.recordIgnored("boleto " + nn + " paid " + paidCents + " cents, charge is " + p.amount().cents(), by).orElseThrow()));
+          openDivergence(p, "AMOUNT_MISMATCH", "boleto " + nn + " paid " + paidCents + " cents at the bank, charge is " + p.amount().cents());
+          return Settlement.IGNORED;
+        }
+        Instant paidAt = status.paidAt() == null ? clock.instant() : status.paidAt();
+        Payment saved = payments.save(p, List.of(p.markCompletedByBoleto(status.paidAmount(), paidAt, status.paidChannel(), by)));
+        events.emit(saved.merchantId(), "payment.completed", saved);
+        return Settlement.COMPLETED;
+      }
+      if (p.status() == PaymentStatus.COMPLETED) {
+        if (p.boleto().paidVia() == PaidVia.BOLETO) {
+          payments.save(p, List.of(p.recordIgnored("boleto " + nn + " already settled", by).orElseThrow()));
+          return Settlement.IGNORED;
+        }
+        payments.save(p, List.of(p.recordIgnored("boleto " + nn + " paid at the bank on a payment completed via PIX", by).orElseThrow()));
+        openDivergence(p, "DOUBLE_PAYMENT", "paid via PIX (e2eid " + (p.pix() == null ? null : p.pix().endToEndId()) + ") and boleto " + nn + " paid " + paidCents + " cents");
+        return Settlement.IGNORED;
+      }
+      if (p.status().terminal()) {
+        // Money arrived for a charge the merchant will never hear about again (FAILED/CANCELED).
+        payments.save(p, List.of(p.recordIgnored("boleto " + nn + " paid at the bank while " + p.status(), by).orElseThrow()));
+        openDivergence(p, "BOLETO_PAID", "boleto " + nn + " paid " + paidCents + " cents at the bank while " + p.status());
+        return Settlement.IGNORED;
+      }
+      throw new IllegalStateException("boleto settlement for payment " + paymentId + " still in " + p.status());
+    });
   }
 
   /**

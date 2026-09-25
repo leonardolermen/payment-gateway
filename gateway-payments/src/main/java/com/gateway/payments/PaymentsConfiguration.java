@@ -24,6 +24,7 @@ import com.gateway.payments.provider.persistence.ProviderRequestRepositoryImpl;
 import com.gateway.payments.reconciliation.ReconciliationService;
 import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceRepository;
 import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceRepositoryImpl;
+import com.gateway.payments.payment.boleto.BoletoPollingService;
 import com.gateway.payments.refund.RefundPollingService;
 import com.gateway.payments.refund.RefundService;
 import com.gateway.payments.refund.persistence.RefundRepository;
@@ -134,9 +135,16 @@ public class PaymentsConfiguration {
   }
 
   @Bean
+  BoletoPollingService boletoPollingService(
+      PaymentRepository payments, ProviderGateway providers, PaymentService paymentService, PaymentsProperties props,
+      TransactionTemplate paymentsTransactionTemplate, Clock clock) {
+    return new BoletoPollingService(payments, providers, paymentService, props, paymentsTransactionTemplate, clock);
+  }
+
+  @Bean
   JobRunner jobRunner(
-      JobRepository jobs, WebhookInboxService inbox, ExpirationService expiration, RefundPollingService polling, RefundService refunds,
-      ReconciliationService reconciliation, PaymentsProperties props, TransactionTemplate paymentsTransactionTemplate, Clock clock) {
-    return new JobRunner(jobs, inbox, expiration, polling, refunds, reconciliation, props, paymentsTransactionTemplate, clock);
+      JobRepository jobs, WebhookInboxService inbox, ExpirationService expiration, RefundPollingService polling, BoletoPollingService boletoPolling,
+      RefundService refunds, ReconciliationService reconciliation, PaymentsProperties props, TransactionTemplate paymentsTransactionTemplate, Clock clock) {
+    return new JobRunner(jobs, inbox, expiration, polling, boletoPolling, refunds, reconciliation, props, paymentsTransactionTemplate, clock);
   }
 }

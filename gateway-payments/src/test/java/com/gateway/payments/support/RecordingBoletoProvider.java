@@ -65,6 +65,14 @@ public class RecordingBoletoProvider implements BoletoProvider {
 
   public void failNextFindWith(String nossoNumero, ProviderException e) { failFind.put(nossoNumero, e); }
 
+  /**
+   * One merchant's boleto only: every test merchant's first boleto is 00000001 and POLL_BOLETO jobs
+   * of earlier tests fall due at the same instant, so a bare number was consumed by another job.
+   */
+  public void failNextFindWith(MerchantId merchant, String nossoNumero, ProviderException e) {
+    failFind.put(InMemoryCredentialLookup.beneficiaryOf(merchant) + ":" + nossoNumero, e);
+  }
+
   public void markPaid(String nossoNumero, Money amount, Instant at) {
     String k = key(nossoNumero);
     BoletoStatus s = boletos.get(k);
@@ -138,7 +146,8 @@ public class RecordingBoletoProvider implements BoletoProvider {
 
   @Override public Optional<BoletoStatus> find(ProviderCredentials c, String nossoNumero) {
     calls.add("findBoleto:" + beneficiary(c) + ":" + nossoNumero);
-    ProviderException fail = failFind.remove(nossoNumero);
+    ProviderException fail = failFind.remove(beneficiary(c) + ":" + nossoNumero);
+    if (fail == null) fail = failFind.remove(nossoNumero);
     if (fail != null) throw fail;
     return Optional.ofNullable(boletos.get(beneficiary(c) + ":" + nossoNumero));
   }
