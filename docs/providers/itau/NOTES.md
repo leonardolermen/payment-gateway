@@ -87,7 +87,11 @@ What it proves: the auth flow and the request/response contract are compatible w
 
 What it does **not** prove: the sandbox is a static mock. It answered with the documentation's own example (`txid=bbba96ad…`, receiver "PMD BASHAR RIO") instead of echoing the txid we sent, and it accepts any `chave`. Paying the QR, receiving the inbound webhook, refunds and reconciliation can only be exercised in production or a fuller sandbox.
 
-Consequence noticed: the gateway stores the txid the bank returns (`PaymentService.adoptPending`), so against this mock the stored txid differs from the payment id. In production the bank echoes ours; a mismatch there should be treated as an invalid response, which is a pending follow-up.
+Consequence noticed: since commit `548df4b`, the gateway stores its **own** txid (`payment.id()`) for a Pix charge
+(`PaymentService.adoptPending`) rather than whatever the bank echoes back; against this mock the bank's example txid differs
+from ours, and a mismatch only logs a WARN ("bank echoed txid … keeping ours") instead of being adopted. This closes the
+follow-up noted earlier — no longer pending. (Bolecode is different: see the Bolecode section below, where the bank's txid
+is the one stored because it derives from the account.)
 
 ## What this means for the gateway (Plan B)
 
@@ -118,10 +122,12 @@ Facts that shaped the code (all from the JSON, not the prose):
 - Errors are `{codigo, mensagem, campos[{campo, mensagem, valor}]}`, not RFC 7807. `campos[].valor` echoes what we sent (the
   payer's document included) and never reaches a log line.
 - The baixa's `id_boleto` is `agência(4)+conta(7)+DAC(1)+carteira(3)+nosso número(8)` (23 chars), not the boleto UUID.
-- The Pix `txid` of a Bolecode is `BL` + agência(4) + conta(7) + carteira(3) + nosso número left-padded to 15 (`^BL[0-9]{31}$`);
-  the gateway derives it when the issue's answer was lost and confirms it with `GET /cob/{txid}`. Note: the payment record
-  stores our own txid (`payment.id()`) on issue, not this derived one; the derived formula is only used to recover a lost
-  response, and a bank echo that disagrees is a WARN in `adoptPending`, not a hard failure.
+- The Pix `txid` of a Bolecode is `BL` + agência(4) + conta(7) + carteira(3) + nosso número left-padded to 15 (`^BL[0-9]{31}$`,
+  2 + 29 digits; to be confirmed in the smoke). Unlike a pure-Pix payment, the payment record stores the **bank's** txid
+  (`IssuedBoleto.pixTxid()`, from the issue response) — the bank derives it from the account, so the gateway cannot pick its
+  own. The formula (`BoletoProvider.pixTxidFor`) is used only to *recover* it when the issue's response was lost (202/timeout):
+  the reconstructed txid is confirmed with `GET /cob/{txid}` before it is trusted, and an empty/mismatched confirmation opens
+  divergence `PIX_TXID_UNCONFIRMED` rather than being adopted silently (`adoptPendingBolecode`/`adoptBolecodeFromStatus`).
 - The unique-txid index (`uq_payments_provider_txid`, migration V203) is scoped `(merchant_id, provider, txid)`, per tenant —
   the bank derives Bolecode txids from the account, and the shared sandbox returns canned txids from its own examples, so a
   global unique index would collide across merchants testing against the same sandbox account.

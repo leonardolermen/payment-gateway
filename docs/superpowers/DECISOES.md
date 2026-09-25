@@ -192,3 +192,18 @@ uma consulta vazia um segundo depois não prova nada. O `sweepStuckCreated` perg
 `stuck-created-after` e decide (adota ou falha). Custo: o merchant recebe 422 `PROVIDER_TIMEOUT` e precisa
 consultar por `reference` antes de tentar com outra chave — o mesmo protocolo do 409 `IN_PROGRESS`. Custo se
 errado (falhar na hora): um boleto emitido e pagável que o gateway chamou de falho.
+
+## 2026-09-25 — Correção: qual txid cada trilho guarda (a entrada de hoje sobre a fórmula estava invertida)
+Registrado: a entrada "O id da baixa e o txid do Pix vêm da fórmula do OpenAPI, não do UUID", escrita mais
+cedo hoje, descreveu a regra ao contrário. A regra correta, conferida em `PaymentService.java`: no trilho
+**Pix puro**, `adoptPending` guarda o txid **nosso** (`p.id()`) e só emite WARN quando o banco ecoa outro
+(desde o commit `548df4b`) — nunca adota o do banco. No trilho **Bolecode**, `adoptPendingBolecode` guarda o
+txid **do banco** (`issued.pixTxid()`, vindo da resposta da emissão), porque esse txid é derivado da conta
+pelo banco e o gateway não pode escolher o dele; a fórmula derivada (`BoletoProvider.pixTxidFor`) só entra
+para *recuperar* esse txid quando a resposta da emissão se perdeu (202/timeout), confirmada com
+`GET /cob/{txid}` antes de valer — confirmação vazia ou divergente abre `PIX_TXID_UNCONFIRMED` em vez de
+adotar sem checar. `docs/providers/itau/NOTES.md` foi corrigido para refletir isto nas duas seções (Pix e
+Bolecode). Custo se errado (a versão invertida, publicada por engano): alguém lendo a NOTES concluiria que
+o Bolecode guarda `payment.id()` como o Pix, e um mismatch de txid no Bolecode seria tratado como aviso
+inofensivo em vez do sinal real de que o `nosso_numero`/conta não bateram — o tipo de erro que
+`PIX_TXID_UNCONFIRMED` existe para pegar.
