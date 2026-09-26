@@ -16,7 +16,9 @@ public class ProviderCredentialService {
   private final ProviderCredentialRepository repo;
   private final EnvelopeCipher cipher;
 
-  public ProviderCredentialService(ProviderCredentialRepository repo, EnvelopeCipher cipher) { this.repo = repo; this.cipher = cipher; }
+  public ProviderCredentialService(ProviderCredentialRepository repo, EnvelopeCipher cipher) {
+    this.repo = repo; this.cipher = cipher;
+  }
 
   @Transactional
   public ProviderCredential store(MerchantId m, Provider p, ApiKeyEnvironment e, byte[] plaintext) {

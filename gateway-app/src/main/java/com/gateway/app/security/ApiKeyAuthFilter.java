@@ -18,7 +18,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Order(20)
 public class ApiKeyAuthFilter extends OncePerRequestFilter {
   private final ApiKeyService apiKeys;
-  public ApiKeyAuthFilter(ApiKeyService apiKeys) { this.apiKeys = apiKeys; }
+  public ApiKeyAuthFilter(ApiKeyService apiKeys) {
+    this.apiKeys = apiKeys;
+  }
 
   @Override
   protected boolean shouldNotFilter(HttpServletRequest req) {

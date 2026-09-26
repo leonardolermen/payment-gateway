@@ -36,8 +36,12 @@ public class ProvidersConfiguration {
                                     String trustStorePem, Duration readTimeout, Boleto boleto) {
     public ProvidersProperties {
       // Itaú recommends a 30 s client timeout for refunds (NOTES.md); charges answer well within it.
-      if (readTimeout == null) readTimeout = Duration.ofSeconds(30);
-      if (boleto == null) boleto = new Boleto(null, null, null, null, null, null, null, null, null, null, null, null);
+      if (readTimeout == null) {
+        readTimeout = Duration.ofSeconds(30);
+      }
+      if (boleto == null) {
+        boleto = new Boleto(null, null, null, null, null, null, null, null, null, null, null, null);
+      }
     }
 
     public record Boleto(String liveIssueApiBase, String liveIssueTokenUrl, String liveQueryApiBase, String liveQueryTokenUrl,

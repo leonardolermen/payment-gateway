@@ -10,7 +10,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 public class MerchantService {
   private final MerchantRepository repo;
-  public MerchantService(MerchantRepository repo) { this.repo = repo; }
+  public MerchantService(MerchantRepository repo) {
+    this.repo = repo;
+  }
 
   @Transactional public Merchant create(String name) { return repo.save(Merchant.create(name)); }
   @Transactional(readOnly = true) public Merchant get(MerchantId id) { return repo.findById(id).orElseThrow(() -> new NotFoundException("merchant", id.value())); }

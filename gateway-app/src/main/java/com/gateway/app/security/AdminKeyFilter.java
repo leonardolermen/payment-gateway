@@ -21,7 +21,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Order(10)
 public class AdminKeyFilter extends OncePerRequestFilter {
   private final AppProperties props;
-  public AdminKeyFilter(AppProperties props) { this.props = props; }
+  public AdminKeyFilter(AppProperties props) {
+    this.props = props;
+  }
 
   @Override
   protected boolean shouldNotFilter(HttpServletRequest req) {

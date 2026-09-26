@@ -23,7 +23,9 @@ public final class EnvelopeCipher {
   private final MasterKey master;
   private final SecureRandom random = new SecureRandom();
 
-  public EnvelopeCipher(MasterKey master) { this.master = master; }
+  public EnvelopeCipher(MasterKey master) {
+    this.master = master;
+  }
 
   public Encrypted encrypt(byte[] plaintext, String aad) {
     try {

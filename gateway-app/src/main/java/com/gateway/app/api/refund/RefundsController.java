@@ -21,7 +21,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class RefundsController {
   private final RefundService refunds;
 
-  public RefundsController(RefundService refunds) { this.refunds = refunds; }
+  public RefundsController(RefundService refunds) {
+    this.refunds = refunds;
+  }
 
   @PostMapping("/v1/payments/{paymentId}/refunds")
   public ResponseEntity<RefundResponse> request(@PathVariable String paymentId, @RequestBody(required = false) RefundRequestBody body) {

@@ -183,7 +183,9 @@ public class RecordingBoletoProvider implements BoletoMethodProvider {
     String k = beneficiary(c) + ":" + r.nossoNumero();
     latest.put(r.nossoNumero(), k);
     boletos.put(k, new BoletoStatus(BoletoSituation.OPEN, null, null, null, "uuid-" + r.nossoNumero(), linha, barras, r.paymentLimitDate(), emv));
-    if (skipPix) skipPix = false;
+    if (skipPix) {
+      skipPix = false;
+    }
     else pix.register(new Charge(txid, ChargeStatus.ACTIVE, r.amount(), emv, "pix.example/qr/" + txid, clock.instant(), 0, List.of()));
     ProviderException after = landThenFail;
     if (after != null) {
@@ -196,13 +198,17 @@ public class RecordingBoletoProvider implements BoletoMethodProvider {
   @Override public Optional<BoletoStatus> find(ProviderCredentials c, String nossoNumero) {
     calls.add("findBoleto:" + beneficiary(c) + ":" + nossoNumero);
     ProviderException fail = failFind.remove(beneficiary(c) + ":" + nossoNumero);
-    if (fail == null) fail = failFind.remove(nossoNumero);
+    if (fail == null) {
+      fail = failFind.remove(nossoNumero);
+    }
     if (fail != null) {
       throw fail;
     }
     Optional<BoletoStatus> answer = Optional.ofNullable(boletos.get(beneficiary(c) + ":" + nossoNumero));
     Runnable then = afterNextFind.remove(nossoNumero);
-    if (then != null) then.run();
+    if (then != null) {
+      then.run();
+    }
     return answer;
   }
 

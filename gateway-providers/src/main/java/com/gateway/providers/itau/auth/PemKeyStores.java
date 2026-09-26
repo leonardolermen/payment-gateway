@@ -59,7 +59,9 @@ public final class PemKeyStores {
     try {
       KeyStore ts = KeyStore.getInstance("PKCS12");
       ts.load(null, null);
-      for (int i = 0; i < cas.size(); i++) ts.setCertificateEntry("ca-" + i, cas.get(i));
+      for (int i = 0; i < cas.size(); i++) {
+        ts.setCertificateEntry("ca-" + i, cas.get(i));
+      }
       return ts;
     } catch (Exception e) {
       throw new IllegalStateException(e);

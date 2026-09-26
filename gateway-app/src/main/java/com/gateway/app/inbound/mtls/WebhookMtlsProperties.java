@@ -16,7 +16,9 @@ public record WebhookMtlsProperties(
   public static final int DEFAULT_MAX_BODY_BYTES = 262_144;
 
   public WebhookMtlsProperties {
-    if (maxBodyBytes == null || maxBodyBytes <= 0) maxBodyBytes = DEFAULT_MAX_BODY_BYTES;
+    if (maxBodyBytes == null || maxBodyBytes <= 0) {
+      maxBodyBytes = DEFAULT_MAX_BODY_BYTES;
+    }
     allowedSubjects = allowedSubjects == null ? List.of() : allowedSubjects.stream().filter(s -> s != null && !s.isBlank()).toList();
   }
 

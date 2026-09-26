@@ -33,7 +33,9 @@ public class PaymentsController {
 
   private final PaymentService payments;
 
-  public PaymentsController(PaymentService payments) { this.payments = payments; }
+  public PaymentsController(PaymentService payments) {
+    this.payments = payments;
+  }
 
   @PostMapping
   public ResponseEntity<PaymentResponse> create(@RequestBody CreatePaymentRequest request) {

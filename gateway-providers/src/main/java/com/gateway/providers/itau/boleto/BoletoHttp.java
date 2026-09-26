@@ -46,7 +46,9 @@ final class BoletoHttp {
         .header("Content-Type", "application/json")
         .header("Accept", "application/json");
     // The query and instruction OpenAPIs declare x-itau-apikey required; the sandbox credential has none (NOTES.md).
-    if (creds.apiKey() != null) b.header("x-itau-apikey", creds.apiKey());
+    if (creds.apiKey() != null) {
+      b.header("x-itau-apikey", creds.apiKey());
+    }
     HttpRequest req = b.build();
     HttpResponse<String> res;
     try {
@@ -60,7 +62,9 @@ final class BoletoHttp {
       throw new ProviderException(ProviderException.Code.UNAVAILABLE, "interrupted calling Itaú", e);
     }
     // A rejected token must not be reused: the next call fetches a fresh one (and a fresh HttpClient).
-    if (res.statusCode() == 401) tokens.evict(creds.fingerprint());
+    if (res.statusCode() == 401) {
+      tokens.evict(creds.fingerprint());
+    }
     return res;
   }
 

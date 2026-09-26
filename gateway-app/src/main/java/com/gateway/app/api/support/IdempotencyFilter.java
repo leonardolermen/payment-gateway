@@ -51,7 +51,9 @@ public class IdempotencyFilter extends OncePerRequestFilter {
 
   private final IdempotencyService idempotency;
 
-  public IdempotencyFilter(IdempotencyService idempotency) { this.idempotency = idempotency; }
+  public IdempotencyFilter(IdempotencyService idempotency) {
+    this.idempotency = idempotency;
+  }
 
   @Override
   protected boolean shouldNotFilter(HttpServletRequest req) {
@@ -134,12 +136,22 @@ public class IdempotencyFilter extends OncePerRequestFilter {
 
     ResourceIdCapturingResponse(HttpServletResponse res) { super(res); }
 
-    @Override public void setHeader(String name, String value) {
-      if (RESOURCE_ID_HEADER.equalsIgnoreCase(name)) resourceId = value; else super.setHeader(name, value);
+    @Override
+    public void setHeader(String name, String value) {
+      if (RESOURCE_ID_HEADER.equalsIgnoreCase(name)) {
+        resourceId = value;
+      } else {
+        super.setHeader(name, value);
+      }
     }
 
-    @Override public void addHeader(String name, String value) {
-      if (RESOURCE_ID_HEADER.equalsIgnoreCase(name)) resourceId = value; else super.addHeader(name, value);
+    @Override
+    public void addHeader(String name, String value) {
+      if (RESOURCE_ID_HEADER.equalsIgnoreCase(name)) {
+        resourceId = value;
+      } else {
+        super.addHeader(name, value);
+      }
     }
   }
 

@@ -14,7 +14,9 @@ import org.springframework.stereotype.Component;
 public class WebhookTokenGuard {
   private final MerchantService merchants;
 
-  public WebhookTokenGuard(MerchantService merchants) { this.merchants = merchants; }
+  public WebhookTokenGuard(MerchantService merchants) {
+    this.merchants = merchants;
+  }
 
   public Merchant resolve(String token) {
     return merchants.findByInboundWebhookToken(token).orElseThrow(() -> new NotFoundException("webhook", "unknown"));

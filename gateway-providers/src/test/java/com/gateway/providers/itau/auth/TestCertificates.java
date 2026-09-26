@@ -34,7 +34,9 @@ import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
  */
 public final class TestCertificates {
   static {
-    if (Security.getProvider("BC") == null) Security.addProvider(new BouncyCastleProvider());
+    if (Security.getProvider("BC") == null) {
+      Security.addProvider(new BouncyCastleProvider());
+    }
   }
 
   private TestCertificates() {}
@@ -90,9 +92,15 @@ public final class TestCertificates {
         issuer, BigInteger.valueOf(now.toEpochMilli()).multiply(BigInteger.valueOf(1000)).add(BigInteger.valueOf((long) (Math.random() * 1000))),
         Date.from(now.minus(1, ChronoUnit.DAYS)), Date.from(now.plus(365, ChronoUnit.DAYS)), subject, subjectKey);
     builder.addExtension(Extension.basicConstraints, true, new BasicConstraints(isCa));
-    if (san != null) builder.addExtension(Extension.subjectAlternativeName, false, san);
-    if (keyUsage != null) builder.addExtension(Extension.keyUsage, true, keyUsage);
-    if (extendedKeyUsage != null) builder.addExtension(Extension.extendedKeyUsage, false, extendedKeyUsage);
+    if (san != null) {
+      builder.addExtension(Extension.subjectAlternativeName, false, san);
+    }
+    if (keyUsage != null) {
+      builder.addExtension(Extension.keyUsage, true, keyUsage);
+    }
+    if (extendedKeyUsage != null) {
+      builder.addExtension(Extension.extendedKeyUsage, false, extendedKeyUsage);
+    }
     ContentSigner signer = new JcaContentSignerBuilder("SHA256withRSA").build(issuerKey);
     return new JcaX509CertificateConverter().setProvider("BC").getCertificate(builder.build(signer));
   }

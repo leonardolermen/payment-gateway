@@ -141,7 +141,9 @@ class PaymentsFlowIntegrationTest {
   @SuppressWarnings("unchecked")
   private EntityExchangeResult<Map> postPayment(String apiKey, String idempotencyKey, Map<String, Object> body) {
     var spec = http().post().uri("/v1/payments").header("Authorization", "Bearer " + apiKey).contentType(MediaType.APPLICATION_JSON);
-    if (idempotencyKey != null) spec = spec.header("Idempotency-Key", idempotencyKey);
+    if (idempotencyKey != null) {
+      spec = spec.header("Idempotency-Key", idempotencyKey);
+    }
     return spec.body(body).exchange().expectBody(Map.class).returnResult();
   }
 

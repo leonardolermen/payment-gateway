@@ -12,7 +12,9 @@ import java.util.Objects;
 public final class Secret {
   private final String value;
 
-  private Secret(String value) { this.value = value; }
+  private Secret(String value) {
+    this.value = value;
+  }
 
   public static Secret of(String value) {
     if (value == null || value.isBlank()) {

@@ -49,7 +49,9 @@ class BoletoNumberRepositoryIntegrationTest extends ServiceIntegrationTestBase {
       List<Future<String>> futures = IntStream.range(0, 20).mapToObj(i -> pool.submit(take)).toList();
       go.countDown();
       Set<String> got = new java.util.HashSet<>();
-      for (Future<String> f : futures) got.add(f.get());
+      for (Future<String> f : futures) {
+        got.add(f.get());
+      }
       assertThat(got).hasSize(20).contains("00000001", "00000020");
     }
   }

@@ -164,7 +164,9 @@ public final class Payment {
     PaymentEvent event = transition(PaymentStatus.COMPLETED, by, "completed",
         "{\"endToEndId\":" + json(endToEndId) + ",\"paidAmount\":" + paidAmount.cents() + ",\"paidVia\":\"PIX\"}");
     this.pix = pix.withEndToEndId(endToEndId);
-    if (boleto != null) this.boleto = boleto.withPaidVia(PaidVia.PIX);
+    if (boleto != null) {
+      this.boleto = boleto.withPaidVia(PaidVia.PIX);
+    }
     this.paidAmount = paidAmount;
     this.paidAt = paidAt;
     return event;

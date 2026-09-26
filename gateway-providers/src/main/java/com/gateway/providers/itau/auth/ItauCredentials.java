@@ -45,11 +45,15 @@ public record ItauCredentials(
     if (beneficiaryId != null && !BENEFICIARY.matcher(beneficiaryId).matches()) {
       throw new IllegalArgumentException("beneficiary_id must be 12 digits (agencia + conta + DAC)");
     }
-    if (walletCode == null) walletCode = DEFAULT_WALLET;
+    if (walletCode == null) {
+      walletCode = DEFAULT_WALLET;
+    }
     if (!WALLET.matcher(walletCode).matches()) {
       throw new IllegalArgumentException("wallet_code must be 3 digits");
     }
-    if (speciesCode == null) speciesCode = DEFAULT_SPECIES;
+    if (speciesCode == null) {
+      speciesCode = DEFAULT_SPECIES;
+    }
     if (!SPECIES.matcher(speciesCode).matches()) {
       throw new IllegalArgumentException("species_code must be 2 digits");
     }

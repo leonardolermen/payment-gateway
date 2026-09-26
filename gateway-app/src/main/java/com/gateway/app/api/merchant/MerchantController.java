@@ -9,7 +9,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class MerchantController {
   private final MerchantService merchants;
-  public MerchantController(MerchantService merchants) { this.merchants = merchants; }
+  public MerchantController(MerchantService merchants) {
+    this.merchants = merchants;
+  }
 
   public record Merchant(String merchantId, String name, ApiKeyEnvironment environment) {}
 

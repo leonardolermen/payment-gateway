@@ -57,7 +57,9 @@ public class ExpirationService {
     int changed = 0;
     for (Payment payment : due) {
       try {
-        if (expireOne(payment.id(), now)) changed++;
+        if (expireOne(payment.id(), now)) {
+          changed++;
+        }
       } catch (RuntimeException e) {
         // One bank hiccup must not stop the sweep for every other merchant's charges.
         log.warn("could not expire payment {}", payment.id(), e);

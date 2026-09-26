@@ -94,7 +94,9 @@ class PixApiClient {
         .header("Accept", "application/json");
 
     // Production requires it; the sandbox documents no apikey (NOTES.md "Sandbox authentication").
-    if (creds.apiKey() != null) b.header("x-itau-apikey", creds.apiKey());
+    if (creds.apiKey() != null) {
+      b.header("x-itau-apikey", creds.apiKey());
+    }
     HttpRequest req = b.build();
     HttpResponse<String> res;
 
@@ -126,7 +128,9 @@ class PixApiClient {
     }
 
     // A rejected token must not be reused: the next call fetches a fresh one (and a fresh HttpClient).
-    if (status == 401) tokens.evict(creds.fingerprint());
+    if (status == 401) {
+      tokens.evict(creds.fingerprint());
+    }
     throw ItauErrors.from(status, res.body());
   }
 

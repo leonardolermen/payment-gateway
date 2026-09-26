@@ -29,7 +29,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
   private final AppProperties props;
   private final ConcurrentHashMap<String, Bucket> buckets = new ConcurrentHashMap<>();
 
-  public RateLimitFilter(AppProperties props) { this.props = props; }
+  public RateLimitFilter(AppProperties props) {
+    this.props = props;
+  }
 
   @Override
   protected boolean shouldNotFilter(HttpServletRequest req) {

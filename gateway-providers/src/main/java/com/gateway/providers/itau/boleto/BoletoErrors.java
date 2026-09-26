@@ -28,7 +28,9 @@ public final class BoletoErrors {
       if (problem.campos() != null && !problem.campos().isEmpty()) {
         stringBuilder.append(" [");
         for (int i = 0; i < problem.campos().size(); i++) {
-          if (i > 0) stringBuilder.append("; ");
+          if (i > 0) {
+            stringBuilder.append("; ");
+          }
           stringBuilder.append(problem.campos().get(i).campo()).append(": ").append(problem.campos().get(i).mensagem());
         }
         stringBuilder.append(']');

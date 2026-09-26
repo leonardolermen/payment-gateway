@@ -34,7 +34,9 @@ public class ItauTokenClient {
 
   public AccessToken tokenFor(ItauCredentials creds, ItauEndpoints endpoints, KeyStore trustStore) {
     URI tokenUrl = endpoints.tokenUrl();
-    if (endpoints.mutualTls()) creds.requireProductionShape();
+    if (endpoints.mutualTls()) {
+      creds.requireProductionShape();
+    }
     String key = creds.fingerprint() + "|" + tokenUrl;
     Entry e = cache.get(key);
     Instant now = clock.instant();
@@ -50,7 +52,9 @@ public class ItauTokenClient {
   /** The sandbox has no client certificate (NOTES.md "Sandbox authentication"); production always does. */
   private HttpClient newHttpClient(ItauCredentials creds, boolean mutualTls, KeyStore trustStore) {
     HttpClient.Builder builder = HttpClient.newBuilder().connectTimeout(connectTimeout);
-    if (mutualTls) builder.sslContext(PemKeyStores.mutualTls(creds.certificatePem(), creds.privateKeyPem().reveal(), trustStore));
+    if (mutualTls) {
+      builder.sslContext(PemKeyStores.mutualTls(creds.certificatePem(), creds.privateKeyPem().reveal(), trustStore));
+    }
     return builder.build();
   }
 
@@ -75,7 +79,9 @@ public class ItauTokenClient {
     } catch (HttpTimeoutException e) {
       throw new ProviderException(ProviderException.Code.TIMEOUT, "token request timed out", e);
     } catch (IOException | InterruptedException e) {
-      if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+      if (e instanceof InterruptedException) {
+        Thread.currentThread().interrupt();
+      }
       throw new ProviderException(ProviderException.Code.UNAVAILABLE, "token request failed: " + e.getMessage(), e);
     }
     if (res.statusCode() == 401 || res.statusCode() == 403) {

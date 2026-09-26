@@ -117,13 +117,17 @@ class AuthenticationIntegrationTest {
     String key = (String) merchantAndKey("Store P", "TEST").get("key");
     for (boolean withKey : new boolean[] {true, false}) {
       var get = http().get().uri(java.net.URI.create("http://localhost:" + port + "/v1/%61dmin/merchants"));
-      if (withKey) get = get.header("Authorization", "Bearer " + key);
+      if (withKey) {
+        get = get.header("Authorization", "Bearer " + key);
+      }
       Map<String, Object> body = get.exchange().expectStatus().isBadRequest().expectBody(Map.class).returnResult().getResponseBody();
       assertThat(body).containsEntry("type", "urn:gateway:INVALID_PATH");
 
       var post = http().post().uri(java.net.URI.create("http://localhost:" + port + "/v1/admin;x/merchants"))
           .contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(Map.of("name", "evil"));
-      if (withKey) post = post.header("Authorization", "Bearer " + key);
+      if (withKey) {
+        post = post.header("Authorization", "Bearer " + key);
+      }
       post.exchange().expectStatus().isBadRequest();
     }
   }

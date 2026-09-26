@@ -6,5 +6,7 @@ package com.gateway.app.security;
  * and echoed its message to the caller.
  */
 public class UnauthenticatedException extends RuntimeException {
-  public UnauthenticatedException(String message) { super(message); }
+  public UnauthenticatedException(String message) {
+    super(message);
+  }
 }

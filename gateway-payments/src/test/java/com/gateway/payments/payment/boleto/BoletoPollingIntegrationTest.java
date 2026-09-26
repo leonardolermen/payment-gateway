@@ -34,7 +34,9 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
   /** runDue claims one batch; the shared context leaves earlier tests' jobs due at the same instant, so drain it. */
   private int drain(Instant at) {
     int total = 0;
-    for (int n; (n = jobRunner.runDue(at)) > 0; ) total += n;
+    for (int n; (n = jobRunner.runDue(at)) > 0; ) {
+      total += n;
+    }
     return total;
   }
 

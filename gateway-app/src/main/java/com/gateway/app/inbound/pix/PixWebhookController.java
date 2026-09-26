@@ -71,6 +71,8 @@ public class PixWebhookController {
   }
 
   private static void put(Map<String, String> h, String k, String v) {
-    if (v != null) h.put(k, v);
+    if (v != null) {
+      h.put(k, v);
+    }
   }
 }

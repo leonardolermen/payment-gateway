@@ -135,7 +135,9 @@ public class ItauPixProvider implements PixMethodProvider {
     int page = 0;
     while (true) {
       CobList cobList = client(c).listCob(credentials, from, to, page, PAGE_SIZE);
-      if (cobList.cobs() != null) cobList.cobs().forEach(cob -> out.add(toCharge(cob)));
+      if (cobList.cobs() != null) {
+        cobList.cobs().forEach(cob -> out.add(toCharge(cob)));
+      }
       int pages = cobList.parametros() == null || cobList.parametros().paginacao() == null ? 1 : cobList.parametros().paginacao().quantidadeDePaginas();
       if (++page >= pages) {
         break;
@@ -170,12 +172,16 @@ public class ItauPixProvider implements PixMethodProvider {
 
       received.add(toReceived(it));
 
-      if (it.txid() != null) txids.put(it.endToEndId(), it.txid());
+      if (it.txid() != null) {
+        txids.put(it.endToEndId(), it.txid());
+      }
 
       if (it.devolucoes() != null) {
         it.devolucoes().forEach(d -> {
           refunds.add(toRefund(d));
-          if (d.id() != null) refundE2e.put(d.id(), it.endToEndId());
+          if (d.id() != null) {
+            refundE2e.put(d.id(), it.endToEndId());
+          }
         });
 
       }
