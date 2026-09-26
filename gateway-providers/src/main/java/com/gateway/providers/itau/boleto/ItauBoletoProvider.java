@@ -89,6 +89,7 @@ public class ItauBoletoProvider implements BoletoMethodProvider {
         clients(c).issue().post(credentials, BoletoPixRequest.forIssue(r, credentials));
     BoletoPixResponse.Individual individual = res.first();
     BoletoPixResponse.DadosQrcode qrCode = res.dadosQrcode();
+
     return new IssuedBoleto(
         individual.idBoletoIndividual(),
         individual.numeroLinhaDigitavel(),
