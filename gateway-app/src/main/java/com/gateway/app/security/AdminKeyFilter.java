@@ -21,6 +21,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Order(10)
 public class AdminKeyFilter extends OncePerRequestFilter {
   private final AppProperties props;
+
   public AdminKeyFilter(AppProperties props) {
     this.props = props;
   }
@@ -31,11 +32,17 @@ public class AdminKeyFilter extends OncePerRequestFilter {
   }
 
   @Override
-  protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain) throws ServletException, IOException {
+  protected void doFilterInternal(
+      HttpServletRequest req, HttpServletResponse res, FilterChain chain)
+      throws ServletException, IOException {
     String configured = props.adminKey();
     String supplied = req.getHeader("X-Admin-Key");
-    if (configured == null || configured.isBlank() || supplied == null
-        || !MessageDigest.isEqual(configured.getBytes(StandardCharsets.UTF_8), supplied.getBytes(StandardCharsets.UTF_8))) {
+    if (configured == null
+        || configured.isBlank()
+        || supplied == null
+        || !MessageDigest.isEqual(
+            configured.getBytes(StandardCharsets.UTF_8),
+            supplied.getBytes(StandardCharsets.UTF_8))) {
       Problems.write(res, 403, "FORBIDDEN", "invalid or missing X-Admin-Key");
       return;
     }

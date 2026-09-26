@@ -43,7 +43,8 @@ public class OutboxRepositoryImpl implements OutboxRepository {
   @Override
   public List<OutboxMessage> claimPending(int limit, Duration lease) {
     if (!TransactionSynchronizationManager.isActualTransactionActive()) {
-      throw new IllegalStateException("claimPending must run inside a transaction: the SKIP LOCKED claim depends on it.");
+      throw new IllegalStateException(
+          "claimPending must run inside a transaction: the SKIP LOCKED claim depends on it.");
     }
     Instant now = Instant.now();
     List<OutboxEntity> claimable = jpa.selectClaimable(now.minus(lease), Limit.of(limit));

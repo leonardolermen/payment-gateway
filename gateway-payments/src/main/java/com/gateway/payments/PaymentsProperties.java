@@ -4,9 +4,9 @@ import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Tunables of the payments module. Every field has a default so the module runs with no
- * {@code gateway.payments.*} keys at all — a missing key must not turn into a zero-second expiry or
- * a zero-length lease.
+ * Tunables of the payments module. Every field has a default so the module runs with no {@code
+ * gateway.payments.*} keys at all — a missing key must not turn into a zero-second expiry or a
+ * zero-length lease.
  */
 @ConfigurationProperties("gateway.payments")
 public record PaymentsProperties(
@@ -100,6 +100,7 @@ public record PaymentsProperties(
   }
 
   public static PaymentsProperties defaults() {
-    return new PaymentsProperties(0, null, null, null, null, 0, null, null, null, 0, null, null, null, 0, null, 0, 0, 0);
+    return new PaymentsProperties(
+        0, null, null, null, null, 0, null, null, null, 0, null, null, null, 0, null, 0, 0, 0);
   }
 }

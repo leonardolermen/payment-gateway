@@ -27,16 +27,24 @@ public final class Secret {
     return value;
   }
 
-  @Override public String toString() {
+  @Override
+  public String toString() {
     return "***";
   }
 
-  /** Constant-time comparison: comparing API keys with String.equals leaks the length of the common prefix. */
-  @Override public boolean equals(Object o) {
-    return o instanceof Secret s && MessageDigest.isEqual(value.getBytes(StandardCharsets.UTF_8), s.value.getBytes(StandardCharsets.UTF_8));
+  /**
+   * Constant-time comparison: comparing API keys with String.equals leaks the length of the common
+   * prefix.
+   */
+  @Override
+  public boolean equals(Object o) {
+    return o instanceof Secret s
+        && MessageDigest.isEqual(
+            value.getBytes(StandardCharsets.UTF_8), s.value.getBytes(StandardCharsets.UTF_8));
   }
 
-  @Override public int hashCode() {
+  @Override
+  public int hashCode() {
     return Objects.hash(value);
   }
 }

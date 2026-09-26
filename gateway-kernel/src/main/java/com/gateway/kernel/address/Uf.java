@@ -9,7 +9,8 @@ public record Uf(String value) {
   private static final Pattern TWO_LETTERS = Pattern.compile("[A-Z]{2}");
 
   public static Uf of(String raw) {
-    // "sp" is a valid UF typed in lowercase, not a wrong one; the bank's enum is uppercase, so it is
+    // "sp" is a valid UF typed in lowercase, not a wrong one; the bank's enum is uppercase, so it
+    // is
     // normalized, not refused.
     String normalised = raw == null ? "" : raw.trim().toUpperCase(Locale.ROOT);
 

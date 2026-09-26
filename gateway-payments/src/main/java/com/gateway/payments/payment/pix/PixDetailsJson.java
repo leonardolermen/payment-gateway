@@ -30,7 +30,11 @@ public final class PixDetailsJson {
     if (json == null) {
       return new PixDetails(null, null, null, null);
     }
-    return new PixDetails(field(json, "txid"), field(json, "pixCopiaECola"), field(json, "location"), field(json, "endToEndId"));
+    return new PixDetails(
+        field(json, "txid"),
+        field(json, "pixCopiaECola"),
+        field(json, "location"),
+        field(json, "endToEndId"));
   }
 
   // Postgres reformats jsonb on the way back out — in particular it adds a space after ':' — so an
@@ -39,7 +43,8 @@ public final class PixDetailsJson {
   // fixed by write() above, so the JSON text is otherwise stable; the unique index on txid reads
   // details->>'txid' directly and does not depend on key order at all.
   private static String field(String json, String key) {
-    Matcher matcher = Pattern.compile("\"" + key + "\":\\s*(null|\"((?:\\\\.|[^\"\\\\])*)\")").matcher(json);
+    Matcher matcher =
+        Pattern.compile("\"" + key + "\":\\s*(null|\"((?:\\\\.|[^\"\\\\])*)\")").matcher(json);
     if (!matcher.find()) {
       return null;
     }

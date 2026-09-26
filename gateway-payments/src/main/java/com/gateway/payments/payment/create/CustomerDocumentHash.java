@@ -6,11 +6,11 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 
 /**
- * SHA-256 hex of the document's digits only, so {@code 123.456.789-09} and {@code 12345678909} search
- * as the same customer. The document itself is never stored.
+ * SHA-256 hex of the document's digits only, so {@code 123.456.789-09} and {@code 12345678909}
+ * search as the same customer. The document itself is never stored.
  *
- * <p>Null for anything with no digits at all: a blank is not a customer, and hashing the empty string
- * would make every one of them look like the same person.
+ * <p>Null for anything with no digits at all: a blank is not a customer, and hashing the empty
+ * string would make every one of them look like the same person.
  */
 public final class CustomerDocumentHash {
 
@@ -27,7 +27,8 @@ public final class CustomerDocumentHash {
     }
 
     try {
-      byte[] hash = MessageDigest.getInstance("SHA-256").digest(digits.getBytes(StandardCharsets.US_ASCII));
+      byte[] hash =
+          MessageDigest.getInstance("SHA-256").digest(digits.getBytes(StandardCharsets.US_ASCII));
       return HexFormat.of().formatHex(hash);
     } catch (NoSuchAlgorithmException e) {
       throw new IllegalStateException("SHA-256 not available", e);

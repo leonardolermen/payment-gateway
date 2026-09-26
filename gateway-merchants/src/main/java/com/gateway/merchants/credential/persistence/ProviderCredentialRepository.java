@@ -9,6 +9,9 @@ import java.util.Optional;
 
 public interface ProviderCredentialRepository {
   ProviderCredential save(ProviderCredential credential);
-  Optional<ProviderCredential> find(MerchantId merchantId, Provider provider, ApiKeyEnvironment environment);
+
+  Optional<ProviderCredential> find(
+      MerchantId merchantId, Provider provider, ApiKeyEnvironment environment);
+
   List<ProviderCredential> findByMerchant(MerchantId merchantId);
 }

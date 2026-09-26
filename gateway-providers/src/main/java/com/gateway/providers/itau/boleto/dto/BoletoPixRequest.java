@@ -34,7 +34,9 @@ public record BoletoPixRequest(
 
   public record Pagador(Pessoa pessoa, Endereco endereco) {}
 
-  public record Pessoa(@JsonProperty("nome_pessoa") String nomePessoa, @JsonProperty("tipo_pessoa") TipoPessoa tipoPessoa) {}
+  public record Pessoa(
+      @JsonProperty("nome_pessoa") String nomePessoa,
+      @JsonProperty("tipo_pessoa") TipoPessoa tipoPessoa) {}
 
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public record TipoPessoa(
@@ -59,7 +61,10 @@ public record BoletoPixRequest(
 
   public static BoletoPixRequest forIssue(BoletoIssueRequest r, ItauCredentials c) {
     String digits = r.payer().document().digits();
-    TipoPessoa tipo = digits.length() == 14 ? new TipoPessoa("J", null, digits) : new TipoPessoa("F", digits, null);
+    TipoPessoa tipo =
+        digits.length() == 14
+            ? new TipoPessoa("J", null, digits)
+            : new TipoPessoa("F", digits, null);
     var address = r.payer().address();
     String amount = BoletoAmounts.toItau(r.amount());
     return new BoletoPixRequest(
@@ -74,11 +79,17 @@ public record BoletoPixRequest(
             new Pagador(
                 new Pessoa(BoletoText.name(r.payer().name().value(), 50), tipo),
                 new Endereco(
-                    BoletoText.text(address.street(), 45), BoletoText.text(address.district(), 15), BoletoText.text(address.city(), 20),
-                    address.state().value(), address.zip().digits())),
-            List.of(new DadoIndividual(
-                r.nossoNumero(), r.dueDate().toString(), amount,
-                r.paymentLimitDate() == null ? null : r.paymentLimitDate().toString(),
-                r.description() == null ? null : BoletoText.text(r.description(), 25)))));
+                    BoletoText.text(address.street(), 45),
+                    BoletoText.text(address.district(), 15),
+                    BoletoText.text(address.city(), 20),
+                    address.state().value(),
+                    address.zip().digits())),
+            List.of(
+                new DadoIndividual(
+                    r.nossoNumero(),
+                    r.dueDate().toString(),
+                    amount,
+                    r.paymentLimitDate() == null ? null : r.paymentLimitDate().toString(),
+                    r.description() == null ? null : BoletoText.text(r.description(), 25)))));
   }
 }

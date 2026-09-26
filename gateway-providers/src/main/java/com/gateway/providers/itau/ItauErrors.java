@@ -6,8 +6,8 @@ import com.gateway.providers.itau.pix.dto.Problem;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Non-2xx from Itaú → {@link ProviderException}. The RFC 7807 {@code type} decides first because
- * it is more precise than the status (a 404 {@code CobNaoEncontrado} and a 400 {@code
+ * Non-2xx from Itaú → {@link ProviderException}. The RFC 7807 {@code type} decides first because it
+ * is more precise than the status (a 404 {@code CobNaoEncontrado} and a 400 {@code
  * CobOperacaoInvalida} are different business facts); the status is the fallback for bodies that
  * are not Problems (401s from the gateway layer arrive empty).
  */
@@ -23,9 +23,15 @@ public final class ItauErrors {
     String message;
 
     if (problem != null && (problem.title() != null || problem.detail() != null)) {
-      message = problem.title() == null ? problem.detail() : problem.detail() == null ? problem.title() : problem.title() + ": " + problem.detail();
+      message =
+          problem.title() == null
+              ? problem.detail()
+              : problem.detail() == null
+                  ? problem.title()
+                  : problem.title() + ": " + problem.detail();
     } else {
-      message = "Itaú HTTP " + status + (body == null || body.isBlank() ? "" : ": " + truncate(body));
+      message =
+          "Itaú HTTP " + status + (body == null || body.isBlank() ? "" : ": " + truncate(body));
     }
 
     return new ProviderException(code(status, type), status, type, message);
@@ -37,7 +43,9 @@ public final class ItauErrors {
     if (t.contains("NaoEncontrad")) {
       return Code.NOT_FOUND;
     }
-    if (t.endsWith("OperacaoInvalida") || t.endsWith("ConsultaInvalida") || t.equals("PixDevolucaoInvalida")) {
+    if (t.endsWith("OperacaoInvalida")
+        || t.endsWith("ConsultaInvalida")
+        || t.equals("PixDevolucaoInvalida")) {
       return Code.INVALID;
     }
     if (status == 400 || status == 422) {
@@ -59,7 +67,10 @@ public final class ItauErrors {
     return Code.UNKNOWN;
   }
 
-  /** True only for the Pix API's own not-found: an RFC 7807 {@code type} naming {@code NaoEncontrad*}. */
+  /**
+   * True only for the Pix API's own not-found: an RFC 7807 {@code type} naming {@code
+   * NaoEncontrad*}.
+   */
   public static boolean isPixNotFound(String body) {
     Problem problem = parse(body);
     return problem != null && problem.type() != null && problem.type().contains("NaoEncontrad");

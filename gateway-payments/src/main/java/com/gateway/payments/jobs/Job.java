@@ -17,21 +17,52 @@ public record Job(
     Instant createdAt) {
 
   public static Job expireAt(String paymentId, Instant when, Clock clock) {
-    return new Job(Ulid.next(), JobType.EXPIRE_PAYMENT, paymentId, when, 0, "PENDING", null, null, clock.instant());
+    return new Job(
+        Ulid.next(),
+        JobType.EXPIRE_PAYMENT,
+        paymentId,
+        when,
+        0,
+        "PENDING",
+        null,
+        null,
+        clock.instant());
   }
 
   public static Job processWebhook(String inboxId, Clock clock) {
     Instant now = clock.instant();
-    return new Job(Ulid.next(), JobType.PROCESS_WEBHOOK, inboxId, now, 0, "PENDING", null, null, now);
+    return new Job(
+        Ulid.next(), JobType.PROCESS_WEBHOOK, inboxId, now, 0, "PENDING", null, null, now);
   }
 
   public static Job pollRefund(String refundId, Instant firstAt, Clock clock) {
-    return new Job(Ulid.next(), JobType.POLL_REFUND, refundId, firstAt, 0, "PENDING", null, null, clock.instant());
+    return new Job(
+        Ulid.next(),
+        JobType.POLL_REFUND,
+        refundId,
+        firstAt,
+        0,
+        "PENDING",
+        null,
+        null,
+        clock.instant());
   }
 
-  /** Bolecode: ask GET /boletos whether the barcode was paid; the runner reschedules it every 6 h until the limit date plus a grace. */
+  /**
+   * Bolecode: ask GET /boletos whether the barcode was paid; the runner reschedules it every 6 h
+   * until the limit date plus a grace.
+   */
   public static Job pollBoleto(String paymentId, Instant firstAt, Clock clock) {
-    return new Job(Ulid.next(), JobType.POLL_BOLETO, paymentId, firstAt, 0, "PENDING", null, null, clock.instant());
+    return new Job(
+        Ulid.next(),
+        JobType.POLL_BOLETO,
+        paymentId,
+        firstAt,
+        0,
+        "PENDING",
+        null,
+        null,
+        clock.instant());
   }
 
   public static Job reconcile(Clock clock) {
@@ -39,7 +70,10 @@ public record Job(
     return new Job(Ulid.next(), JobType.RECONCILE, "all", now, 0, "PENDING", null, null, now);
   }
 
-  /** Bumps {@code attempts}; the job goes {@code DEAD} once it reaches {@code maxAttempts} instead of retrying forever. */
+  /**
+   * Bumps {@code attempts}; the job goes {@code DEAD} once it reaches {@code maxAttempts} instead
+   * of retrying forever.
+   */
   public Job reschedule(Instant next, String error, int maxAttempts) {
     int newAttempts = attempts + 1;
     String newStatus = newAttempts >= maxAttempts ? "DEAD" : "PENDING";

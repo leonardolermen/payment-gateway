@@ -17,8 +17,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
  * One bucket per API key, in memory: there is a single instance of this service today (spec §8), so
- * a process-local map is exact. The day there is more than one instance this moves to Redis, because
- * an in-memory bucket per instance would let a merchant multiply its limit by the instance count.
+ * a process-local map is exact. The day there is more than one instance this moves to Redis,
+ * because an in-memory bucket per instance would let a merchant multiply its limit by the instance
+ * count.
  *
  * <p>Runs after {@link ApiKeyAuthFilter} (@Order(20) then 30) and only on the routes that filter
  * covers, since the key id it limits on comes from {@link MerchantContext}.
@@ -39,14 +40,18 @@ public class RateLimitFilter extends OncePerRequestFilter {
   }
 
   @Override
-  protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain) throws ServletException, IOException {
+  protected void doFilterInternal(
+      HttpServletRequest req, HttpServletResponse res, FilterChain chain)
+      throws ServletException, IOException {
     String apiKeyId = MerchantContext.current().apiKeyId();
     Bucket bucket = buckets.computeIfAbsent(apiKeyId, id -> newBucket());
     ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
     if (!probe.isConsumed()) {
-      long retryAfterSeconds = Math.max(1, (long) Math.ceil(probe.getNanosToWaitForRefill() / 1_000_000_000.0));
+      long retryAfterSeconds =
+          Math.max(1, (long) Math.ceil(probe.getNanosToWaitForRefill() / 1_000_000_000.0));
       res.setHeader("Retry-After", String.valueOf(retryAfterSeconds));
-      Problems.write(res, 429, "RATE_LIMITED", "too many requests; retry after " + retryAfterSeconds + "s");
+      Problems.write(
+          res, 429, "RATE_LIMITED", "too many requests; retry after " + retryAfterSeconds + "s");
       return;
     }
     chain.doFilter(req, res);
@@ -54,6 +59,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
   private Bucket newBucket() {
     int n = props.rateLimit().requestsPerMinute();
-    return Bucket.builder().addLimit(Bandwidth.builder().capacity(n).refillGreedy(n, Duration.ofMinutes(1)).build()).build();
+    return Bucket.builder()
+        .addLimit(Bandwidth.builder().capacity(n).refillGreedy(n, Duration.ofMinutes(1)).build())
+        .build();
   }
 }

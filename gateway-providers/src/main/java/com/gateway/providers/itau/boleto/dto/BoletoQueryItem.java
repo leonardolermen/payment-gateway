@@ -7,11 +7,13 @@ import java.util.Optional;
 
 /**
  * One boleto of GET /boletos (query OpenAPI, schema {@code boleto}). The payment block is the list
- * {@code pagamentos_cobranca} (the spec called it {@code pagamento}); the last entry is the one that
- * settled. {@code qrcode_pix.emv} is the Bolecode's EMV, present when the bank keeps it.
+ * {@code pagamentos_cobranca} (the spec called it {@code pagamento}); the last entry is the one
+ * that settled. {@code qrcode_pix.emv} is the Bolecode's EMV, present when the bank keeps it.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record BoletoQueryItem(@JsonProperty("id_boleto") String idBoleto, @JsonProperty("dado_boleto") DadoBoleto dadoBoleto) {
+public record BoletoQueryItem(
+    @JsonProperty("id_boleto") String idBoleto,
+    @JsonProperty("dado_boleto") DadoBoleto dadoBoleto) {
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record DadoBoleto(
@@ -40,7 +42,9 @@ public record BoletoQueryItem(@JsonProperty("id_boleto") String idBoleto, @JsonP
       @JsonProperty("descricao_meio_pagamento") String descricaoMeioPagamento) {}
 
   @JsonIgnoreProperties(ignoreUnknown = true)
-  public record Baixa(@JsonProperty("data_inclusao_alteracao_baixa") String data, @JsonProperty("motivo_baixa") String motivo) {}
+  public record Baixa(
+      @JsonProperty("data_inclusao_alteracao_baixa") String data,
+      @JsonProperty("motivo_baixa") String motivo) {}
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record QrcodePix(String emv) {}
@@ -49,11 +53,15 @@ public record BoletoQueryItem(@JsonProperty("id_boleto") String idBoleto, @JsonP
     if (dadoBoleto == null || dadoBoleto.dadosIndividuaisBoleto() == null) {
       return Optional.empty();
     }
-    return dadoBoleto.dadosIndividuaisBoleto().stream().filter(i -> nossoNumero.equals(i.numeroNossoNumero())).findFirst();
+    return dadoBoleto.dadosIndividuaisBoleto().stream()
+        .filter(i -> nossoNumero.equals(i.numeroNossoNumero()))
+        .findFirst();
   }
 
   public Optional<Pagamento> lastPayment() {
-    if (dadoBoleto == null || dadoBoleto.pagamentosCobranca() == null || dadoBoleto.pagamentosCobranca().isEmpty()) {
+    if (dadoBoleto == null
+        || dadoBoleto.pagamentosCobranca() == null
+        || dadoBoleto.pagamentosCobranca().isEmpty()) {
       return Optional.empty();
     }
     return Optional.of(dadoBoleto.pagamentosCobranca().getLast());

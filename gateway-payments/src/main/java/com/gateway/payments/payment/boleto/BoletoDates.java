@@ -5,7 +5,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 
-/** Boleto dates are calendar days at the bank, which lives in São Paulo; the gateway's clock is UTC, so every conversion goes through here. */
+/**
+ * Boleto dates are calendar days at the bank, which lives in São Paulo; the gateway's clock is UTC,
+ * so every conversion goes through here.
+ */
 public final class BoletoDates {
   public static final ZoneId SAO_PAULO = ZoneId.of("America/Sao_Paulo");
 

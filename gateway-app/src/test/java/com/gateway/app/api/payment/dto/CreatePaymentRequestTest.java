@@ -16,9 +16,9 @@ import tools.jackson.databind.PropertyNamingStrategies;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The request body is polymorphic on {@code method}, so the deserialiser is what refuses a field of the
- * other method — there is no longer a validate() comparing method strings. These tests pin that, and
- * pin the messages each shape still answers for its own fields.
+ * The request body is polymorphic on {@code method}, so the deserialiser is what refuses a field of
+ * the other method — there is no longer a validate() comparing method strings. These tests pin
+ * that, and pin the messages each shape still answers for its own fields.
  */
 class CreatePaymentRequestTest {
   /** Same two settings as application.yml: snake_case, and an unknown property is an error. */
@@ -35,7 +35,8 @@ class CreatePaymentRequestTest {
   @Test
   void aPixBodyDeserialisesToThePixShape() {
     CreatePaymentRequest request =
-        read("{\"method\":\"PIX\",\"amount\":1000,\"currency\":\"BRL\",\"reference\":\"order-1\",\"expires_in\":3600}");
+        read(
+            "{\"method\":\"PIX\",\"amount\":1000,\"currency\":\"BRL\",\"reference\":\"order-1\",\"expires_in\":3600}");
 
     assertThat(request).isInstanceOf(PixPaymentRequest.class);
     assertThat(request.method()).isEqualTo(PaymentMethod.PIX);
@@ -45,8 +46,9 @@ class CreatePaymentRequestTest {
   @Test
   void aBolecodeBodyDeserialisesToTheBolecodeShape() {
     CreatePaymentRequest request =
-        read("{\"method\":\"BOLECODE\",\"amount\":1000,\"currency\":\"BRL\",\"due_date\":\"2026-10-01\","
-            + "\"payment_limit_days\":30,\"customer\":{\"name\":\"Ana\",\"document\":\"52998224725\"}}");
+        read(
+            "{\"method\":\"BOLECODE\",\"amount\":1000,\"currency\":\"BRL\",\"due_date\":\"2026-10-01\","
+                + "\"payment_limit_days\":30,\"customer\":{\"name\":\"Ana\",\"document\":\"52998224725\"}}");
 
     assertThat(request).isInstanceOf(BolecodePaymentRequest.class);
     assertThat(request.method()).isEqualTo(PaymentMethod.BOLECODE);
@@ -55,15 +57,24 @@ class CreatePaymentRequestTest {
 
   @Test
   void aBolecodeFieldInAPixBodyIsRefused() {
-    assertThatThrownBy(() -> read("{\"method\":\"PIX\",\"amount\":1000,\"currency\":\"BRL\",\"due_date\":\"2026-10-01\"}"))
+    assertThatThrownBy(
+            () ->
+                read(
+                    "{\"method\":\"PIX\",\"amount\":1000,\"currency\":\"BRL\",\"due_date\":\"2026-10-01\"}"))
         .isInstanceOf(JacksonException.class);
-    assertThatThrownBy(() -> read("{\"method\":\"PIX\",\"amount\":1000,\"currency\":\"BRL\",\"payment_limit_days\":30}"))
+    assertThatThrownBy(
+            () ->
+                read(
+                    "{\"method\":\"PIX\",\"amount\":1000,\"currency\":\"BRL\",\"payment_limit_days\":30}"))
         .isInstanceOf(JacksonException.class);
   }
 
   @Test
   void aPixFieldInABolecodeBodyIsRefused() {
-    assertThatThrownBy(() -> read("{\"method\":\"BOLECODE\",\"amount\":1000,\"currency\":\"BRL\",\"expires_in\":3600}"))
+    assertThatThrownBy(
+            () ->
+                read(
+                    "{\"method\":\"BOLECODE\",\"amount\":1000,\"currency\":\"BRL\",\"expires_in\":3600}"))
         .isInstanceOf(JacksonException.class);
   }
 
@@ -75,7 +86,8 @@ class CreatePaymentRequestTest {
 
   @Test
   void aMissingMethodIsRefused() {
-    assertThatThrownBy(() -> read("{\"amount\":1000,\"currency\":\"BRL\"}")).isInstanceOf(JacksonException.class);
+    assertThatThrownBy(() -> read("{\"amount\":1000,\"currency\":\"BRL\"}"))
+        .isInstanceOf(JacksonException.class);
   }
 
   @Test
@@ -86,7 +98,8 @@ class CreatePaymentRequestTest {
         .hasMessage("amount must be a positive number of cents");
     assertThatThrownBy(() -> new PixPaymentRequest(1000L, "USD", null, null, null, null).validate())
         .hasMessage("currency must be BRL");
-    assertThatThrownBy(() -> new BolecodePaymentRequest(1000L, null, null, null, null, null, null).validate())
+    assertThatThrownBy(
+            () -> new BolecodePaymentRequest(1000L, null, null, null, null, null, null).validate())
         .hasMessage("currency must be BRL");
   }
 
@@ -94,7 +107,8 @@ class CreatePaymentRequestTest {
   void eachShapeValidatesOnlyItsOwnField() {
     assertThatThrownBy(() -> new PixPaymentRequest(1000L, "BRL", null, null, null, -1).validate())
         .hasMessage("expires_in must be positive seconds");
-    assertThatThrownBy(() -> new BolecodePaymentRequest(1000L, "BRL", null, null, null, null, -1).validate())
+    assertThatThrownBy(
+            () -> new BolecodePaymentRequest(1000L, "BRL", null, null, null, null, -1).validate())
         .hasMessage("payment_limit_days must not be negative");
   }
 
@@ -104,8 +118,9 @@ class CreatePaymentRequestTest {
     Customer customer = new Customer("Ana", "529.982.247-25", null);
 
     CreatePixPayment command =
-        (CreatePixPayment) new PixPaymentRequest(1000L, "BRL", "order-1", "Pedido", customer, 3600)
-            .toCommand(merchant, ProviderEnvironment.TEST);
+        (CreatePixPayment)
+            new PixPaymentRequest(1000L, "BRL", "order-1", "Pedido", customer, 3600)
+                .toCommand(merchant, ProviderEnvironment.TEST);
 
     assertThat(command.merchantId()).isEqualTo(merchant);
     assertThat(command.environment()).isEqualTo(ProviderEnvironment.TEST);
@@ -117,12 +132,16 @@ class CreatePaymentRequestTest {
   @Test
   void aBolecodeBodyBecomesABolecodeCommandWithTheRawPayer() {
     Customer customer =
-        new Customer("Ana", "52998224725", new Address("Av. Paulista", "Bela Vista", "Sao Paulo", "sp", "01310-100"));
+        new Customer(
+            "Ana",
+            "52998224725",
+            new Address("Av. Paulista", "Bela Vista", "Sao Paulo", "sp", "01310-100"));
 
     CreateBolecodePayment command =
-        (CreateBolecodePayment) new BolecodePaymentRequest(
-                1000L, "BRL", "order-1", "Pedido", customer, LocalDate.of(2026, 10, 1), 30)
-            .toCommand(MerchantId.next(), ProviderEnvironment.LIVE);
+        (CreateBolecodePayment)
+            new BolecodePaymentRequest(
+                    1000L, "BRL", "order-1", "Pedido", customer, LocalDate.of(2026, 10, 1), 30)
+                .toCommand(MerchantId.next(), ProviderEnvironment.LIVE);
 
     // Copied, not normalised: the domain validates it and names the field if it is wrong.
     assertThat(command.payer().address().state()).isEqualTo("sp");
@@ -133,8 +152,9 @@ class CreatePaymentRequestTest {
   @Test
   void aBodyWithNoCustomerBecomesACommandWithNoPayer() {
     CreateBolecodePayment command =
-        (CreateBolecodePayment) new BolecodePaymentRequest(1000L, "BRL", null, null, null, null, null)
-            .toCommand(MerchantId.next(), ProviderEnvironment.TEST);
+        (CreateBolecodePayment)
+            new BolecodePaymentRequest(1000L, "BRL", null, null, null, null, null)
+                .toCommand(MerchantId.next(), ProviderEnvironment.TEST);
 
     assertThat(command.payer()).isNull();
   }

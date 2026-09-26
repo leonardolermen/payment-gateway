@@ -6,8 +6,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * One flow per method, indexed once at construction and complete or nothing: a method with no flow, or
- * with two, fails the startup instead of becoming a 500 the first time a merchant asks for it.
+ * One flow per method, indexed once at construction and complete or nothing: a method with no flow,
+ * or with two, fails the startup instead of becoming a 500 the first time a merchant asks for it.
  */
 public class PaymentFlows {
   private final Map<PaymentMethod, PaymentFlow> byMethod;

@@ -28,7 +28,8 @@ public class WebhookEndpointsController {
   }
 
   @PostMapping
-  public ResponseEntity<EndpointWithSecretResponse> register(@RequestBody RegisterEndpointRequest req) {
+  public ResponseEntity<EndpointWithSecretResponse> register(
+      @RequestBody RegisterEndpointRequest req) {
     WebhookEndpoint e = service.register(tenant(), req.url(), req.events());
     return ResponseEntity.status(HttpStatus.CREATED).body(EndpointWithSecretResponse.from(e));
   }
@@ -46,27 +47,40 @@ public class WebhookEndpointsController {
   @PutMapping("/{id}")
   public EndpointResponse update(@PathVariable UUID id, @RequestBody RegisterEndpointRequest req) {
     mine(id);
-    return EndpointResponse.from(service.update(id, req.url(), req.events()).orElseThrow(() -> new NotFoundException("endpoint", id.toString())));
+    return EndpointResponse.from(
+        service
+            .update(id, req.url(), req.events())
+            .orElseThrow(() -> new NotFoundException("endpoint", id.toString())));
   }
 
   @PostMapping("/{id}/rotate-secret")
   public EndpointWithSecretResponse rotateSecret(@PathVariable UUID id) {
     mine(id);
-    return EndpointWithSecretResponse.from(service.rotateSecret(id).orElseThrow(() -> new NotFoundException("endpoint", id.toString())));
+    return EndpointWithSecretResponse.from(
+        service
+            .rotateSecret(id)
+            .orElseThrow(() -> new NotFoundException("endpoint", id.toString())));
   }
 
   @DeleteMapping("/{id}")
   public EndpointResponse deactivate(@PathVariable UUID id) {
     mine(id);
-    return EndpointResponse.from(service.deactivate(id).orElseThrow(() -> new NotFoundException("endpoint", id.toString())));
+    return EndpointResponse.from(
+        service.deactivate(id).orElseThrow(() -> new NotFoundException("endpoint", id.toString())));
   }
 
   private String tenant() {
     return MerchantContext.current().merchantId().value();
   }
 
-  /** Id belonging to another merchant looks exactly like a missing one: 404, not 403 — the endpoint's existence is not this merchant's to know. */
+  /**
+   * Id belonging to another merchant looks exactly like a missing one: 404, not 403 — the
+   * endpoint's existence is not this merchant's to know.
+   */
   private WebhookEndpoint mine(UUID id) {
-    return service.find(id).filter(e -> e.tenantId().equals(tenant())).orElseThrow(() -> new NotFoundException("endpoint", id.toString()));
+    return service
+        .find(id)
+        .filter(e -> e.tenantId().equals(tenant()))
+        .orElseThrow(() -> new NotFoundException("endpoint", id.toString()));
   }
 }

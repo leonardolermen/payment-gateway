@@ -20,7 +20,8 @@ class DocumentTest {
 
   @Test
   void refusesAnythingThatIsNotElevenOrFourteenDigits() {
-    for (String invalid : new String[] {null, "", "123", "1234567890", "123456789012", "abcdefghijk"}) {
+    for (String invalid :
+        new String[] {null, "", "123", "1234567890", "123456789012", "abcdefghijk"}) {
       assertThatThrownBy(() -> Document.of(invalid))
           .as("document %s", invalid)
           .isInstanceOf(InvalidValue.class)

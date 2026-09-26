@@ -1,8 +1,7 @@
 package com.gateway.payments.idempotency;
 
-import com.gateway.payments.PaymentsProperties;
-
 import com.gateway.kernel.ids.MerchantId;
+import com.gateway.payments.PaymentsProperties;
 import com.gateway.payments.idempotency.persistence.IdempotencyRepository;
 import java.time.Clock;
 import java.time.Instant;
@@ -59,7 +58,10 @@ public class IdempotencyService {
     keys.finish(k.finish(code, body, resourceId));
   }
 
-  /** Keys older than {@code idempotencyTtl} stop protecting anything; the sweep keeps the table small. */
+  /**
+   * Keys older than {@code idempotencyTtl} stop protecting anything; the sweep keeps the table
+   * small.
+   */
   public int purgeExpired(Instant now) {
     return keys.deleteOlderThan(now.minus(props.idempotencyTtl()));
   }

@@ -14,11 +14,12 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
 /**
- * Where the three modules meet: payments asks for a {@link CredentialLookup} and a {@code PixProvider}
- * through kernel interfaces, providers supplies the bank, merchants holds the encrypted credentials.
- * Only the app may know all three (ArchUnit {@code businessModulesDoNotImportEachOther}), so the
- * adapter between merchants' vocabulary ({@link Provider}, {@link ApiKeyEnvironment}) and the
- * kernel's ({@code String}, {@link ProviderEnvironment}) lives here.
+ * Where the three modules meet: payments asks for a {@link CredentialLookup} and a {@code
+ * PixProvider} through kernel interfaces, providers supplies the bank, merchants holds the
+ * encrypted credentials. Only the app may know all three (ArchUnit {@code
+ * businessModulesDoNotImportEachOther}), so the adapter between merchants' vocabulary ({@link
+ * Provider}, {@link ApiKeyEnvironment}) and the kernel's ({@code String}, {@link
+ * ProviderEnvironment}) lives here.
  */
 @Configuration(proxyBeanMethods = false)
 @Import({ProvidersConfiguration.class, PaymentsConfiguration.class})
@@ -39,8 +40,11 @@ public class ProviderWiring {
       } catch (IllegalArgumentException e) {
         return Optional.empty();
       }
-      ApiKeyEnvironment keyEnv = env == ProviderEnvironment.LIVE ? ApiKeyEnvironment.LIVE : ApiKeyEnvironment.TEST;
-      return credentials.decrypt(merchantId, p, keyEnv).map(bytes -> new ProviderCredentials(bytes, env));
+      ApiKeyEnvironment keyEnv =
+          env == ProviderEnvironment.LIVE ? ApiKeyEnvironment.LIVE : ApiKeyEnvironment.TEST;
+      return credentials
+          .decrypt(merchantId, p, keyEnv)
+          .map(bytes -> new ProviderCredentials(bytes, env));
     };
   }
 }

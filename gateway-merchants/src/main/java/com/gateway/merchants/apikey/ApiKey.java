@@ -16,16 +16,33 @@ import java.util.Optional;
  * hash — and so the merchant can recognise the key in a dashboard without seeing it whole.
  *
  * <p>SHA-256 with a pepper rather than bcrypt: the key carries 26 random chars (130 bits), so brute
- * force is impossible even with a fast hash, and bcrypt would cost ~100 ms per authenticated request.
+ * force is impossible even with a fast hash, and bcrypt would cost ~100 ms per authenticated
+ * request.
  */
-public record ApiKey(String id, MerchantId merchantId, ApiKeyEnvironment environment, String prefix, String hash,
-                     boolean active, Instant expiresAt, Instant createdAt) {
+public record ApiKey(
+    String id,
+    MerchantId merchantId,
+    ApiKeyEnvironment environment,
+    String prefix,
+    String hash,
+    boolean active,
+    Instant expiresAt,
+    Instant createdAt) {
 
   public record Issued(ApiKey apiKey, Secret plainKey) {}
 
   public static Issued issue(MerchantId merchantId, ApiKeyEnvironment environment, String pepper) {
     String plain = environment.keyPrefix() + Ulid.next();
-    ApiKey k = new ApiKey(Ulid.next(), merchantId, environment, prefixOf(plain), hashOf(plain, pepper), true, null, Instant.now());
+    ApiKey k =
+        new ApiKey(
+            Ulid.next(),
+            merchantId,
+            environment,
+            prefixOf(plain),
+            hashOf(plain, pepper),
+            true,
+            null,
+            Instant.now());
     return new Issued(k, Secret.of(plain));
   }
 
@@ -33,7 +50,8 @@ public record ApiKey(String id, MerchantId merchantId, ApiKeyEnvironment environ
     try {
       MessageDigest messageDigest = MessageDigest.getInstance("SHA-256");
       messageDigest.update(pepper.getBytes(StandardCharsets.UTF_8));
-      return HexFormat.of().formatHex(messageDigest.digest(plainKey.getBytes(StandardCharsets.UTF_8)));
+      return HexFormat.of()
+          .formatHex(messageDigest.digest(plainKey.getBytes(StandardCharsets.UTF_8)));
     } catch (NoSuchAlgorithmException e) {
       throw new IllegalStateException(e);
     }
@@ -44,7 +62,8 @@ public record ApiKey(String id, MerchantId merchantId, ApiKeyEnvironment environ
   }
 
   public static Optional<ApiKeyEnvironment> environmentOf(String plainKey) {
-    for (ApiKeyEnvironment e : ApiKeyEnvironment.values()) if (plainKey != null && plainKey.startsWith(e.keyPrefix())) return Optional.of(e);
+    for (ApiKeyEnvironment e : ApiKeyEnvironment.values())
+      if (plainKey != null && plainKey.startsWith(e.keyPrefix())) return Optional.of(e);
     return Optional.empty();
   }
 

@@ -6,7 +6,10 @@ import java.time.Instant;
 import java.util.Optional;
 
 public interface IdempotencyRepository {
-  /** {@code INSERT ... ON CONFLICT (merchant_id, key) DO NOTHING}; {@code true} iff this call inserted the row. */
+  /**
+   * {@code INSERT ... ON CONFLICT (merchant_id, key) DO NOTHING}; {@code true} iff this call
+   * inserted the row.
+   */
   boolean insertIfAbsent(IdempotencyKey k);
 
   Optional<IdempotencyKey> find(MerchantId merchantId, String key);

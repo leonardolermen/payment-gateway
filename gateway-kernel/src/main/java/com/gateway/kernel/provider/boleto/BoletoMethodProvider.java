@@ -9,10 +9,11 @@ import com.gateway.kernel.provider.ProviderCredentials;
  * bank derives for the same charge. Implemented per bank in {@code gateway-providers}
  * (ItauBoletoProvider); consumed by payments.
  */
-public interface BoletoMethodProvider extends MethodProvider<BoletoIssueRequest, IssuedBoleto, BoletoStatus> {
+public interface BoletoMethodProvider
+    extends MethodProvider<BoletoIssueRequest, IssuedBoleto, BoletoStatus> {
   /**
-   * The Pix txid the bank derives for this boleto, so a charge adopted from the query can be matched
-   * to Pix webhooks.
+   * The Pix txid the bank derives for this boleto, so a charge adopted from the query can be
+   * matched to Pix webhooks.
    */
   String pixTxidFor(ProviderCredentials credentials, String nossoNumero);
 }

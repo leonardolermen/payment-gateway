@@ -6,10 +6,10 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
- * The envelope's master key. In the MVP it comes from an environment variable
- * ({@code GATEWAY_MASTER_KEY}, base64 of 32 bytes); in phase 2 it comes from a KMS — and the swap
- * happens only here, because the per-row DEK stays the same: rotating the master key re-encrypts
- * 32 bytes per row, not every payload.
+ * The envelope's master key. In the MVP it comes from an environment variable ({@code
+ * GATEWAY_MASTER_KEY}, base64 of 32 bytes); in phase 2 it comes from a KMS — and the swap happens
+ * only here, because the per-row DEK stays the same: rotating the master key re-encrypts 32 bytes
+ * per row, not every payload.
  */
 public final class MasterKey {
   private final SecretKey key;
@@ -34,9 +34,12 @@ public final class MasterKey {
     return new MasterKey(b);
   }
 
-  SecretKey key() { return key; }
+  SecretKey key() {
+    return key;
+  }
 
-  @Override public String toString() {
+  @Override
+  public String toString() {
     return "MasterKey[***]";
   }
 }

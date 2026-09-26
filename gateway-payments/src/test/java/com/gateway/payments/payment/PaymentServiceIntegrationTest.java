@@ -1,9 +1,5 @@
 package com.gateway.payments.payment;
 
-import com.gateway.payments.payment.create.CreatePixPayment;
-import com.gateway.payments.payment.create.CustomerDocumentHash;
-import com.gateway.payments.support.ServiceIntegrationTestBase;
-
 import static org.assertj.core.api.Assertions.*;
 
 import com.gateway.kernel.errors.DomainException;
@@ -13,7 +9,10 @@ import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.payments.jobs.JobType;
 import com.gateway.payments.jobs.persistence.JobRepository;
+import com.gateway.payments.payment.create.CreatePixPayment;
+import com.gateway.payments.payment.create.CustomerDocumentHash;
 import com.gateway.payments.payment.persistence.PaymentRepository;
+import com.gateway.payments.support.ServiceIntegrationTestBase;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -43,37 +42,64 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
         .contains("\"copia_e_cola\":")
         .contains("\"expires_at\":");
     List<Integer> statuses =
-        jdbc.queryForList("SELECT status FROM payments.provider_requests WHERE payment_id = ? AND operation = 'createCharge'", Integer.class, p.id());
+        jdbc.queryForList(
+            "SELECT status FROM payments.provider_requests WHERE payment_id = ? AND operation = 'createCharge'",
+            Integer.class,
+            p.id());
     assertThat(statuses).containsExactly(201);
     assertThat(jobs.findByTypeAndRef(JobType.EXPIRE_PAYMENT, p.id())).isPresent();
-    assertThat(payments.events(p.id())).extracting(e -> e.type()).containsExactly("created", "pending");
+    assertThat(payments.events(p.id()))
+        .extracting(e -> e.type())
+        .containsExactly("created", "pending");
   }
 
   @Test
   void customerDocumentIsHashedFromDigitsOnly() {
-    assertThat(CustomerDocumentHash.of("123.456.789-09")).isEqualTo(CustomerDocumentHash.of("12345678909"));
+    assertThat(CustomerDocumentHash.of("123.456.789-09"))
+        .isEqualTo(CustomerDocumentHash.of("12345678909"));
     assertThat(CustomerDocumentHash.of(null)).isNull();
     assertThat(CustomerDocumentHash.of("--")).isNull();
   }
 
   @Test
   void missingCredentialsFailsBeforeCallingTheBank() {
-    long before = jdbc.queryForObject("SELECT count(*) FROM payments.payments WHERE merchant_id = ?", Long.class, merchant.value());
+    long before =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM payments.payments WHERE merchant_id = ?",
+            Long.class,
+            merchant.value());
 
     assertThatThrownBy(
-            () -> paymentService.create(
-                new CreatePixPayment(merchant, ProviderEnvironment.LIVE, Money.brl(100), null, null, null, null)))
+            () ->
+                paymentService.create(
+                    new CreatePixPayment(
+                        merchant,
+                        ProviderEnvironment.LIVE,
+                        Money.brl(100),
+                        null,
+                        null,
+                        null,
+                        null)))
         .isInstanceOf(DomainException.class)
         .extracting(e -> ((DomainException) e).code())
         .isEqualTo("PROVIDER_CREDENTIALS_MISSING");
 
-    long after = jdbc.queryForObject("SELECT count(*) FROM payments.payments WHERE merchant_id = ?", Long.class, merchant.value());
+    long after =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM payments.payments WHERE merchant_id = ?",
+            Long.class,
+            merchant.value());
     assertThat(after).isEqualTo(before).isZero();
   }
 
   @Test
   void providerDeclineMarksFailed() {
-    bank.failNextCreateWith(new ProviderException(ProviderException.Code.INVALID, 400, "CobOperacaoInvalida", "chave bad key do pagador 123.456.789-09"));
+    bank.failNextCreateWith(
+        new ProviderException(
+            ProviderException.Code.INVALID,
+            400,
+            "CobOperacaoInvalida",
+            "chave bad key do pagador 123.456.789-09"));
 
     // The bank's wording (and whatever payer data it echoes) never reaches the merchant.
     assertThatThrownBy(() -> newCharge(100))
@@ -84,7 +110,9 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
 
     Payment p = paymentService.list(merchant, 10, null).getFirst();
     assertThat(p.status()).isEqualTo(PaymentStatus.FAILED);
-    assertThat(payments.events(p.id())).extracting(e -> e.type()).containsExactly("created", "failed");
+    assertThat(payments.events(p.id()))
+        .extracting(e -> e.type())
+        .containsExactly("created", "failed");
     assertThat(outboxTypes(p.id())).containsExactly("payment.failed");
   }
 
@@ -96,12 +124,14 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
 
     assertThat(p.status()).isEqualTo(PaymentStatus.PENDING);
     assertThat(p.pix().pixCopiaECola()).isEqualTo("00020101021226" + p.id());
-    assertThat(bank.callsFor(p.id())).containsExactly("createCharge:" + p.id(), "findCharge:" + p.id());
+    assertThat(bank.callsFor(p.id()))
+        .containsExactly("createCharge:" + p.id(), "findCharge:" + p.id());
   }
 
   @Test
   void timeoutWithNoChargeAtTheBankFails() {
-    bank.failNextCreateWith(new ProviderException(ProviderException.Code.TIMEOUT, "read timed out", null));
+    bank.failNextCreateWith(
+        new ProviderException(ProviderException.Code.TIMEOUT, "read timed out", null));
 
     assertThatThrownBy(() -> newCharge(700))
         .isInstanceOf(DomainException.class)
@@ -114,17 +144,20 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
 
   @Test
   void unavailableThatLandedIsAdoptedLikeATimeout() {
-    bank.landNextCreateThenFailWith(new ProviderException(ProviderException.Code.UNAVAILABLE, 503, null, "proxy said 503"));
+    bank.landNextCreateThenFailWith(
+        new ProviderException(ProviderException.Code.UNAVAILABLE, 503, null, "proxy said 503"));
 
     Payment p = newCharge(700);
 
     assertThat(p.status()).isEqualTo(PaymentStatus.PENDING);
-    assertThat(bank.callsFor(p.id())).containsExactly("createCharge:" + p.id(), "findCharge:" + p.id());
+    assertThat(bank.callsFor(p.id()))
+        .containsExactly("createCharge:" + p.id(), "findCharge:" + p.id());
   }
 
   @Test
   void unknownFateFailureAlsoAsksTheBankToRemoveTheCharge() {
-    bank.failNextCreateWith(new ProviderException(ProviderException.Code.UNAVAILABLE, 503, null, "down"));
+    bank.failNextCreateWith(
+        new ProviderException(ProviderException.Code.UNAVAILABLE, 503, null, "down"));
 
     assertThatThrownBy(() -> newCharge(700))
         .isInstanceOf(DomainException.class)
@@ -133,12 +166,15 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
 
     Payment p = paymentService.list(merchant, 10, null).getFirst();
     assertThat(p.status()).isEqualTo(PaymentStatus.FAILED);
-    assertThat(bank.callsFor(p.id())).containsExactly("createCharge:" + p.id(), "findCharge:" + p.id(), "cancelCharge:" + p.id());
+    assertThat(bank.callsFor(p.id()))
+        .containsExactly(
+            "createCharge:" + p.id(), "findCharge:" + p.id(), "cancelCharge:" + p.id());
   }
 
   @Test
   void declineDoesNotAskTheBankAnythingElse() {
-    bank.failNextCreateWith(new ProviderException(ProviderException.Code.DECLINED, 422, null, "no"));
+    bank.failNextCreateWith(
+        new ProviderException(ProviderException.Code.DECLINED, 422, null, "no"));
     assertThatThrownBy(() -> newCharge(700)).isInstanceOf(DomainException.class);
     Payment p = paymentService.list(merchant, 10, null).getFirst();
     assertThat(bank.callsFor(p.id())).containsExactly("createCharge:" + p.id());
@@ -158,10 +194,19 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
   @Test
   void cancelCompletedIsRefused() {
     Payment p = newCharge(100);
-    new TransactionTemplate(txManager).executeWithoutResult(s -> {
-      Payment loaded = payments.findById(p.id()).orElseThrow();
-      payments.save(loaded, List.of(loaded.markCompleted("E2E" + p.id(), Money.brl(100), clock.instant(), com.gateway.payments.payment.EventSource.PROVIDER_WEBHOOK)));
-    });
+    new TransactionTemplate(txManager)
+        .executeWithoutResult(
+            s -> {
+              Payment loaded = payments.findById(p.id()).orElseThrow();
+              payments.save(
+                  loaded,
+                  List.of(
+                      loaded.markCompleted(
+                          "E2E" + p.id(),
+                          Money.brl(100),
+                          clock.instant(),
+                          com.gateway.payments.payment.EventSource.PROVIDER_WEBHOOK)));
+            });
 
     assertThatThrownBy(() -> paymentService.cancel(merchant, p.id()))
         .isInstanceOf(DomainException.class)
@@ -173,22 +218,31 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
   void listIsScopedToTheMerchant() {
     Payment mine = newCharge(100);
     MerchantId other = MerchantId.next();
-    paymentService.create(new CreatePixPayment(other, ProviderEnvironment.TEST, Money.brl(200), null, null, null, 600));
+    paymentService.create(
+        new CreatePixPayment(
+            other, ProviderEnvironment.TEST, Money.brl(200), null, null, null, 600));
 
-    assertThat(paymentService.list(merchant, 10, null)).extracting(Payment::id).containsExactly(mine.id());
-    assertThatThrownBy(() -> paymentService.get(other, mine.id())).isInstanceOf(DomainException.class);
+    assertThat(paymentService.list(merchant, 10, null))
+        .extracting(Payment::id)
+        .containsExactly(mine.id());
+    assertThatThrownBy(() -> paymentService.get(other, mine.id()))
+        .isInstanceOf(DomainException.class);
     assertThat(paymentService.get(merchant, mine.id()).id()).isEqualTo(mine.id());
   }
 
   @Test
   void explicitExpiryIsHonoured() {
-    Payment p = paymentService.create(new CreatePixPayment(merchant, ProviderEnvironment.TEST, Money.brl(200), null, null, null, 600));
+    Payment p =
+        paymentService.create(
+            new CreatePixPayment(
+                merchant, ProviderEnvironment.TEST, Money.brl(200), null, null, null, 600));
     assertThat(p.expiresAt()).isEqualTo(clock.instant().plus(Duration.ofSeconds(600)));
   }
 
   /**
    * Regression: the stored txid was the one the bank echoed, and Itau's sandbox echoes a fixed one,
-   * so settleFromWebhook (which looks up by stored txid) answered UNKNOWN_PAYMENT for a paid charge.
+   * so settleFromWebhook (which looks up by stored txid) answered UNKNOWN_PAYMENT for a paid
+   * charge.
    */
   @Test
   void theStoredPixTxidIsOursEvenWhenTheBankEchoesAnother() {
@@ -200,7 +254,11 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
     String e2e = "E" + com.gateway.kernel.ids.Ulid.next();
     bank.markPaid(p.id(), e2e, Money.brl(1500));
     PaymentService.Settlement outcome =
-        paymentService.settleFromWebhook(merchant, p.id(), new com.gateway.kernel.provider.pix.ReceivedPix(e2e, Money.brl(1500), clock.instant(), "payer"));
+        paymentService.settleFromWebhook(
+            merchant,
+            p.id(),
+            new com.gateway.kernel.provider.pix.ReceivedPix(
+                e2e, Money.brl(1500), clock.instant(), "payer"));
 
     assertThat(outcome).isEqualTo(PaymentService.Settlement.COMPLETED);
     assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.COMPLETED);

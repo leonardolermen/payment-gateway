@@ -23,13 +23,16 @@ import tools.jackson.databind.ObjectMapper;
  */
 public class ItauTokenClient {
   private record Entry(HttpClient http, AccessToken token) {}
+
   private final Map<String, Entry> cache = new ConcurrentHashMap<>();
   private final Clock clock;
   private final Duration connectTimeout, readTimeout;
   private final ObjectMapper mapper = new ObjectMapper();
 
   public ItauTokenClient(Clock clock, Duration connectTimeout, Duration readTimeout) {
-    this.clock = clock; this.connectTimeout = connectTimeout; this.readTimeout = readTimeout;
+    this.clock = clock;
+    this.connectTimeout = connectTimeout;
+    this.readTimeout = readTimeout;
   }
 
   public AccessToken tokenFor(ItauCredentials creds, ItauEndpoints endpoints, KeyStore trustStore) {
@@ -43,17 +46,23 @@ public class ItauTokenClient {
     if (e != null && e.token() != null && e.token().usableAt(now)) {
       return e.token();
     }
-    HttpClient http = e != null ? e.http() : newHttpClient(creds, endpoints.mutualTls(), trustStore);
+    HttpClient http =
+        e != null ? e.http() : newHttpClient(creds, endpoints.mutualTls(), trustStore);
     AccessToken fresh = fetch(http, creds, tokenUrl, now);
     cache.put(key, new Entry(http, fresh));
     return fresh;
   }
 
-  /** The sandbox has no client certificate (NOTES.md "Sandbox authentication"); production always does. */
+  /**
+   * The sandbox has no client certificate (NOTES.md "Sandbox authentication"); production always
+   * does.
+   */
   private HttpClient newHttpClient(ItauCredentials creds, boolean mutualTls, KeyStore trustStore) {
     HttpClient.Builder builder = HttpClient.newBuilder().connectTimeout(connectTimeout);
     if (mutualTls) {
-      builder.sslContext(PemKeyStores.mutualTls(creds.certificatePem(), creds.privateKeyPem().reveal(), trustStore));
+      builder.sslContext(
+          PemKeyStores.mutualTls(
+              creds.certificatePem(), creds.privateKeyPem().reveal(), trustStore));
     }
     return builder.build();
   }
@@ -63,16 +72,24 @@ public class ItauTokenClient {
     cache.keySet().removeIf(k -> k.startsWith(fingerprint + "|"));
   }
 
-  public HttpClient httpClientFor(ItauCredentials creds, ItauEndpoints endpoints, KeyStore trustStore) {
+  public HttpClient httpClientFor(
+      ItauCredentials creds, ItauEndpoints endpoints, KeyStore trustStore) {
     tokenFor(creds, endpoints, trustStore);
     return cache.get(creds.fingerprint() + "|" + endpoints.tokenUrl()).http();
   }
 
   private AccessToken fetch(HttpClient http, ItauCredentials creds, URI tokenUrl, Instant now) {
-    String form = "grant_type=client_credentials&client_id=" + enc(creds.clientId()) + "&client_secret=" + enc(creds.clientSecret().reveal());
-    HttpRequest req = HttpRequest.newBuilder(tokenUrl).timeout(readTimeout)
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .POST(HttpRequest.BodyPublishers.ofString(form)).build();
+    String form =
+        "grant_type=client_credentials&client_id="
+            + enc(creds.clientId())
+            + "&client_secret="
+            + enc(creds.clientSecret().reveal());
+    HttpRequest req =
+        HttpRequest.newBuilder(tokenUrl)
+            .timeout(readTimeout)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .POST(HttpRequest.BodyPublishers.ofString(form))
+            .build();
     HttpResponse<String> res;
     try {
       res = http.send(req, HttpResponse.BodyHandlers.ofString());
@@ -82,21 +99,29 @@ public class ItauTokenClient {
       if (e instanceof InterruptedException) {
         Thread.currentThread().interrupt();
       }
-      throw new ProviderException(ProviderException.Code.UNAVAILABLE, "token request failed: " + e.getMessage(), e);
+      throw new ProviderException(
+          ProviderException.Code.UNAVAILABLE, "token request failed: " + e.getMessage(), e);
     }
     if (res.statusCode() == 401 || res.statusCode() == 403) {
-      throw new ProviderException(ProviderException.Code.UNAUTHENTICATED, res.statusCode(), null, "STS rejected the credentials");
+      throw new ProviderException(
+          ProviderException.Code.UNAUTHENTICATED,
+          res.statusCode(),
+          null,
+          "STS rejected the credentials");
     }
     if (res.statusCode() >= 500) {
-      throw new ProviderException(ProviderException.Code.UNAVAILABLE, res.statusCode(), null, "STS unavailable");
+      throw new ProviderException(
+          ProviderException.Code.UNAVAILABLE, res.statusCode(), null, "STS unavailable");
     }
     if (res.statusCode() != 200) {
-      throw new ProviderException(ProviderException.Code.UNKNOWN, res.statusCode(), null, "unexpected STS status");
+      throw new ProviderException(
+          ProviderException.Code.UNKNOWN, res.statusCode(), null, "unexpected STS status");
     }
     JsonNode body = mapper.readTree(res.body());
     String token = body.path("access_token").asText(null);
     if (token == null || token.isBlank()) {
-      throw new ProviderException(ProviderException.Code.UNKNOWN, 200, null, "STS response without access_token");
+      throw new ProviderException(
+          ProviderException.Code.UNKNOWN, 200, null, "STS response without access_token");
     }
     long expiresIn = body.path("expires_in").asLong(300);
     return new AccessToken(token, now.plusSeconds(expiresIn));

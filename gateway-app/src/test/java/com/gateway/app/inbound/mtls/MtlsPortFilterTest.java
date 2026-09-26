@@ -13,16 +13,20 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 /**
- * The allow-list mismatch needs a second certificate from the trusted CA, which TestCertificates does
- * not issue; the filter only reads the servlet attribute Tomcat fills after the handshake, so a
- * mocked certificate exercises the same decision.
+ * The allow-list mismatch needs a second certificate from the trusted CA, which TestCertificates
+ * does not issue; the filter only reads the servlet attribute Tomcat fills after the handshake, so
+ * a mocked certificate exercises the same decision.
  */
 class MtlsPortFilterTest {
   static final int PORT = 8443;
 
-  private static MockHttpServletResponse run(List<String> allowed, String presentedSubject) throws Exception {
-    MtlsPortFilter filter = new MtlsPortFilter(new WebhookMtlsProperties(PORT, "ks", "", "ts", "", null, 1024, allowed));
-    MockHttpServletRequest req = new MockHttpServletRequest("POST", "/v1/providers/itau/webhooks/T/pix");
+  private static MockHttpServletResponse run(List<String> allowed, String presentedSubject)
+      throws Exception {
+    MtlsPortFilter filter =
+        new MtlsPortFilter(
+            new WebhookMtlsProperties(PORT, "ks", "", "ts", "", null, 1024, allowed));
+    MockHttpServletRequest req =
+        new MockHttpServletRequest("POST", "/v1/providers/itau/webhooks/T/pix");
     req.setLocalPort(PORT);
     X509Certificate cert = mock(X509Certificate.class);
     when(cert.getSubjectX500Principal()).thenReturn(new X500Principal(presentedSubject));
@@ -36,7 +40,8 @@ class MtlsPortFilterTest {
 
   @Test
   void listedSubjectPassesEvenWithDifferentSpacingAndCase() throws Exception {
-    assertThat(run(List.of("CN=itau-webhook, O=Itau"), "cn=itau-webhook,o=Itau").getStatus()).isEqualTo(202);
+    assertThat(run(List.of("CN=itau-webhook, O=Itau"), "cn=itau-webhook,o=Itau").getStatus())
+        .isEqualTo(202);
   }
 
   @Test

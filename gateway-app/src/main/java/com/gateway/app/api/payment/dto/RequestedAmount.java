@@ -5,9 +5,9 @@ import com.gateway.kernel.money.Money;
 /**
  * The amount as the merchant asked for it, with the two messages this API has always answered.
  *
- * <p>{@link Money} is not enough on its own: it accepts zero and the API does not, and it accepts any
- * three-letter currency while the gateway only settles BRL. Shared by both request shapes so the rule
- * is written once.
+ * <p>{@link Money} is not enough on its own: it accepts zero and the API does not, and it accepts
+ * any three-letter currency while the gateway only settles BRL. Shared by both request shapes so
+ * the rule is written once.
  */
 final class RequestedAmount {
 

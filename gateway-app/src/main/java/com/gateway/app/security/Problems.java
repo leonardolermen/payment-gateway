@@ -12,15 +12,21 @@ import java.io.IOException;
 public final class Problems {
   private Problems() {}
 
-  public static void write(HttpServletResponse res, int status, String code, String detail) throws IOException {
+  public static void write(HttpServletResponse res, int status, String code, String detail)
+      throws IOException {
     res.setStatus(status);
     res.setContentType("application/problem+json");
-    res.getWriter().write(String.format(
-        "{\"type\":\"urn:gateway:%s\",\"title\":\"%s\",\"status\":%d,\"detail\":\"%s\"}",
-        code, code, status, escape(detail)));
+    res.getWriter()
+        .write(
+            String.format(
+                "{\"type\":\"urn:gateway:%s\",\"title\":\"%s\",\"status\":%d,\"detail\":\"%s\"}",
+                code, code, status, escape(detail)));
   }
 
-  /** Minimal JSON string escaper: backslash and quote must be escaped, and control chars are illegal raw in JSON. */
+  /**
+   * Minimal JSON string escaper: backslash and quote must be escaped, and control chars are illegal
+   * raw in JSON.
+   */
   private static String escape(String s) {
     StringBuilder out = new StringBuilder(s.length());
     for (int i = 0; i < s.length(); i++) {
@@ -31,7 +37,10 @@ public final class Problems {
         case '\n' -> out.append("\\n");
         case '\r' -> out.append("\\r");
         case '\t' -> out.append("\\t");
-        default -> { if (c < 0x20) out.append(String.format("\\u%04x", (int) c)); else out.append(c); }
+        default -> {
+          if (c < 0x20) out.append(String.format("\\u%04x", (int) c));
+          else out.append(c);
+        }
       }
     }
     return out.toString();

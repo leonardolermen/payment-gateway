@@ -42,7 +42,8 @@ public record Money(long cents, String currency) {
 
   private Money sameCurrency(Money other) {
     if (!currency.equals(other.currency)) {
-      throw new IllegalArgumentException("currency mismatch: " + currency + " vs " + other.currency);
+      throw new IllegalArgumentException(
+          "currency mismatch: " + currency + " vs " + other.currency);
     }
     return other;
   }

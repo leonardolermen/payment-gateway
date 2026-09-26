@@ -1,16 +1,18 @@
 package com.gateway.payments.support;
 
+import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.money.Money;
+import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.kernel.provider.ProviderCredentials;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.kernel.provider.boleto.BoletoIssueRequest;
-import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
 import com.gateway.kernel.provider.boleto.BoletoSituation;
 import com.gateway.kernel.provider.boleto.BoletoStatus;
 import com.gateway.kernel.provider.boleto.IssuedBoleto;
 import com.gateway.kernel.provider.pix.Charge;
 import com.gateway.kernel.provider.pix.ChargeStatus;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -20,26 +22,38 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import com.gateway.kernel.ids.MerchantId;
-import java.nio.charset.StandardCharsets;
 
 /**
  * In-memory implementation of the kernel's {@link BoletoProvider}, for the payments module's tests
- * only (never a product provider, never leaves src/test). Issuing also registers the Pix side of the
- * Bolecode in {@link RecordingPixProvider}, the way the bank creates both at once.
+ * only (never a product provider, never leaves src/test). Issuing also registers the Pix side of
+ * the Bolecode in {@link RecordingPixProvider}, the way the bank creates both at once.
  */
 public class RecordingBoletoProvider implements BoletoMethodProvider {
-  /** The account when no credential is given: agência 1500, conta 0000520, DAC 6 — the same shape ItauBoletoProvider derives from. */
+  /**
+   * The account when no credential is given: agência 1500, conta 0000520, DAC 6 — the same shape
+   * ItauBoletoProvider derives from.
+   */
   static final String BENEFICIARY = "150000052061";
-  private static final Pattern BENEFICIARY_ID = Pattern.compile("\"beneficiary_id\":\"([0-9]{12})\"");
+
+  private static final Pattern BENEFICIARY_ID =
+      Pattern.compile("\"beneficiary_id\":\"([0-9]{12})\"");
   static final String WALLET = "109";
 
   private final Clock clock;
   private final RecordingPixProvider pix;
-  /** Keyed by {@code beneficiary:nossoNumero}: every test merchant's first boleto is 00000001 and the context is shared. */
+
+  /**
+   * Keyed by {@code beneficiary:nossoNumero}: every test merchant's first boleto is 00000001 and
+   * the context is shared.
+   */
   private final Map<String, BoletoStatus> boletos = new ConcurrentHashMap<>();
-  /** The last key issued per number, so the number-only helpers act on the current test's boleto (tests run one at a time). */
+
+  /**
+   * The last key issued per number, so the number-only helpers act on the current test's boleto
+   * (tests run one at a time).
+   */
   private final Map<String, String> latest = new ConcurrentHashMap<>();
+
   private final Map<String, ProviderException> failFind = new ConcurrentHashMap<>();
   private final List<String> calls = new CopyOnWriteArrayList<>();
   private volatile ProviderException failNextIssue;
@@ -52,11 +66,13 @@ public class RecordingBoletoProvider implements BoletoMethodProvider {
     this.pix = pix;
   }
 
-  @Override public String id() {
+  @Override
+  public String id() {
     return "ITAU";
   }
 
-  @Override public PaymentMethod method() {
+  @Override
+  public PaymentMethod method() {
     return PaymentMethod.BOLECODE;
   }
 
@@ -64,12 +80,17 @@ public class RecordingBoletoProvider implements BoletoMethodProvider {
     this.failNextIssue = e;
   }
 
-  /** The POST reached the bank and issued the boleto, but the caller sees {@code e} (a timeout, a 503, a 202). */
+  /**
+   * The POST reached the bank and issued the boleto, but the caller sees {@code e} (a timeout, a
+   * 503, a 202).
+   */
   public void landNextIssueThenFailWith(ProviderException e) {
     this.landThenFail = e;
   }
 
-  /** The next issue creates no Pix side at the bank, so GET /cob on the derived txid finds nothing. */
+  /**
+   * The next issue creates no Pix side at the bank, so GET /cob on the derived txid finds nothing.
+   */
   public void skipNextPixRegistration() {
     this.skipPix = true;
   }
@@ -94,21 +115,41 @@ public class RecordingBoletoProvider implements BoletoMethodProvider {
     markPaid(nossoNumero, amount, at, "01");
   }
 
-  /** {@code channel} is what the query's meio de pagamento carries; null models a bank that omits it. */
+  /**
+   * {@code channel} is what the query's meio de pagamento carries; null models a bank that omits
+   * it.
+   */
   public void markPaid(String nossoNumero, Money amount, Instant at, String channel) {
     String k = key(nossoNumero);
     BoletoStatus s = boletos.get(k);
-    boletos.put(k, new BoletoStatus(BoletoSituation.PAID, amount, at, channel, s.idBoletoIndividual(), s.linhaDigitavel(), s.codigoBarras(), s.paymentLimitDate(), s.pixCopiaECola()));
+    boletos.put(
+        k,
+        new BoletoStatus(
+            BoletoSituation.PAID,
+            amount,
+            at,
+            channel,
+            s.idBoletoIndividual(),
+            s.linhaDigitavel(),
+            s.codigoBarras(),
+            s.paymentLimitDate(),
+            s.pixCopiaECola()));
   }
 
   private final Map<String, Runnable> afterNextFind = new ConcurrentHashMap<>();
 
-  /** The payer pays between the cancel's pre-check and the baixa: the next find answers OPEN, then the boleto is paid. */
+  /**
+   * The payer pays between the cancel's pre-check and the baixa: the next find answers OPEN, then
+   * the boleto is paid.
+   */
   public void markPaidAfterNextFind(String nossoNumero, Money amount, Instant at) {
     afterNextFind.put(nossoNumero, () -> markPaid(nossoNumero, amount, at));
   }
 
-  /** Whatever the bank does between two calls of a test's flow, run right after the next find answers. */
+  /**
+   * Whatever the bank does between two calls of a test's flow, run right after the next find
+   * answers.
+   */
   public void afterNextFind(String nossoNumero, Runnable then) {
     afterNextFind.put(nossoNumero, then);
   }
@@ -116,14 +157,28 @@ public class RecordingBoletoProvider implements BoletoMethodProvider {
   public void setSituation(String nossoNumero, BoletoSituation situation) {
     String k = key(nossoNumero);
     BoletoStatus s = boletos.get(k);
-    boletos.put(k, new BoletoStatus(situation, s.paidAmount(), s.paidAt(), s.paidChannel(), s.idBoletoIndividual(), s.linhaDigitavel(), s.codigoBarras(), s.paymentLimitDate(), s.pixCopiaECola()));
+    boletos.put(
+        k,
+        new BoletoStatus(
+            situation,
+            s.paidAmount(),
+            s.paidAt(),
+            s.paidChannel(),
+            s.idBoletoIndividual(),
+            s.linhaDigitavel(),
+            s.codigoBarras(),
+            s.paymentLimitDate(),
+            s.pixCopiaECola()));
   }
 
   public void remove(String nossoNumero) {
     boletos.remove(key(nossoNumero));
   }
 
-  /** Puts a boleto back as the bank shows it: an issue the bank registered after the gateway had already given up on it. */
+  /**
+   * Puts a boleto back as the bank shows it: an issue the bank registered after the gateway had
+   * already given up on it.
+   */
   public void restore(String nossoNumero, BoletoStatus status) {
     boletos.put(key(nossoNumero), status);
   }
@@ -146,7 +201,10 @@ public class RecordingBoletoProvider implements BoletoMethodProvider {
    */
   public List<String> callsFor(MerchantId merchant, String nossoNumero) {
     String suffix = ":" + InMemoryCredentialLookup.beneficiaryOf(merchant) + ":" + nossoNumero;
-    return calls.stream().filter(c -> c.endsWith(suffix)).map(c -> c.substring(0, c.indexOf(':')) + ":" + nossoNumero).toList();
+    return calls.stream()
+        .filter(c -> c.endsWith(suffix))
+        .map(c -> c.substring(0, c.indexOf(':')) + ":" + nossoNumero)
+        .toList();
   }
 
   /** The txid the bank derives for {@code merchant}'s boleto. */
@@ -162,14 +220,20 @@ public class RecordingBoletoProvider implements BoletoMethodProvider {
     return m.find() ? m.group(1) : BENEFICIARY;
   }
 
-  @Override public void requireIssueCredentials(ProviderCredentials c) {
+  @Override
+  public void requireIssueCredentials(ProviderCredentials c) {
     if (refuseCredentials) {
       refuseCredentials = false;
-      throw new ProviderException(ProviderException.Code.CREDENTIALS_INCOMPLETE, 0, "beneficiary_id", "ITAU credential is missing beneficiary_id");
+      throw new ProviderException(
+          ProviderException.Code.CREDENTIALS_INCOMPLETE,
+          0,
+          "beneficiary_id",
+          "ITAU credential is missing beneficiary_id");
     }
   }
 
-  @Override public IssuedBoleto issue(ProviderCredentials c, BoletoIssueRequest r) {
+  @Override
+  public IssuedBoleto issue(ProviderCredentials c, BoletoIssueRequest r) {
     calls.add("issueBoleto:" + beneficiary(c) + ":" + r.nossoNumero());
     ProviderException fail = failNextIssue;
     if (fail != null) {
@@ -182,20 +246,48 @@ public class RecordingBoletoProvider implements BoletoMethodProvider {
     String barras = ("3419" + r.nossoNumero()).repeat(4).substring(0, 44);
     String k = beneficiary(c) + ":" + r.nossoNumero();
     latest.put(r.nossoNumero(), k);
-    boletos.put(k, new BoletoStatus(BoletoSituation.OPEN, null, null, null, "uuid-" + r.nossoNumero(), linha, barras, r.paymentLimitDate(), emv));
+    boletos.put(
+        k,
+        new BoletoStatus(
+            BoletoSituation.OPEN,
+            null,
+            null,
+            null,
+            "uuid-" + r.nossoNumero(),
+            linha,
+            barras,
+            r.paymentLimitDate(),
+            emv));
     if (skipPix) {
       skipPix = false;
-    }
-    else pix.register(new Charge(txid, ChargeStatus.ACTIVE, r.amount(), emv, "pix.example/qr/" + txid, clock.instant(), 0, List.of()));
+    } else
+      pix.register(
+          new Charge(
+              txid,
+              ChargeStatus.ACTIVE,
+              r.amount(),
+              emv,
+              "pix.example/qr/" + txid,
+              clock.instant(),
+              0,
+              List.of()));
     ProviderException after = landThenFail;
     if (after != null) {
       landThenFail = null;
       throw after;
     }
-    return new IssuedBoleto("uuid-" + r.nossoNumero(), linha, barras, r.paymentLimitDate(), txid, emv, "60701190000104");
+    return new IssuedBoleto(
+        "uuid-" + r.nossoNumero(),
+        linha,
+        barras,
+        r.paymentLimitDate(),
+        txid,
+        emv,
+        "60701190000104");
   }
 
-  @Override public Optional<BoletoStatus> find(ProviderCredentials c, String nossoNumero) {
+  @Override
+  public Optional<BoletoStatus> find(ProviderCredentials c, String nossoNumero) {
     calls.add("findBoleto:" + beneficiary(c) + ":" + nossoNumero);
     ProviderException fail = failFind.remove(beneficiary(c) + ":" + nossoNumero);
     if (fail == null) {
@@ -204,7 +296,8 @@ public class RecordingBoletoProvider implements BoletoMethodProvider {
     if (fail != null) {
       throw fail;
     }
-    Optional<BoletoStatus> answer = Optional.ofNullable(boletos.get(beneficiary(c) + ":" + nossoNumero));
+    Optional<BoletoStatus> answer =
+        Optional.ofNullable(boletos.get(beneficiary(c) + ":" + nossoNumero));
     Runnable then = afterNextFind.remove(nossoNumero);
     if (then != null) {
       then.run();
@@ -212,7 +305,8 @@ public class RecordingBoletoProvider implements BoletoMethodProvider {
     return answer;
   }
 
-  @Override public void cancel(ProviderCredentials c, String nossoNumero) {
+  @Override
+  public void cancel(ProviderCredentials c, String nossoNumero) {
     calls.add("cancelBoleto:" + beneficiary(c) + ":" + nossoNumero);
     String k = beneficiary(c) + ":" + nossoNumero;
     BoletoStatus s = boletos.get(k);
@@ -220,17 +314,36 @@ public class RecordingBoletoProvider implements BoletoMethodProvider {
       throw new ProviderException(ProviderException.Code.NOT_FOUND, 404, "404", "not found");
     }
     if (s.paid()) {
-      throw new ProviderException(ProviderException.Code.CONFLICT, 422, "422", "Boleto já liquidado");
+      throw new ProviderException(
+          ProviderException.Code.CONFLICT, 422, "422", "Boleto já liquidado");
     }
-    boletos.put(k, new BoletoStatus(BoletoSituation.CANCELED, s.paidAmount(), s.paidAt(), s.paidChannel(), s.idBoletoIndividual(), s.linhaDigitavel(), s.codigoBarras(), s.paymentLimitDate(), s.pixCopiaECola()));
+    boletos.put(
+        k,
+        new BoletoStatus(
+            BoletoSituation.CANCELED,
+            s.paidAmount(),
+            s.paidAt(),
+            s.paidChannel(),
+            s.idBoletoIndividual(),
+            s.linhaDigitavel(),
+            s.codigoBarras(),
+            s.paymentLimitDate(),
+            s.pixCopiaECola()));
   }
 
-  /** Same formula as the Itaú provider: BL + beneficiary without DAC + wallet + number padded to 15. */
-  @Override public String pixTxidFor(ProviderCredentials c, String nossoNumero) {
+  /**
+   * Same formula as the Itaú provider: BL + beneficiary without DAC + wallet + number padded to 15.
+   */
+  @Override
+  public String pixTxidFor(ProviderCredentials c, String nossoNumero) {
     return txid(beneficiary(c), nossoNumero);
   }
 
   private static String txid(String beneficiary, String nossoNumero) {
-    return "BL" + beneficiary.substring(0, 11) + WALLET + "0".repeat(15 - nossoNumero.length()) + nossoNumero;
+    return "BL"
+        + beneficiary.substring(0, 11)
+        + WALLET
+        + "0".repeat(15 - nossoNumero.length())
+        + nossoNumero;
   }
 }

@@ -7,7 +7,10 @@ import java.util.Optional;
 
 public interface MerchantRepository {
   Merchant save(Merchant merchant);
+
   Optional<Merchant> findById(MerchantId id);
+
   List<Merchant> findAll();
+
   Optional<Merchant> findByInboundWebhookToken(String token);
 }

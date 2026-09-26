@@ -107,7 +107,12 @@ class IdempotencyRepositoryIntegrationTest {
   @Test
   void deleteOlderThanRemovesOldRows() {
     MerchantId merchant = MerchantId.next();
-    IdempotencyKey k = IdempotencyKey.begin(merchant, "old-key", "hash", Clock.fixed(java.time.Instant.parse("2020-01-01T00:00:00Z"), java.time.ZoneOffset.UTC));
+    IdempotencyKey k =
+        IdempotencyKey.begin(
+            merchant,
+            "old-key",
+            "hash",
+            Clock.fixed(java.time.Instant.parse("2020-01-01T00:00:00Z"), java.time.ZoneOffset.UTC));
     repository.insertIfAbsent(k);
 
     int deleted = repository.deleteOlderThan(java.time.Instant.parse("2025-01-01T00:00:00Z"));

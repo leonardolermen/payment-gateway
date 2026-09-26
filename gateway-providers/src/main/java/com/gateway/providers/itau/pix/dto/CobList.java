@@ -8,6 +8,8 @@ import java.util.List;
 public record CobList(Parametros parametros, List<CobResponse> cobs) {
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record Parametros(Paginacao paginacao) {}
+
   @JsonIgnoreProperties(ignoreUnknown = true)
-  public record Paginacao(int paginaAtual, int itensPorPagina, int quantidadeDePaginas, int quantidadeTotalDeItens) {}
+  public record Paginacao(
+      int paginaAtual, int itensPorPagina, int quantidadeDePaginas, int quantidadeTotalDeItens) {}
 }

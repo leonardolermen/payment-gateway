@@ -6,20 +6,21 @@ import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.errors.InvalidValue;
 import com.gateway.kernel.party.Address;
 import com.gateway.kernel.party.Document;
-import com.gateway.kernel.party.PersonName;
 import com.gateway.kernel.party.Payer;
+import com.gateway.kernel.party.PersonName;
 import java.util.function.Supplier;
 
 /**
- * Builds the validated payer from what the merchant sent, naming each field in the API's own spelling.
+ * Builds the validated payer from what the merchant sent, naming each field in the API's own
+ * spelling.
  *
- * <p>In the domain and not at the edge for two reasons: the answer is a 422 that names the field, and
- * no row exists yet when it is refused.
+ * <p>In the domain and not at the edge for two reasons: the answer is a 422 that names the field,
+ * and no row exists yet when it is refused.
  *
  * <p>The value objects own the formats (see {@code kernel/party} and {@code kernel/address}); this
- * class owns only the two things they cannot know — that the field is called
- * {@code customer.address.zip} out on the wire, and that the merchant-facing code is
- * {@code CUSTOMER_REQUIRED}.
+ * class owns only the two things they cannot know — that the field is called {@code
+ * customer.address.zip} out on the wire, and that the merchant-facing code is {@code
+ * CUSTOMER_REQUIRED}.
  */
 public final class PayerFactory {
   private static final String CODE = "CUSTOMER_REQUIRED";

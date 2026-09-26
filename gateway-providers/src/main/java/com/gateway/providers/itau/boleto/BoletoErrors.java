@@ -31,20 +31,30 @@ public final class BoletoErrors {
           if (i > 0) {
             stringBuilder.append("; ");
           }
-          stringBuilder.append(problem.campos().get(i).campo()).append(": ").append(problem.campos().get(i).mensagem());
+          stringBuilder
+              .append(problem.campos().get(i).campo())
+              .append(": ")
+              .append(problem.campos().get(i).mensagem());
         }
         stringBuilder.append(']');
       }
       message = stringBuilder.toString();
     } else {
-      message = "Itaú boleto HTTP " + status + (body == null || body.isBlank() ? "" : ": " + truncate(body));
+      message =
+          "Itaú boleto HTTP "
+              + status
+              + (body == null || body.isBlank() ? "" : ": " + truncate(body));
     }
 
-    return new ProviderException(code(status), status, problem == null ? null : problem.codigo(), message);
+    return new ProviderException(
+        code(status), status, problem == null ? null : problem.codigo(), message);
   }
 
   static Code code(int status) {
-    if (status == 202) return Code.TIMEOUT; // "operação em andamento": the bank has not decided yet, treat like a lost answer
+    if (status == 202)
+      return Code
+          .TIMEOUT; // "operação em andamento": the bank has not decided yet, treat like a lost
+    // answer
     if (status == 400 || status == 422) {
       return Code.DECLINED;
     }
@@ -64,12 +74,18 @@ public final class BoletoErrors {
     return Code.UNKNOWN;
   }
 
-  /** The 422 of a baixa on a boleto the bank already settled says "pago"/"liquidado" in its text (no schema, no code). */
+  /**
+   * The 422 of a baixa on a boleto the bank already settled says "pago"/"liquidado" in its text (no
+   * schema, no code).
+   */
   public static boolean mentionsAlreadyPaid(String body) {
     if (body == null) {
       return false;
     }
-    String plain = Normalizer.normalize(body, Normalizer.Form.NFD).replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
+    String plain =
+        Normalizer.normalize(body, Normalizer.Form.NFD)
+            .replaceAll("\\p{M}", "")
+            .toLowerCase(Locale.ROOT);
 
     return plain.contains("pago") || plain.contains("liquidado");
   }

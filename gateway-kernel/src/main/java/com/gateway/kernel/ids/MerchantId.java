@@ -6,6 +6,7 @@ public record MerchantId(String value) {
       throw new IllegalArgumentException("invalid merchant id: " + value);
     }
   }
+
   public static MerchantId next() {
     return new MerchantId(Ulid.next());
   }

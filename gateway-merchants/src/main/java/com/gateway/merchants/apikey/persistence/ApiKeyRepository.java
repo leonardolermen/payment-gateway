@@ -8,8 +8,13 @@ import java.util.Optional;
 
 public interface ApiKeyRepository {
   ApiKey save(ApiKey apiKey);
+
   List<ApiKey> findByPrefix(String prefix);
-  List<ApiKey> findActiveByMerchantAndEnvironment(MerchantId merchantId, ApiKeyEnvironment environment);
+
+  List<ApiKey> findActiveByMerchantAndEnvironment(
+      MerchantId merchantId, ApiKeyEnvironment environment);
+
   List<ApiKey> findByMerchant(MerchantId merchantId);
+
   Optional<ApiKey> findById(String id);
 }

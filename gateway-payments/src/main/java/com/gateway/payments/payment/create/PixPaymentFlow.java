@@ -15,15 +15,16 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Creating a Pix charge. The order is the invariant: the credential is resolved before any row exists,
- * the CREATED row is written before the bank is called, and the bank call itself runs outside any
- * transaction so a 30 s bank timeout cannot hold a pooled connection and row locks for 30 s.
+ * Creating a Pix charge. The order is the invariant: the credential is resolved before any row
+ * exists, the CREATED row is written before the bank is called, and the bank call itself runs
+ * outside any transaction so a 30 s bank timeout cannot hold a pooled connection and row locks for
+ * 30 s.
  */
 public class PixPaymentFlow implements PaymentFlow {
 
   /**
-   * A timeout, and equally a 503/504 from a gateway in front of the bank, says nothing about whether
-   * the charge was created — so neither is a failure yet.
+   * A timeout, and equally a 503/504 from a gateway in front of the bank, says nothing about
+   * whether the charge was created — so neither is a failure yet.
    */
   private static final Set<ProviderException.Code> MAY_HAVE_LANDED =
       Set.of(ProviderException.Code.TIMEOUT, ProviderException.Code.UNAVAILABLE);
@@ -60,7 +61,8 @@ public class PixPaymentFlow implements PaymentFlow {
     ResolvedProvider<PixMethodProvider> resolved =
         providers.resolvePix(pix.merchantId(), pix.environment(), PaymentService.PROVIDER);
 
-    int expires = pix.expiresInSeconds() == null ? props.defaultExpiresInSeconds() : pix.expiresInSeconds();
+    int expires =
+        pix.expiresInSeconds() == null ? props.defaultExpiresInSeconds() : pix.expiresInSeconds();
     Payment payment = drafts.pix(pix, PaymentService.PROVIDER, expires);
 
     Charge charge = issueOrRecover(payment, pix, expires, resolved);
@@ -69,21 +71,28 @@ public class PixPaymentFlow implements PaymentFlow {
   }
 
   private Charge issueOrRecover(
-      Payment payment, CreatePixPayment pix, int expires, ResolvedProvider<PixMethodProvider> resolved) {
+      Payment payment,
+      CreatePixPayment pix,
+      int expires,
+      ResolvedProvider<PixMethodProvider> resolved) {
     PixIssueRequest request =
-        new PixIssueRequest(payment.id(), pix.amount(), expires, pix.customerDocument(), null, pix.description());
+        new PixIssueRequest(
+            payment.id(), pix.amount(), expires, pix.customerDocument(), null, pix.description());
 
     try {
       return providers.call(
-          payment.id(), "createCharge", resolved, target -> target.provider().issue(target.credentials(), request));
+          payment.id(),
+          "createCharge",
+          resolved,
+          target -> target.provider().issue(target.credentials(), request));
     } catch (ProviderException failure) {
       return recover(payment, resolved, failure);
     }
   }
 
   /**
-   * The PUT may have landed. The txid is ours, so we ask the bank before deciding (spec section 3.2)
-   * instead of failing a charge the payer may be looking at.
+   * The PUT may have landed. The txid is ours, so we ask the bank before deciding (spec section
+   * 3.2) instead of failing a charge the payer may be looking at.
    *
    * <p>Unlike a bolecode, an empty answer decides here: the charge is failed on the spot, because
    * GET /cob is authoritative about a txid we chose ourselves.
@@ -93,7 +102,10 @@ public class PixPaymentFlow implements PaymentFlow {
     ProviderFailures.Outcome outcome = ProviderFailures.classify(failure, MAY_HAVE_LANDED);
 
     if (outcome != ProviderFailures.Outcome.MAY_HAVE_LANDED) {
-      String code = outcome == ProviderFailures.Outcome.DECLINED ? "PROVIDER_DECLINED" : "PROVIDER_UNAVAILABLE";
+      String code =
+          outcome == ProviderFailures.Outcome.DECLINED
+              ? "PROVIDER_DECLINED"
+              : "PROVIDER_UNAVAILABLE";
       throw failures.fail(payment.id(), code, failure, null);
     }
 
@@ -103,7 +115,9 @@ public class PixPaymentFlow implements PaymentFlow {
     try {
       existing =
           providers.call(
-              payment.id(), "findCharge", resolved,
+              payment.id(),
+              "findCharge",
+              resolved,
               target -> target.provider().find(target.credentials(), payment.id()));
     } catch (ProviderException again) {
       throw failures.fail(payment.id(), code, again, resolved);

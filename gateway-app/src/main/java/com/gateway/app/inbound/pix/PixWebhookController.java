@@ -36,7 +36,11 @@ public class PixWebhookController {
   private final ObjectMapper json;
   private final int maxBodyBytes;
 
-  public PixWebhookController(WebhookTokenGuard guard, WebhookInboxService inbox, ObjectMapper json, WebhookMtlsProperties props) {
+  public PixWebhookController(
+      WebhookTokenGuard guard,
+      WebhookInboxService inbox,
+      ObjectMapper json,
+      WebhookMtlsProperties props) {
     this.maxBodyBytes = props.maxBodyBytes();
     this.guard = guard;
     this.inbox = inbox;
@@ -44,26 +48,33 @@ public class PixWebhookController {
   }
 
   @PostMapping({"/v1/providers/itau/webhooks/{token}", "/v1/providers/itau/webhooks/{token}/pix"})
-  public ResponseEntity<Void> receive(@PathVariable String token, HttpServletRequest req, HttpServletResponse res) throws IOException {
+  public ResponseEntity<Void> receive(
+      @PathVariable String token, HttpServletRequest req, HttpServletResponse res)
+      throws IOException {
     Merchant merchant = guard.resolve(token);
     // Read through a bounded stream, not @RequestBody byte[]: MtlsPortFilter refuses an oversized
     // Content-Length, but a chunked body declares none, and an unbounded read would buffer it all.
     byte[] body = req.getInputStream().readNBytes(maxBodyBytes + 1);
     if (body.length > maxBodyBytes) {
-      Problems.write(res, 413, "PAYLOAD_TOO_LARGE", "webhook body exceeds " + maxBodyBytes + " bytes");
+      Problems.write(
+          res, 413, "PAYLOAD_TOO_LARGE", "webhook body exceeds " + maxBodyBytes + " bytes");
       return null;
     }
     inbox.accept("ITAU", merchant.id(), headers(req), body);
     return ResponseEntity.accepted().build();
   }
 
-  /** What an operator needs to trace a delivery back to the bank; the full header set would be noise. */
+  /**
+   * What an operator needs to trace a delivery back to the bank; the full header set would be
+   * noise.
+   */
   private String headers(HttpServletRequest req) {
     Map<String, String> h = new LinkedHashMap<>();
     put(h, "X-Correlation-Id", req.getHeader("X-Correlation-Id"));
     put(h, "User-Agent", req.getHeader("User-Agent"));
     put(h, "Content-Type", req.getContentType());
-    if (req.getAttribute(CLIENT_CERT_ATTRIBUTE) instanceof X509Certificate[] chain && chain.length > 0) {
+    if (req.getAttribute(CLIENT_CERT_ATTRIBUTE) instanceof X509Certificate[] chain
+        && chain.length > 0) {
       put(h, "Client-Cert-Subject", chain[0].getSubjectX500Principal().getName());
       put(h, "Client-Cert-Issuer", chain[0].getIssuerX500Principal().getName());
     }

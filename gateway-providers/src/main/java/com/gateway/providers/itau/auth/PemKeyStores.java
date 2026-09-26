@@ -27,8 +27,10 @@ public final class PemKeyStores {
 
   static SSLContext mutualTls(String certificatePem, String privateKeyPem, KeyStore trustStore) {
     try {
-      X509Certificate cert = (X509Certificate) CertificateFactory.getInstance("X.509")
-          .generateCertificate(new ByteArrayInputStream(certificatePem.getBytes()));
+      X509Certificate cert =
+          (X509Certificate)
+              CertificateFactory.getInstance("X.509")
+                  .generateCertificate(new ByteArrayInputStream(certificatePem.getBytes()));
       PrivateKey key = readPrivateKey(privateKeyPem);
       if (!keyMatches(cert, key)) {
         throw new IllegalArgumentException("private key does not match the certificate");
@@ -37,11 +39,13 @@ public final class PemKeyStores {
       KeyStore keyStore = KeyStore.getInstance("PKCS12");
       keyStore.load(null, null);
       keyStore.setKeyEntry("itau", key, pw, new X509Certificate[] {cert});
-      KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+      KeyManagerFactory kmf =
+          KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
       kmf.init(keyStore, pw);
       TrustManager[] tms = null;
       if (trustStore != null) {
-        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        TrustManagerFactory tmf =
+            TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
         tmf.init(trustStore);
         tms = tmf.getTrustManagers();
       }
@@ -78,7 +82,8 @@ public final class PemKeyStores {
       if (o instanceof PEMKeyPair pair) {
         return converter.getKeyPair(pair).getPrivate();
       }
-      throw new IllegalArgumentException("unsupported private key PEM: " + (o == null ? "empty" : o.getClass().getSimpleName()));
+      throw new IllegalArgumentException(
+          "unsupported private key PEM: " + (o == null ? "empty" : o.getClass().getSimpleName()));
     }
   }
 

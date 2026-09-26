@@ -13,22 +13,26 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
- * Every message here is the one {@code PaymentService.validatePayer} answered before the fourteen ifs
- * became typed constructions. They are contract: a merchant handles the code and reads the field name,
- * so this test exists to make a change to either of them deliberate.
+ * Every message here is the one {@code PaymentService.validatePayer} answered before the fourteen
+ * ifs became typed constructions. They are contract: a merchant handles the code and reads the
+ * field name, so this test exists to make a change to either of them deliberate.
  */
 class PayerFactoryTest {
 
   private static PayerData complete() {
-    return new PayerData("Ana Silva", "529.982.247-25",
-        new PayerData.AddressData("Av. Paulista 1000", "Bela Vista", "Sao Paulo", "sp", "01310-100"));
+    return new PayerData(
+        "Ana Silva",
+        "529.982.247-25",
+        new PayerData.AddressData(
+            "Av. Paulista 1000", "Bela Vista", "Sao Paulo", "sp", "01310-100"));
   }
 
   private static PayerData with(String name, String document, PayerData.AddressData address) {
     return new PayerData(name, document, address);
   }
 
-  private static PayerData.AddressData address(String street, String district, String city, String state, String zip) {
+  private static PayerData.AddressData address(
+      String street, String district, String city, String state, String zip) {
     return new PayerData.AddressData(street, district, city, state, zip);
   }
 
@@ -75,18 +79,34 @@ class PayerFactoryTest {
     return Stream.of(
         arguments(with(null, "52998224725", good), "customer.name is required"),
         arguments(with("123", "52998224725", good), "customer.name is required"),
-        arguments(with("Ana", "123", good), "customer.document must be a CPF (11 digits) or CNPJ (14 digits)"),
-        arguments(with("Ana", null, good), "customer.document must be a CPF (11 digits) or CNPJ (14 digits)"),
+        arguments(
+            with("Ana", "123", good),
+            "customer.document must be a CPF (11 digits) or CNPJ (14 digits)"),
+        arguments(
+            with("Ana", null, good),
+            "customer.document must be a CPF (11 digits) or CNPJ (14 digits)"),
         arguments(with("Ana", "52998224725", null), "customer.address is required"),
-        arguments(with("Ana", "52998224725", address(" ", "Bela Vista", "Sao Paulo", "SP", "01310100")),
+        arguments(
+            with("Ana", "52998224725", address(" ", "Bela Vista", "Sao Paulo", "SP", "01310100")),
             "customer.address.street is required"),
-        arguments(with("Ana", "52998224725", address("Av. Paulista", null, "Sao Paulo", "SP", "01310100")),
+        arguments(
+            with(
+                "Ana", "52998224725", address("Av. Paulista", null, "Sao Paulo", "SP", "01310100")),
             "customer.address.district is required"),
-        arguments(with("Ana", "52998224725", address("Av. Paulista", "Bela Vista", "", "SP", "01310100")),
+        arguments(
+            with("Ana", "52998224725", address("Av. Paulista", "Bela Vista", "", "SP", "01310100")),
             "customer.address.city is required"),
-        arguments(with("Ana", "52998224725", address("Av. Paulista", "Bela Vista", "Sao Paulo", "XYZ", "01310100")),
+        arguments(
+            with(
+                "Ana",
+                "52998224725",
+                address("Av. Paulista", "Bela Vista", "Sao Paulo", "XYZ", "01310100")),
             "customer.address.state must be a two-letter UF"),
-        arguments(with("Ana", "52998224725", address("Av. Paulista", "Bela Vista", "Sao Paulo", "SP", "1310100")),
+        arguments(
+            with(
+                "Ana",
+                "52998224725",
+                address("Av. Paulista", "Bela Vista", "Sao Paulo", "SP", "1310100")),
             "customer.address.zip must be 8 digits"));
   }
 }

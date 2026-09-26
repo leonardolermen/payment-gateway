@@ -16,17 +16,27 @@ public final class BoletoDetailsJson {
     if (b == null) {
       return "null";
     }
-    return "{\"nossoNumero\":" + str(b.nossoNumero())
-        + ",\"idBoletoIndividual\":" + str(b.idBoletoIndividual())
-        + ",\"linhaDigitavel\":" + str(b.linhaDigitavel())
-        + ",\"codigoBarras\":" + str(b.codigoBarras())
-        + ",\"dueDate\":" + str(b.dueDate() == null ? null : b.dueDate().toString())
-        + ",\"paymentLimitDate\":" + str(b.paymentLimitDate() == null ? null : b.paymentLimitDate().toString())
-        + ",\"paidVia\":" + str(b.paidVia() == null ? null : b.paidVia().name())
+    return "{\"nossoNumero\":"
+        + str(b.nossoNumero())
+        + ",\"idBoletoIndividual\":"
+        + str(b.idBoletoIndividual())
+        + ",\"linhaDigitavel\":"
+        + str(b.linhaDigitavel())
+        + ",\"codigoBarras\":"
+        + str(b.codigoBarras())
+        + ",\"dueDate\":"
+        + str(b.dueDate() == null ? null : b.dueDate().toString())
+        + ",\"paymentLimitDate\":"
+        + str(b.paymentLimitDate() == null ? null : b.paymentLimitDate().toString())
+        + ",\"paidVia\":"
+        + str(b.paidVia() == null ? null : b.paidVia().name())
         + "}";
   }
 
-  /** Null for {@code null}, an absent block, or a document without {@code nossoNumero} (a Pix payment). */
+  /**
+   * Null for {@code null}, an absent block, or a document without {@code nossoNumero} (a Pix
+   * payment).
+   */
   public static BoletoDetails read(String json) {
     if (json == null || json.isBlank() || json.trim().equals("null")) {
       return null;
@@ -36,8 +46,14 @@ public final class BoletoDetailsJson {
       return null;
     }
     String via = field(json, "paidVia");
-    return new BoletoDetails(nossoNumero, field(json, "idBoletoIndividual"), field(json, "linhaDigitavel"), field(json, "codigoBarras"),
-        date(field(json, "dueDate")), date(field(json, "paymentLimitDate")), via == null ? null : PaidVia.valueOf(via));
+    return new BoletoDetails(
+        nossoNumero,
+        field(json, "idBoletoIndividual"),
+        field(json, "linhaDigitavel"),
+        field(json, "codigoBarras"),
+        date(field(json, "dueDate")),
+        date(field(json, "paymentLimitDate")),
+        via == null ? null : PaidVia.valueOf(via));
   }
 
   private static LocalDate date(String s) {
@@ -46,7 +62,8 @@ public final class BoletoDetailsJson {
 
   // \s* after ':' because Postgres reformats jsonb on the way out (see PixDetailsJson).
   private static String field(String json, String key) {
-    Matcher matcher = Pattern.compile("\"" + key + "\":\\s*(null|\"((?:\\\\.|[^\"\\\\])*)\")").matcher(json);
+    Matcher matcher =
+        Pattern.compile("\"" + key + "\":\\s*(null|\"((?:\\\\.|[^\"\\\\])*)\")").matcher(json);
     if (!matcher.find()) {
       return null;
     }

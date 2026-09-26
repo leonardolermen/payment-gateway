@@ -10,8 +10,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The registry is complete at construction or the context does not come up. A method with no flow
- * would otherwise be a 500 the first time a merchant asked for it, which is the worst place to learn
- * about a wiring mistake.
+ * would otherwise be a 500 the first time a merchant asked for it, which is the worst place to
+ * learn about a wiring mistake.
  */
 class PaymentFlowsTest {
 
@@ -39,7 +39,10 @@ class PaymentFlowsTest {
   @Test
   void twoFlowsForTheSameMethodFailAtConstruction() {
     List<PaymentFlow> duplicated =
-        List.of(flowFor(PaymentMethod.PIX), flowFor(PaymentMethod.PIX), flowFor(PaymentMethod.BOLECODE));
+        List.of(
+            flowFor(PaymentMethod.PIX),
+            flowFor(PaymentMethod.PIX),
+            flowFor(PaymentMethod.BOLECODE));
 
     assertThatThrownBy(() -> new PaymentFlows(duplicated))
         .isInstanceOf(IllegalStateException.class)

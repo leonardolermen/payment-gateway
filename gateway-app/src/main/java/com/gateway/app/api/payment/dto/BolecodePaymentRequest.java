@@ -8,11 +8,12 @@ import com.gateway.payments.payment.create.CreatePaymentCommand;
 import java.time.LocalDate;
 
 /**
- * A registered boleto with a Pix QR on the same issue. It has no {@code expires_in}: a bolecode expires
- * on its payment limit date and nowhere else, which is why that field belongs to the other shape.
+ * A registered boleto with a Pix QR on the same issue. It has no {@code expires_in}: a bolecode
+ * expires on its payment limit date and nowhere else, which is why that field belongs to the other
+ * shape.
  *
- * <p>The payer is not validated here. The domain answers CUSTOMER_REQUIRED naming the field, and it does
- * so before a row exists — see {@code PayerFactory}.
+ * <p>The payer is not validated here. The domain answers CUSTOMER_REQUIRED naming the field, and it
+ * does so before a row exists — see {@code PayerFactory}.
  */
 public record BolecodePaymentRequest(
     Long amount,
@@ -21,7 +22,8 @@ public record BolecodePaymentRequest(
     String description,
     Customer customer,
     LocalDate dueDate,
-    Integer paymentLimitDays) implements CreatePaymentRequest {
+    Integer paymentLimitDays)
+    implements CreatePaymentRequest {
 
   @Override
   public PaymentMethod method() {

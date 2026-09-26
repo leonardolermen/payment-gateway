@@ -29,24 +29,42 @@ public class ApiKeyRepositoryImpl implements ApiKeyRepository {
     return toDomain(jpa.save(entity));
   }
 
-  @Override public List<ApiKey> findByPrefix(String prefix) {
+  @Override
+  public List<ApiKey> findByPrefix(String prefix) {
     return jpa.findByPrefix(prefix).stream().map(ApiKeyRepositoryImpl::toDomain).toList();
   }
 
   @Override
-  public List<ApiKey> findActiveByMerchantAndEnvironment(MerchantId merchantId, ApiKeyEnvironment environment) {
-    return jpa.findByMerchantIdAndEnvironmentAndActiveTrue(merchantId.value(), environment.name()).stream()
-        .map(ApiKeyRepositoryImpl::toDomain).toList();
+  public List<ApiKey> findActiveByMerchantAndEnvironment(
+      MerchantId merchantId, ApiKeyEnvironment environment) {
+    return jpa
+        .findByMerchantIdAndEnvironmentAndActiveTrue(merchantId.value(), environment.name())
+        .stream()
+        .map(ApiKeyRepositoryImpl::toDomain)
+        .toList();
   }
 
-  @Override public List<ApiKey> findByMerchant(MerchantId merchantId) {
-    return jpa.findByMerchantIdOrderByCreatedAtAsc(merchantId.value()).stream().map(ApiKeyRepositoryImpl::toDomain).toList();
+  @Override
+  public List<ApiKey> findByMerchant(MerchantId merchantId) {
+    return jpa.findByMerchantIdOrderByCreatedAtAsc(merchantId.value()).stream()
+        .map(ApiKeyRepositoryImpl::toDomain)
+        .toList();
   }
-  @Override public Optional<ApiKey> findById(String id) {
+
+  @Override
+  public Optional<ApiKey> findById(String id) {
     return jpa.findById(id).map(ApiKeyRepositoryImpl::toDomain);
   }
 
   private static ApiKey toDomain(ApiKeyEntity e) {
-    return new ApiKey(e.id, new MerchantId(e.merchantId), ApiKeyEnvironment.valueOf(e.environment), e.prefix, e.hash, e.active, e.expiresAt, e.createdAt);
+    return new ApiKey(
+        e.id,
+        new MerchantId(e.merchantId),
+        ApiKeyEnvironment.valueOf(e.environment),
+        e.prefix,
+        e.hash,
+        e.active,
+        e.expiresAt,
+        e.createdAt);
   }
 }

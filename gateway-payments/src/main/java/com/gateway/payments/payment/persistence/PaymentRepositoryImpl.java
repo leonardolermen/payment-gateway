@@ -2,12 +2,12 @@ package com.gateway.payments.payment.persistence;
 
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.money.Money;
+import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentDetailsJson;
 import com.gateway.payments.payment.PaymentEvent;
-import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.payments.payment.PaymentStatus;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -111,55 +111,88 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   }
 
   @Override
-  public Optional<Payment> findByMerchantAndTxid(MerchantId merchantId, String provider, String txid) {
-    return jpa.findByProviderAndTxid(provider, txid).filter(e -> e.merchantId.equals(merchantId.value())).map(PaymentRepositoryImpl::toDomain);
+  public Optional<Payment> findByMerchantAndTxid(
+      MerchantId merchantId, String provider, String txid) {
+    return jpa.findByProviderAndTxid(provider, txid)
+        .filter(e -> e.merchantId.equals(merchantId.value()))
+        .map(PaymentRepositoryImpl::toDomain);
   }
 
   @Override
   public List<Payment> listByMerchant(MerchantId merchantId, int limit, String cursorId) {
-    return jpa.findByMerchant(merchantId.value(), cursorId, Limit.of(limit)).stream().map(PaymentRepositoryImpl::toDomain).toList();
+    return jpa.findByMerchant(merchantId.value(), cursorId, Limit.of(limit)).stream()
+        .map(PaymentRepositoryImpl::toDomain)
+        .toList();
   }
 
   @Override
-  public List<Payment> listByMerchantAndReference(MerchantId merchantId, String reference, int limit) {
-    return jpa.findByMerchantIdAndReferenceOrderByIdDesc(merchantId.value(), reference, Limit.of(limit)).stream().map(PaymentRepositoryImpl::toDomain).toList();
+  public List<Payment> listByMerchantAndReference(
+      MerchantId merchantId, String reference, int limit) {
+    return jpa
+        .findByMerchantIdAndReferenceOrderByIdDesc(merchantId.value(), reference, Limit.of(limit))
+        .stream()
+        .map(PaymentRepositoryImpl::toDomain)
+        .toList();
   }
 
   @Override
   public List<Payment> findPendingOlderThan(Instant expiresBefore, int limit) {
-    return jpa.findPendingOlderThan(expiresBefore, Limit.of(limit)).stream().map(PaymentRepositoryImpl::toDomain).toList();
+    return jpa.findPendingOlderThan(expiresBefore, Limit.of(limit)).stream()
+        .map(PaymentRepositoryImpl::toDomain)
+        .toList();
   }
 
   @Override
-  public List<Payment> findByMethodAndStatusIn(com.gateway.kernel.payment.PaymentMethod method, Set<PaymentStatus> statuses, Instant createdAfter, int limit) {
+  public List<Payment> findByMethodAndStatusIn(
+      com.gateway.kernel.payment.PaymentMethod method,
+      Set<PaymentStatus> statuses,
+      Instant createdAfter,
+      int limit) {
     Set<String> names = statuses.stream().map(Enum::name).collect(Collectors.toSet());
-    return jpa.findByMethodAndStatusInAndCreatedAtAfter(method.name(), names, createdAfter, Limit.of(limit)).stream().map(PaymentRepositoryImpl::toDomain).toList();
+    return jpa
+        .findByMethodAndStatusInAndCreatedAtAfter(
+            method.name(), names, createdAfter, Limit.of(limit))
+        .stream()
+        .map(PaymentRepositoryImpl::toDomain)
+        .toList();
   }
 
   @Override
-  public List<Payment> findByStatusIn(Set<PaymentStatus> statuses, Instant createdAfter, int limit) {
+  public List<Payment> findByStatusIn(
+      Set<PaymentStatus> statuses, Instant createdAfter, int limit) {
     Set<String> names = statuses.stream().map(Enum::name).collect(Collectors.toSet());
-    return jpa.findByStatusInAndCreatedAtAfter(names, createdAfter, Limit.of(limit)).stream().map(PaymentRepositoryImpl::toDomain).toList();
+    return jpa.findByStatusInAndCreatedAtAfter(names, createdAfter, Limit.of(limit)).stream()
+        .map(PaymentRepositoryImpl::toDomain)
+        .toList();
   }
 
   @Override
   public Optional<Payment> findByIdForUpdate(String id) {
     // Same guard as JobRepositoryImpl.claimDue: outside a transaction the lock is released the
     // instant it is taken, and the caller would believe it holds it.
-    if (!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
-      throw new IllegalStateException("findByIdForUpdate must run inside a transaction: the row lock depends on it.");
+    if (!org.springframework.transaction.support.TransactionSynchronizationManager
+        .isActualTransactionActive()) {
+      throw new IllegalStateException(
+          "findByIdForUpdate must run inside a transaction: the row lock depends on it.");
     }
     return jpa.findByIdForUpdate(id).map(PaymentRepositoryImpl::toDomain);
   }
 
   @Override
-  public List<Payment> findByStatusCreatedBefore(PaymentStatus status, Instant createdBefore, int limit) {
-    return jpa.findByStatusAndCreatedAtBefore(status.name(), createdBefore, Limit.of(limit)).stream().map(PaymentRepositoryImpl::toDomain).toList();
+  public List<Payment> findByStatusCreatedBefore(
+      PaymentStatus status, Instant createdBefore, int limit) {
+    return jpa
+        .findByStatusAndCreatedAtBefore(status.name(), createdBefore, Limit.of(limit))
+        .stream()
+        .map(PaymentRepositoryImpl::toDomain)
+        .toList();
   }
 
   @Override
   public List<PaymentEvent> events(String paymentId) {
-    return eventsJpa.findByPaymentIdOrderBySequenceAsc(paymentId).stream().map(PaymentRepositoryImpl::toEventDomain).toList();
+    return eventsJpa.findByPaymentIdOrderBySequenceAsc(paymentId).stream()
+        .map(PaymentRepositoryImpl::toEventDomain)
+        .toList();
   }
 
   private static PaymentEventEntity toEventEntity(PaymentEvent event) {
@@ -175,7 +208,14 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   }
 
   private static PaymentEvent toEventDomain(PaymentEventEntity e) {
-    return new PaymentEvent(e.id, e.paymentId, e.sequence, e.type, EventSource.valueOf(e.source), e.payload, e.createdAt);
+    return new PaymentEvent(
+        e.id,
+        e.paymentId,
+        e.sequence,
+        e.type,
+        EventSource.valueOf(e.source),
+        e.payload,
+        e.createdAt);
   }
 
   private static Payment toDomain(PaymentEntity e) {

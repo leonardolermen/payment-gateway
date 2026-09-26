@@ -9,13 +9,14 @@ import java.util.Optional;
 
 /**
  * The Pix side: the spine ({@code issue}, {@code find}, {@code cancel}) plus what only Pix has —
- * refunds, a listing for reconciliation, and a webhook to parse. Implemented per bank in
- * {@code gateway-providers} (e.g. ItauPixProvider); consumed by payments.
+ * refunds, a listing for reconciliation, and a webhook to parse. Implemented per bank in {@code
+ * gateway-providers} (e.g. ItauPixProvider); consumed by payments.
  */
 public interface PixMethodProvider extends MethodProvider<PixIssueRequest, Charge, Charge> {
   RefundResult requestRefund(ProviderCredentials credentials, RefundRequest request);
 
-  Optional<RefundResult> findRefund(ProviderCredentials credentials, String endToEndId, String refundId);
+  Optional<RefundResult> findRefund(
+      ProviderCredentials credentials, String endToEndId, String refundId);
 
   List<Charge> listCharges(ProviderCredentials credentials, Instant from, Instant to);
 

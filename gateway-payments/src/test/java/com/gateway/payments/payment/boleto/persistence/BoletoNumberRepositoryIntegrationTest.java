@@ -36,17 +36,26 @@ class BoletoNumberRepositoryIntegrationTest extends ServiceIntegrationTestBase {
 
   @Test
   void refusesToRunOutsideATransaction() {
-    assertThatThrownBy(() -> numbers.next(merchant)).isInstanceOf(org.springframework.transaction.IllegalTransactionStateException.class);
+    assertThatThrownBy(() -> numbers.next(merchant))
+        .isInstanceOf(org.springframework.transaction.IllegalTransactionStateException.class);
   }
 
-  /** Two threads, one row: the UPDATE ... RETURNING serializes on the row lock, so no number repeats and none is skipped. */
+  /**
+   * Two threads, one row: the UPDATE ... RETURNING serializes on the row lock, so no number repeats
+   * and none is skipped.
+   */
   @Test
   void concurrentCallersNeverShareANumber() throws Exception {
     TransactionTemplate tx = new TransactionTemplate(txManager);
     CountDownLatch go = new CountDownLatch(1);
-    Callable<String> take = () -> { go.await(); return tx.execute(s -> numbers.next(merchant)); };
+    Callable<String> take =
+        () -> {
+          go.await();
+          return tx.execute(s -> numbers.next(merchant));
+        };
     try (var pool = Executors.newFixedThreadPool(2)) {
-      List<Future<String>> futures = IntStream.range(0, 20).mapToObj(i -> pool.submit(take)).toList();
+      List<Future<String>> futures =
+          IntStream.range(0, 20).mapToObj(i -> pool.submit(take)).toList();
       go.countDown();
       Set<String> got = new java.util.HashSet<>();
       for (Future<String> f : futures) {
@@ -59,7 +68,9 @@ class BoletoNumberRepositoryIntegrationTest extends ServiceIntegrationTestBase {
   @Test
   void theCounterIsCappedAtEightDigits() {
     TransactionTemplate tx = new TransactionTemplate(txManager);
-    jdbc.update("INSERT INTO payments.boleto_numbers (merchant_id, next_value) VALUES (?, 99999999)", merchant.value());
+    jdbc.update(
+        "INSERT INTO payments.boleto_numbers (merchant_id, next_value) VALUES (?, 99999999)",
+        merchant.value());
     // @Repository translates data-access exceptions, so the raw IllegalStateException surfaces as
     // its root cause, not directly — same pattern as JobsAndOutboxClaimIntegrationTest.
     assertThatThrownBy(() -> tx.execute(s -> numbers.next(merchant)))

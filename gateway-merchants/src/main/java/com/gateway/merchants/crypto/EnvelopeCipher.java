@@ -45,7 +45,8 @@ public final class EnvelopeCipher {
   public byte[] decrypt(Encrypted e, String aad) {
     try {
       byte[] dekBytes = gcm(Cipher.DECRYPT_MODE, master.key(), e.dekNonce(), aad, e.encryptedDek());
-      return gcm(Cipher.DECRYPT_MODE, new SecretKeySpec(dekBytes, "AES"), e.nonce(), aad, e.ciphertext());
+      return gcm(
+          Cipher.DECRYPT_MODE, new SecretKeySpec(dekBytes, "AES"), e.nonce(), aad, e.ciphertext());
     } catch (GeneralSecurityException ex) {
       // Deliberately vague: "bad tag" vs "wrong key" is an oracle for nobody.
       throw new SecurityException("decryption failed");
@@ -53,10 +54,13 @@ public final class EnvelopeCipher {
   }
 
   private byte[] nonce() {
-    byte[] n = new byte[NONCE_BYTES]; random.nextBytes(n); return n;
+    byte[] n = new byte[NONCE_BYTES];
+    random.nextBytes(n);
+    return n;
   }
 
-  private static byte[] gcm(int mode, SecretKey key, byte[] nonce, String aad, byte[] input) throws GeneralSecurityException {
+  private static byte[] gcm(int mode, SecretKey key, byte[] nonce, String aad, byte[] input)
+      throws GeneralSecurityException {
     Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
     cipher.init(mode, key, new GCMParameterSpec(TAG_BITS, nonce));
     cipher.updateAAD(aad.getBytes(StandardCharsets.UTF_8));

@@ -6,7 +6,10 @@ import com.gateway.kernel.money.Money;
 import java.time.Clock;
 import java.time.Instant;
 
-/** A refund request against a completed payment. {@code id} is the id we send the bank as the devolucao id. */
+/**
+ * A refund request against a completed payment. {@code id} is the id we send the bank as the
+ * devolucao id.
+ */
 public final class Refund {
   private final String id;
   private final String paymentId;
@@ -18,7 +21,8 @@ public final class Refund {
   private Instant settledAt;
   private String failureReason;
 
-  private Refund(String id, String paymentId, MerchantId merchantId, Money amount, Instant createdAt) {
+  private Refund(
+      String id, String paymentId, MerchantId merchantId, Money amount, Instant createdAt) {
     this.id = id;
     this.paymentId = paymentId;
     this.merchantId = merchantId;
@@ -48,7 +52,9 @@ public final class Refund {
     this.failureReason = reason;
   }
 
-  /** Only from REQUESTED/PROCESSING: a refund the bank already settled either way is not "unknown". */
+  /**
+   * Only from REQUESTED/PROCESSING: a refund the bank already settled either way is not "unknown".
+   */
   public void markUnknown(String reason) {
     if (state != RefundState.REQUESTED && state != RefundState.PROCESSING) {
       throw new IllegalStateException("refund " + id + " is " + state + ", not in flight");

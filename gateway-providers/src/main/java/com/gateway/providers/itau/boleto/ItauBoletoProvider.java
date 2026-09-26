@@ -1,10 +1,10 @@
 package com.gateway.providers.itau.boleto;
 
+import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.kernel.provider.ProviderCredentials;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.kernel.provider.boleto.BoletoIssueRequest;
-import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
 import com.gateway.kernel.provider.boleto.BoletoStatus;
 import com.gateway.kernel.provider.boleto.IssuedBoleto;
@@ -18,29 +18,40 @@ import java.time.Duration;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
-/** The only class that knows the three boleto APIs and the gateway's vocabulary at the same time. */
+/**
+ * The only class that knows the three boleto APIs and the gateway's vocabulary at the same time.
+ */
 public class ItauBoletoProvider implements BoletoMethodProvider {
-  private record Clients(BoletoPixApiClient issue, BoletoQueryClient query, BoletoInstructionClient instruction) {}
+  private record Clients(
+      BoletoPixApiClient issue, BoletoQueryClient query, BoletoInstructionClient instruction) {}
 
   private final Clients live, test;
 
-  public ItauBoletoProvider(ItauTokenClient tokens, KeyStore trustStore, Duration readTimeout, ItauBoletoEndpoints liveEndpoints, ItauBoletoEndpoints testEndpoints) {
+  public ItauBoletoProvider(
+      ItauTokenClient tokens,
+      KeyStore trustStore,
+      Duration readTimeout,
+      ItauBoletoEndpoints liveEndpoints,
+      ItauBoletoEndpoints testEndpoints) {
     this.live = clients(tokens, trustStore, readTimeout, liveEndpoints);
     this.test = clients(tokens, trustStore, readTimeout, testEndpoints);
   }
 
-  private static Clients clients(ItauTokenClient tokens, KeyStore trustStore, Duration readTimeout, ItauBoletoEndpoints e) {
+  private static Clients clients(
+      ItauTokenClient tokens, KeyStore trustStore, Duration readTimeout, ItauBoletoEndpoints e) {
     return new Clients(
         new BoletoPixApiClient(tokens, e.issue(), trustStore, readTimeout),
         new BoletoQueryClient(tokens, e.query(), trustStore, readTimeout),
         new BoletoInstructionClient(tokens, e.instruction(), trustStore, readTimeout));
   }
 
-  @Override public String id() {
+  @Override
+  public String id() {
     return "ITAU";
   }
 
-  @Override public PaymentMethod method() {
+  @Override
+  public PaymentMethod method() {
     return PaymentMethod.BOLECODE;
   }
 
@@ -48,41 +59,63 @@ public class ItauBoletoProvider implements BoletoMethodProvider {
     return c.environment() == ProviderEnvironment.LIVE ? live : test;
   }
 
-  /** A credential without the beneficiary is the merchant's configuration problem, not the bank's: CREDENTIALS_INCOMPLETE names the field. */
+  /**
+   * A credential without the beneficiary is the merchant's configuration problem, not the bank's:
+   * CREDENTIALS_INCOMPLETE names the field.
+   */
   private static ItauCredentials boletoCreds(ProviderCredentials c) {
     ItauCredentials credentials = ItauCredentials.parse(c.payload());
     try {
       credentials.requireBoletoShape();
     } catch (IllegalArgumentException e) {
-      throw new ProviderException(ProviderException.Code.CREDENTIALS_INCOMPLETE, 0, e.getMessage(), "ITAU credential is missing " + e.getMessage());
+      throw new ProviderException(
+          ProviderException.Code.CREDENTIALS_INCOMPLETE,
+          0,
+          e.getMessage(),
+          "ITAU credential is missing " + e.getMessage());
     }
     return credentials;
   }
 
-  @Override public void requireIssueCredentials(ProviderCredentials c) {
+  @Override
+  public void requireIssueCredentials(ProviderCredentials c) {
     boletoCreds(c);
   }
 
-  @Override public IssuedBoleto issue(ProviderCredentials c, BoletoIssueRequest r) {
+  @Override
+  public IssuedBoleto issue(ProviderCredentials c, BoletoIssueRequest r) {
     ItauCredentials credentials = boletoCreds(c);
-    BoletoPixResponse res = clients(c).issue().post(credentials, BoletoPixRequest.forIssue(r, credentials));
+    BoletoPixResponse res =
+        clients(c).issue().post(credentials, BoletoPixRequest.forIssue(r, credentials));
     BoletoPixResponse.Individual i = res.first();
     BoletoPixResponse.DadosQrcode qrCode = res.dadosQrcode();
-    return new IssuedBoleto(i.idBoletoIndividual(), i.numeroLinhaDigitavel(), i.codigoBarras(), ItauDates.date(i.dataLimitePagamento()),
-        qrCode == null ? null : qrCode.txid(), qrCode == null ? null : qrCode.emv(), qrCode == null ? null : qrCode.chave());
+    return new IssuedBoleto(
+        i.idBoletoIndividual(),
+        i.numeroLinhaDigitavel(),
+        i.codigoBarras(),
+        ItauDates.date(i.dataLimitePagamento()),
+        qrCode == null ? null : qrCode.txid(),
+        qrCode == null ? null : qrCode.emv(),
+        qrCode == null ? null : qrCode.chave());
   }
 
-  @Override public Optional<BoletoStatus> find(ProviderCredentials c, String nossoNumero) {
+  @Override
+  public Optional<BoletoStatus> find(ProviderCredentials c, String nossoNumero) {
     ItauCredentials credentials = boletoCreds(c);
-    return clients(c).query().find(credentials, nossoNumero).map(item -> toStatus(item, nossoNumero));
+    return clients(c)
+        .query()
+        .find(credentials, nossoNumero)
+        .map(item -> toStatus(item, nossoNumero));
   }
 
-  @Override public void cancel(ProviderCredentials c, String nossoNumero) {
+  @Override
+  public void cancel(ProviderCredentials c, String nossoNumero) {
     ItauCredentials credentials = boletoCreds(c);
     clients(c).instruction().baixa(credentials, baixaId(credentials, nossoNumero));
   }
 
-  @Override public String pixTxidFor(ProviderCredentials c, String nossoNumero) {
+  @Override
+  public String pixTxidFor(ProviderCredentials c, String nossoNumero) {
     return pixTxid(boletoCreds(c), nossoNumero);
   }
 
@@ -95,22 +128,38 @@ public class ItauBoletoProvider implements BoletoMethodProvider {
    * {@code Code.INVALID} names the field so the merchant's response says which value was bad.
    */
   private static String validateNossoNumero(String nossoNumero, int min, int max) {
-    if (nossoNumero == null || !DIGITS.matcher(nossoNumero).matches() || nossoNumero.length() < min || nossoNumero.length() > max) {
-      throw new ProviderException(ProviderException.Code.INVALID, 0, "nosso_numero",
+    if (nossoNumero == null
+        || !DIGITS.matcher(nossoNumero).matches()
+        || nossoNumero.length() < min
+        || nossoNumero.length() > max) {
+      throw new ProviderException(
+          ProviderException.Code.INVALID,
+          0,
+          "nosso_numero",
           "nosso_numero must be " + min + "-" + max + " digits: " + nossoNumero);
     }
     return nossoNumero;
   }
 
-  /** cash_management OpenAPI, path {id_boleto}: agência (4) + conta (7) + DAC (1) + carteira (3) + nosso número (8-16). */
+  /**
+   * cash_management OpenAPI, path {id_boleto}: agência (4) + conta (7) + DAC (1) + carteira (3) +
+   * nosso número (8-16).
+   */
   static String baixaId(ItauCredentials c, String nossoNumero) {
     return c.beneficiaryId() + c.walletCode() + validateNossoNumero(nossoNumero, 8, 16);
   }
 
-  /** Issue OpenAPI, dados_qrcode.txid: "BL" + agência (4) + conta (7) + carteira (3) + nosso número (15) — beneficiary id without its DAC. */
+  /**
+   * Issue OpenAPI, dados_qrcode.txid: "BL" + agência (4) + conta (7) + carteira (3) + nosso número
+   * (15) — beneficiary id without its DAC.
+   */
   static String pixTxid(ItauCredentials c, String nossoNumero) {
     validateNossoNumero(nossoNumero, 1, 15);
-    return "BL" + c.beneficiaryId().substring(0, 11) + c.walletCode() + "0".repeat(15 - nossoNumero.length()) + nossoNumero;
+    return "BL"
+        + c.beneficiaryId().substring(0, 11)
+        + c.walletCode()
+        + "0".repeat(15 - nossoNumero.length())
+        + nossoNumero;
   }
 
   static BoletoStatus toStatus(BoletoQueryItem item, String nossoNumero) {
@@ -118,9 +167,20 @@ public class ItauBoletoProvider implements BoletoMethodProvider {
     Optional<BoletoQueryItem.Pagamento> last = item.lastPayment();
     return new BoletoStatus(
         BoletoSituations.parse(i.situacaoGeralBoleto()),
-        last.map(p -> p.valorPagoTotalCobranca() == null ? null : BoletoAmounts.fromItau(p.valorPagoTotalCobranca())).orElse(null),
-        last.map(p -> ItauDates.paidAt(p.dataHoraInclusaoPagamento(), p.dataInclusaoPagamento())).orElse(null),
-        last.map(p -> p.codigoMeioPagamento() != null ? p.codigoMeioPagamento() : p.descricaoMeioPagamento()).orElse(null),
+        last.map(
+                p ->
+                    p.valorPagoTotalCobranca() == null
+                        ? null
+                        : BoletoAmounts.fromItau(p.valorPagoTotalCobranca()))
+            .orElse(null),
+        last.map(p -> ItauDates.paidAt(p.dataHoraInclusaoPagamento(), p.dataInclusaoPagamento()))
+            .orElse(null),
+        last.map(
+                p ->
+                    p.codigoMeioPagamento() != null
+                        ? p.codigoMeioPagamento()
+                        : p.descricaoMeioPagamento())
+            .orElse(null),
         i.idBoletoIndividual(),
         i.numeroLinhaDigitavel(),
         i.codigoBarras(),

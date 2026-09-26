@@ -15,9 +15,14 @@ public final class BoletoSituations {
 
   public static BoletoSituation parse(String raw) {
     if (raw == null) {
-      throw new ProviderException(ProviderException.Code.UNKNOWN, 200, null, "boleto without situacao_geral_boleto");
+      throw new ProviderException(
+          ProviderException.Code.UNKNOWN, 200, null, "boleto without situacao_geral_boleto");
     }
-    String plain = Normalizer.normalize(raw, Normalizer.Form.NFD).replaceAll("\\p{M}", "").trim().toLowerCase(Locale.ROOT);
+    String plain =
+        Normalizer.normalize(raw, Normalizer.Form.NFD)
+            .replaceAll("\\p{M}", "")
+            .trim()
+            .toLowerCase(Locale.ROOT);
     return switch (plain) {
       case "em aberto" -> BoletoSituation.OPEN;
       case "pago" -> BoletoSituation.PAID;
@@ -26,7 +31,9 @@ public final class BoletoSituations {
       case "aguardando credito" -> BoletoSituation.AWAITING_CREDIT;
       case "creditado" -> BoletoSituation.CREDITED;
       case "baixado" -> BoletoSituation.CANCELED;
-      default -> throw new ProviderException(ProviderException.Code.UNKNOWN, 200, null, "unknown situacao_geral_boleto: " + raw);
+      default ->
+          throw new ProviderException(
+              ProviderException.Code.UNKNOWN, 200, null, "unknown situacao_geral_boleto: " + raw);
     };
   }
 }

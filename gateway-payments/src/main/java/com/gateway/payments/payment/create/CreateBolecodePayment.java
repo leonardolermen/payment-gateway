@@ -8,8 +8,8 @@ import java.time.LocalDate;
 
 /**
  * A registered boleto with a Pix QR on the same issue. {@code payer} is the raw {@link PayerData}:
- * {@link PayerFactory} validates it inside the flow, where the 422 names the field and no row exists
- * yet. {@code dueDate} and {@code paymentLimitDays} null mean the configured defaults.
+ * {@link PayerFactory} validates it inside the flow, where the 422 names the field and no row
+ * exists yet. {@code dueDate} and {@code paymentLimitDays} null mean the configured defaults.
  */
 public record CreateBolecodePayment(
     MerchantId merchantId,
@@ -19,7 +19,8 @@ public record CreateBolecodePayment(
     String description,
     PayerData payer,
     LocalDate dueDate,
-    Integer paymentLimitDays) implements CreatePaymentCommand {
+    Integer paymentLimitDays)
+    implements CreatePaymentCommand {
 
   @Override
   public PaymentMethod method() {

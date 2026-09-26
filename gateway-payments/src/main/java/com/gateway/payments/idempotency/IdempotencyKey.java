@@ -22,15 +22,27 @@ public record IdempotencyKey(
     String resourceId,
     Instant createdAt) {
 
-  public static IdempotencyKey begin(MerchantId merchantId, String key, String requestHash, Clock clock) {
-    return new IdempotencyKey(merchantId, key, requestHash, IdempotencyStatus.IN_PROGRESS, null, null, null, clock.instant());
+  public static IdempotencyKey begin(
+      MerchantId merchantId, String key, String requestHash, Clock clock) {
+    return new IdempotencyKey(
+        merchantId,
+        key,
+        requestHash,
+        IdempotencyStatus.IN_PROGRESS,
+        null,
+        null,
+        null,
+        clock.instant());
   }
 
   public IdempotencyKey finish(int code, String body, String resourceId) {
-    return new IdempotencyKey(merchantId, key, requestHash, IdempotencyStatus.DONE, code, body, resourceId, createdAt);
+    return new IdempotencyKey(
+        merchantId, key, requestHash, IdempotencyStatus.DONE, code, body, resourceId, createdAt);
   }
 
-  /** SHA-256 hex of the canonical request body — used to detect a same-key-different-body conflict. */
+  /**
+   * SHA-256 hex of the canonical request body — used to detect a same-key-different-body conflict.
+   */
   public static String hashOf(String canonicalBody) {
     try {
       MessageDigest digest = MessageDigest.getInstance("SHA-256");

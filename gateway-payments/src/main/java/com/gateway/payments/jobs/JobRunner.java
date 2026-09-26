@@ -3,14 +3,13 @@ package com.gateway.payments.jobs;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.payments.PaymentsProperties;
 import com.gateway.payments.inbox.WebhookInboxService;
+import com.gateway.payments.jobs.persistence.JobRepository;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.ExpirationService;
 import com.gateway.payments.payment.boleto.BoletoPollingService;
 import com.gateway.payments.reconciliation.ReconciliationService;
 import com.gateway.payments.refund.RefundPollingService;
 import com.gateway.payments.refund.RefundService;
-
-import com.gateway.payments.jobs.persistence.JobRepository;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -27,8 +26,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class JobRunner {
   private static final Logger log = LoggerFactory.getLogger(JobRunner.class);
   private static final int BATCH = 20;
+
   /** RECONCILE is a singleton row that never finishes; this is its period. */
   static final Duration RECONCILE_EVERY = Duration.ofMinutes(15);
+
   private static final Duration MAX_BACKOFF = Duration.ofHours(24);
 
   private final JobRepository jobs;
@@ -67,14 +68,17 @@ public class JobRunner {
 
   /** Creates the RECONCILE singleton if it is not there yet; safe to call on every boot. */
   public void scheduleReconciliation() {
-    if (!Boolean.TRUE.equals(transactionTemplate.execute(s -> jobs.enqueue(Job.reconcile(clock))))) {
+    if (!Boolean.TRUE.equals(
+        transactionTemplate.execute(s -> jobs.enqueue(Job.reconcile(clock))))) {
       log.debug("reconcile job already scheduled");
     }
   }
 
   /** Returns how many jobs were claimed (not how many succeeded) — callers loop until 0. */
   public int runDue(Instant now) {
-    List<Job> claimed = transactionTemplate.execute(s -> jobs.claimDue(now, BATCH, props.jobLease(), props.reconcileLease()));
+    List<Job> claimed =
+        transactionTemplate.execute(
+            s -> jobs.claimDue(now, BATCH, props.jobLease(), props.reconcileLease()));
     if (claimed == null) {
       return 0;
     }
@@ -84,7 +88,13 @@ public class JobRunner {
         boolean done = run(job, now);
         next = done ? job.done() : retry(job, now, "not settled yet", false);
       } catch (RuntimeException e) {
-        log.warn("job {} {} for {} failed (attempt {})", job.type(), job.id(), job.refId(), job.attempts() + 1, e);
+        log.warn(
+            "job {} {} for {} failed (attempt {})",
+            job.type(),
+            job.id(),
+            job.refId(),
+            job.attempts() + 1,
+            e);
         next = retry(job, now, truncate(describe(e)), true);
       }
       if (job.type() == JobType.POLL_REFUND && "DEAD".equals(next.status())) {
@@ -100,7 +110,17 @@ public class JobRunner {
         // reconciliation forever, since nothing could enqueue it again. Always back to PENDING,
         // attempts untouched; a failure is only logged (and kept in last_error).
         String error = next.lastError();
-        next = new Job(job.id(), job.type(), job.refId(), now.plus(RECONCILE_EVERY), 0, "PENDING", null, error, job.createdAt());
+        next =
+            new Job(
+                job.id(),
+                job.type(),
+                job.refId(),
+                now.plus(RECONCILE_EVERY),
+                0,
+                "PENDING",
+                null,
+                error,
+                job.createdAt());
       }
       Job toSave = next;
       transactionTemplate.executeWithoutResult(s -> jobs.save(toSave));
@@ -137,10 +157,14 @@ public class JobRunner {
    */
   private Job retry(Job job, Instant now, String error, boolean failed) {
     if (job.type() == JobType.POLL_REFUND) {
-      return job.reschedule(now.plus(RefundService.POLL_EVERY), error, props.refundPollMaxAttempts());
+      return job.reschedule(
+          now.plus(RefundService.POLL_EVERY), error, props.refundPollMaxAttempts());
     }
     if (job.type() == JobType.POLL_BOLETO) {
-      Duration wait = failed && backoff(job.attempts()).compareTo(props.boletoPollEvery()) < 0 ? backoff(job.attempts()) : props.boletoPollEvery();
+      Duration wait =
+          failed && backoff(job.attempts()).compareTo(props.boletoPollEvery()) < 0
+              ? backoff(job.attempts())
+              : props.boletoPollEvery();
       return job.reschedule(now.plus(wait), error, props.boletoPollMaxAttempts());
     }
     return job.reschedule(now.plus(backoff(job.attempts())), error, props.jobMaxAttempts());
@@ -148,7 +172,8 @@ public class JobRunner {
 
   /**
    * 1 min, 2 min, 4 min, ... capped at 24 h. {@code attempts} is the count BEFORE this failure
-   * ({@code claimDue} does not increment it; {@code reschedule} does), so the first retry waits 1 min.
+   * ({@code claimDue} does not increment it; {@code reschedule} does), so the first retry waits 1
+   * min.
    */
   public static Duration backoff(int attempts) {
     if (attempts >= 11) return MAX_BACKOFF; // 2^11 min > 24 h, and avoids shifting into overflow

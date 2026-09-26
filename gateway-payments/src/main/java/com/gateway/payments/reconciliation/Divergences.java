@@ -6,8 +6,9 @@ import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceR
 import java.time.Clock;
 
 /**
- * Opening a divergence: the record that the gateway and the bank disagree about a payment, for a human
- * to settle. Idempotent by payment — a second open while one is still OPEN is not a second problem.
+ * Opening a divergence: the record that the gateway and the bank disagree about a payment, for a
+ * human to settle. Idempotent by payment — a second open while one is still OPEN is not a second
+ * problem.
  */
 public class Divergences {
   private static final int MAX_DETAIL = 500;
@@ -26,6 +27,12 @@ public class Divergences {
 
     return divergences.openIfAbsent(
         new ReconciliationDivergence(
-            Ulid.next(), payment.id(), payment.status().name(), providerStatus, trimmed, "OPEN", clock.instant()));
+            Ulid.next(),
+            payment.id(),
+            payment.status().name(),
+            providerStatus,
+            trimmed,
+            "OPEN",
+            clock.instant()));
   }
 }

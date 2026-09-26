@@ -16,15 +16,19 @@ public final class PaymentTransitions {
 
   private static final Set<Transition> TABLE =
       Set.of(
-          // SYSTEM: the stuck-CREATED sweeper adopts a charge the bank confirms exists (the createCharge
+          // SYSTEM: the stuck-CREATED sweeper adopts a charge the bank confirms exists (the
+          // createCharge
           // response was lost). Not RECONCILIATION: that source means "the bank says it was paid".
           new Transition(CREATED, PENDING, EnumSet.of(API, SYSTEM)),
           new Transition(CREATED, FAILED, EnumSet.of(API, SYSTEM)),
-          new Transition(PENDING, COMPLETED, EnumSet.of(PROVIDER_WEBHOOK, RECONCILIATION, PROVIDER_POLL)),
+          new Transition(
+              PENDING, COMPLETED, EnumSet.of(PROVIDER_WEBHOOK, RECONCILIATION, PROVIDER_POLL)),
           new Transition(PENDING, EXPIRED, EnumSet.of(EXPIRATION_JOB)),
           new Transition(PENDING, CANCELED, EnumSet.of(API)),
-          // PROVIDER_POLL also here: the boleto poll runs until the limit date plus a grace, i.e. after the expiry job.
-          new Transition(EXPIRED, COMPLETED, EnumSet.of(PROVIDER_WEBHOOK, RECONCILIATION, PROVIDER_POLL)));
+          // PROVIDER_POLL also here: the boleto poll runs until the limit date plus a grace, i.e.
+          // after the expiry job.
+          new Transition(
+              EXPIRED, COMPLETED, EnumSet.of(PROVIDER_WEBHOOK, RECONCILIATION, PROVIDER_POLL)));
 
   private PaymentTransitions() {}
 

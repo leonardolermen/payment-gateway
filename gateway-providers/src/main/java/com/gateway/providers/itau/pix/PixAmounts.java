@@ -4,8 +4,8 @@ import com.gateway.kernel.money.Money;
 import java.util.regex.Pattern;
 
 /**
- * The one place that turns cents into the Bacen string ({@code \d{1,10}\.\d{2}}) and back.
- * Public: Task 4's dto package imports it to build the {@code cob} request body.
+ * The one place that turns cents into the Bacen string ({@code \d{1,10}\.\d{2}}) and back. Public:
+ * Task 4's dto package imports it to build the {@code cob} request body.
  */
 public final class PixAmounts {
   private static final Pattern BACEN = Pattern.compile("\\d{1,10}\\.\\d{2}");

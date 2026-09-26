@@ -7,4 +7,9 @@ import com.gateway.kernel.money.Money;
  * after a timeout can ask the bank whether the charge exists.
  */
 public record PixIssueRequest(
-    String txid, Money amount, int expiresInSeconds, String payerDocument, String payerName, String description) {}
+    String txid,
+    Money amount,
+    int expiresInSeconds,
+    String payerDocument,
+    String payerName,
+    String description) {}

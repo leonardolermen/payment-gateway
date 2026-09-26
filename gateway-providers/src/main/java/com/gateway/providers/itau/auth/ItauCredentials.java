@@ -11,15 +11,25 @@ import tools.jackson.databind.ObjectMapper;
  * A merchant's Itaú credential: six values for Pix (docs/providers/itau/NOTES.md) plus the boleto
  * account data (spec 2026-09-25 §4): {@code beneficiary_id} (agência 4 + conta 7 + DAC 1, required
  * to issue a boleto), {@code wallet_code} (carteira, 109 is the only one the product documents) and
- * {@code species_code} (espécie, 01 = DM). The sandbox shape has only client_id/client_secret/pix_key;
- * production requires x_itau_apikey, certificate_pem and private_key_pem — see
- * {@link #requireProductionShape()}; a boleto issue requires beneficiary_id — see {@link #requireBoletoShape()}.
+ * {@code species_code} (espécie, 01 = DM). The sandbox shape has only
+ * client_id/client_secret/pix_key; production requires x_itau_apikey, certificate_pem and
+ * private_key_pem — see {@link #requireProductionShape()}; a boleto issue requires beneficiary_id —
+ * see {@link #requireBoletoShape()}.
  */
 public record ItauCredentials(
-    String clientId, Secret clientSecret, String apiKey, String certificatePem, Secret privateKeyPem, String pixKey,
-    String beneficiaryId, String walletCode, String speciesCode, String fingerprint) {
+    String clientId,
+    Secret clientSecret,
+    String apiKey,
+    String certificatePem,
+    Secret privateKeyPem,
+    String pixKey,
+    String beneficiaryId,
+    String walletCode,
+    String speciesCode,
+    String fingerprint) {
 
-  private static final Pattern API_KEY = Pattern.compile("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
+  private static final Pattern API_KEY =
+      Pattern.compile("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
   private static final Pattern BENEFICIARY = Pattern.compile("^\\d{12}$");
   private static final Pattern WALLET = Pattern.compile("^\\d{3}$");
   private static final Pattern SPECIES = Pattern.compile("^\\d{2}$");
@@ -40,10 +50,14 @@ public record ItauCredentials(
     boolean hasCert = certificatePem != null && !certificatePem.isBlank();
     boolean hasKey = privateKeyPem != null;
     if (hasCert != hasKey) {
-      throw new IllegalArgumentException(hasCert ? "certificate_pem present without private_key_pem" : "private_key_pem present without certificate_pem");
+      throw new IllegalArgumentException(
+          hasCert
+              ? "certificate_pem present without private_key_pem"
+              : "private_key_pem present without certificate_pem");
     }
     if (beneficiaryId != null && !BENEFICIARY.matcher(beneficiaryId).matches()) {
-      throw new IllegalArgumentException("beneficiary_id must be 12 digits (agencia + conta + DAC)");
+      throw new IllegalArgumentException(
+          "beneficiary_id must be 12 digits (agencia + conta + DAC)");
     }
     if (walletCode == null) {
       walletCode = DEFAULT_WALLET;
@@ -73,17 +87,23 @@ public record ItauCredentials(
     return beneficiaryId != null;
   }
 
-  /** Called when the endpoint requires mTLS (LIVE): fails fast instead of at the first handshake. */
+  /**
+   * Called when the endpoint requires mTLS (LIVE): fails fast instead of at the first handshake.
+   */
   public void requireProductionShape() {
     if (!hasCertificate()) {
-      throw new IllegalArgumentException("production credential missing certificate_pem/private_key_pem");
+      throw new IllegalArgumentException(
+          "production credential missing certificate_pem/private_key_pem");
     }
     if (apiKey == null) {
       throw new IllegalArgumentException("production credential missing x_itau_apikey");
     }
   }
 
-  /** Called before an issue: a boleto needs the beneficiary account, and the bank's 400 would name a field the merchant never sent. */
+  /**
+   * Called before an issue: a boleto needs the beneficiary account, and the bank's 400 would name a
+   * field the merchant never sent.
+   */
   public void requireBoletoShape() {
     if (!hasBeneficiary()) {
       throw new IllegalArgumentException("beneficiary_id");
@@ -108,9 +128,21 @@ public record ItauCredentials(
   public String toString() {
     // apiKey authenticates every call with the client id, and beneficiaryId is the merchant's bank
     // account (agência + conta): neither belongs in a log line or an exception built from this.
-    return "ItauCredentials[clientId=" + clientId + ", clientSecret=***, apiKey=" + (apiKey == null ? "null" : "***")
-        + ", certificatePem=" + (certificatePem == null ? "null" : "***") + ", privateKeyPem=***, pixKey=" + pixKey
-        + ", beneficiaryId=" + (beneficiaryId == null ? "null" : "***") + ", walletCode=" + walletCode + ", speciesCode=" + speciesCode + "]";
+    return "ItauCredentials[clientId="
+        + clientId
+        + ", clientSecret=***, apiKey="
+        + (apiKey == null ? "null" : "***")
+        + ", certificatePem="
+        + (certificatePem == null ? "null" : "***")
+        + ", privateKeyPem=***, pixKey="
+        + pixKey
+        + ", beneficiaryId="
+        + (beneficiaryId == null ? "null" : "***")
+        + ", walletCode="
+        + walletCode
+        + ", speciesCode="
+        + speciesCode
+        + "]";
   }
 
   public static ItauCredentials parse(byte[] json) {

@@ -23,7 +23,14 @@ public record EndpointWithSecretResponse(
 
   public static EndpointWithSecretResponse from(WebhookEndpoint e) {
     return new EndpointWithSecretResponse(
-        e.id().toString(), e.targetUrl(), e.events(), e.active(), e.secret(), WARNING,
-        e.previousSecretUntil(), e.createdAt(), e.updatedAt());
+        e.id().toString(),
+        e.targetUrl(),
+        e.events(),
+        e.active(),
+        e.secret(),
+        WARNING,
+        e.previousSecretUntil(),
+        e.createdAt(),
+        e.updatedAt());
   }
 }

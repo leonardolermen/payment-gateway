@@ -16,7 +16,8 @@ import java.time.Duration;
 class BoletoInstructionClient {
   private final BoletoHttp http;
 
-  BoletoInstructionClient(ItauTokenClient tokens, ItauEndpoints endpoints, KeyStore trustStore, Duration readTimeout) {
+  BoletoInstructionClient(
+      ItauTokenClient tokens, ItauEndpoints endpoints, KeyStore trustStore, Duration readTimeout) {
     this.http = new BoletoHttp(tokens, endpoints, trustStore, readTimeout);
   }
 
@@ -27,7 +28,9 @@ class BoletoInstructionClient {
    * and no code, so the text is all there is.
    */
   void baixa(ItauCredentials c, String idBoleto) {
-    HttpRequest.Builder builder = http.request("/boletos/" + BoletoHttp.seg(idBoleto) + "/baixa").method("PATCH", HttpRequest.BodyPublishers.noBody());
+    HttpRequest.Builder builder =
+        http.request("/boletos/" + BoletoHttp.seg(idBoleto) + "/baixa")
+            .method("PATCH", HttpRequest.BodyPublishers.noBody());
     HttpResponse<String> res = http.send(c, builder);
     int status = res.statusCode();
     if (status == 200 || status == 202 || status == 204) {
@@ -35,7 +38,8 @@ class BoletoInstructionClient {
     }
     if (status == 422 && BoletoErrors.mentionsAlreadyPaid(res.body())) {
       ProviderException declined = BoletoErrors.from(status, res.body());
-      throw new ProviderException(ProviderException.Code.CONFLICT, status, declined.providerType(), declined.getMessage());
+      throw new ProviderException(
+          ProviderException.Code.CONFLICT, status, declined.providerType(), declined.getMessage());
     }
     throw BoletoErrors.from(status, res.body());
   }

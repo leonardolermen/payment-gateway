@@ -19,6 +19,8 @@ public class WebhookTokenGuard {
   }
 
   public Merchant resolve(String token) {
-    return merchants.findByInboundWebhookToken(token).orElseThrow(() -> new NotFoundException("webhook", "unknown"));
+    return merchants
+        .findByInboundWebhookToken(token)
+        .orElseThrow(() -> new NotFoundException("webhook", "unknown"));
   }
 }
