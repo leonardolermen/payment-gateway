@@ -69,7 +69,9 @@ public class ItauPixProvider implements PixMethodProvider {
         throw new IllegalArgumentException("no certificate in the Itaú trust store PEM");
       }
       return PemKeyStores.trustStoreFrom(
-          certs.stream().map(c -> (java.security.cert.X509Certificate) c).toList());
+          certs.stream()
+              .map(certificate -> (java.security.cert.X509Certificate) certificate)
+              .toList());
     } catch (java.security.cert.CertificateException e) {
       throw new IllegalArgumentException("invalid Itaú trust store PEM: " + e.getMessage(), e);
     }
@@ -220,10 +222,10 @@ public class ItauPixProvider implements PixMethodProvider {
       if (it.devolucoes() != null) {
         it.devolucoes()
             .forEach(
-                d -> {
-                  refunds.add(toRefund(d));
-                  if (d.id() != null) {
-                    refundE2e.put(d.id(), it.endToEndId());
+                devolucao -> {
+                  refunds.add(toRefund(devolucao));
+                  if (devolucao.id() != null) {
+                    refundE2e.put(devolucao.id(), it.endToEndId());
                   }
                 });
       }

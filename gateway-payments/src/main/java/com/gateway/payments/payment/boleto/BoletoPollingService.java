@@ -171,8 +171,8 @@ public class BoletoPollingService {
                     "findCharge",
                     pixSide,
                     target -> target.provider().find(target.credentials(), payment.pix().txid()))
-                .filter(c -> c.status() == ChargeStatus.COMPLETED)
-                .flatMap(c -> c.firstPix());
+                .filter(charge -> charge.status() == ChargeStatus.COMPLETED)
+                .flatMap(charge -> charge.firstPix());
       } catch (ProviderException e) {
         log.info(
             "could not read the pix of boleto {} of payment {}: {}; completing without its endToEndId",
@@ -197,7 +197,8 @@ public class BoletoPollingService {
   private boolean notFound(Payment payment, String nn, EventSource by) {
     long previous =
         payments.events(payment.id()).stream()
-            .filter(e -> "ignored".equals(e.type()) && e.payload().contains(NOT_FOUND_MARK))
+            .filter(
+                event -> "ignored".equals(event.type()) && event.payload().contains(NOT_FOUND_MARK))
             .count();
     record(payment.id(), NOT_FOUND_MARK + ": " + nn, by);
     if (previous + 1 >= 2) {
@@ -213,7 +214,7 @@ public class BoletoPollingService {
 
   private void record(String paymentId, String what, EventSource by) {
     transactionTemplate.executeWithoutResult(
-        s -> {
+        transaction -> {
           Payment loaded = payments.findById(paymentId).orElseThrow();
           payments.save(loaded, List.of(loaded.recordIgnored(what, by).orElseThrow()));
         });

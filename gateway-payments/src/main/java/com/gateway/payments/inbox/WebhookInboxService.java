@@ -52,7 +52,7 @@ public class WebhookInboxService {
   public String accept(String provider, MerchantId merchantId, String rawHeaders, byte[] body) {
     String id = Ulid.next();
     transactionTemplate.executeWithoutResult(
-        s -> {
+        transaction -> {
           inbox.save(
               new WebhookInboxEntry(
                   id, provider, merchantId, rawHeaders, body, "RECEIVED", null, clock.instant()));
@@ -110,7 +110,7 @@ public class WebhookInboxService {
   private void mark(WebhookInboxEntry e, String status, String error) {
     String err = error == null || error.length() <= 500 ? error : error.substring(0, 500);
     transactionTemplate.executeWithoutResult(
-        s ->
+        transaction ->
             inbox.save(
                 new WebhookInboxEntry(
                     e.id(),

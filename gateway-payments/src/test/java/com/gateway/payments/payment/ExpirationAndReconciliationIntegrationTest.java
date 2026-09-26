@@ -98,7 +98,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
     Payment p = newCharge(1000);
     new TransactionTemplate(txManager)
         .executeWithoutResult(
-            s -> {
+            transaction -> {
               Payment loaded = reload(p);
               payments.save(
                   loaded,
@@ -137,7 +137,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
     Payment p = newCharge(1000);
     new TransactionTemplate(txManager)
         .executeWithoutResult(
-            s -> {
+            transaction -> {
               Payment loaded = reload(p);
               payments.save(
                   loaded,
@@ -171,7 +171,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
     Payment p = newCharge(1000);
     new TransactionTemplate(txManager)
         .executeWithoutResult(
-            s -> {
+            transaction -> {
               Payment loaded = reload(p);
               payments.save(
                   loaded,
@@ -213,7 +213,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
   void theReconcileJobHasItsOwnLongerLease() {
     jdbc.update("DELETE FROM payments.jobs WHERE type = 'RECONCILE'");
     new TransactionTemplate(txManager)
-        .executeWithoutResult(s -> jobs.enqueue(Job.reconcile(clock)));
+        .executeWithoutResult(transaction -> jobs.enqueue(Job.reconcile(clock)));
     clock.advance(Duration.ofMinutes(1));
     // A run claimed 5 minutes ago is still in progress: past the 2 min jobLease, inside the 10 min
     // reconcileLease.
@@ -224,7 +224,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
     List<Job> claimed =
         new TransactionTemplate(txManager)
             .execute(
-                s ->
+                transaction ->
                     jobs.claimDue(
                         clock.instant(), 100, Duration.ofMinutes(2), Duration.ofMinutes(10)));
     assertThat(claimed).noneMatch(j -> j.type() == JobType.RECONCILE);
@@ -232,7 +232,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
     List<Job> later =
         new TransactionTemplate(txManager)
             .execute(
-                s ->
+                transaction ->
                     jobs.claimDue(
                         clock.instant().plus(Duration.ofMinutes(6)),
                         100,
@@ -247,7 +247,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
     // The singleton may already exist, rescheduled by another test's runner pass.
     jdbc.update("DELETE FROM payments.jobs WHERE type = 'RECONCILE'");
     new TransactionTemplate(txManager)
-        .executeWithoutResult(s -> jobs.enqueue(Job.reconcile(clock)));
+        .executeWithoutResult(transaction -> jobs.enqueue(Job.reconcile(clock)));
     clock.advance(Duration.ofMinutes(1));
 
     while (runner.runDue(clock.instant()) > 0) {}
@@ -297,7 +297,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
             3600,
             clock);
     return new TransactionTemplate(txManager)
-        .execute(s -> payments.save(p, List.of(p.createdEvent())));
+        .execute(transaction -> payments.save(p, List.of(p.createdEvent())));
   }
 
   @Test

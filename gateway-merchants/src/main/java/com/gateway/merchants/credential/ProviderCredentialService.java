@@ -24,7 +24,7 @@ public class ProviderCredentialService {
     Encrypted enc = cipher.encrypt(plaintext, aad(m, p, e));
     ProviderCredential cred =
         repo.find(m, p, e)
-            .map(x -> x.withPayload(enc))
+            .map(credential -> credential.withPayload(enc))
             .orElseGet(() -> ProviderCredential.create(m, p, e, enc));
     return repo.save(cred);
   }
@@ -33,7 +33,7 @@ public class ProviderCredentialService {
   public Optional<byte[]> decrypt(MerchantId m, Provider p, ApiKeyEnvironment e) {
     return repo.find(m, p, e)
         .filter(ProviderCredential::active)
-        .map(c -> cipher.decrypt(c.payload(), aad(m, p, e)));
+        .map(credential -> cipher.decrypt(credential.payload(), aad(m, p, e)));
   }
 
   /**

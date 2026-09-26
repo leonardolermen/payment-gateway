@@ -50,7 +50,7 @@ public class OutboxRelay {
   @Scheduled(fixedDelayString = "${gateway.payments.outbox-relay-ms:1000}")
   public void relay() {
     List<OutboxMessage> claimed =
-        transactionTemplate.execute(s -> outbox.claimPending(BATCH, props.outboxLease()));
+        transactionTemplate.execute(transaction -> outbox.claimPending(BATCH, props.outboxLease()));
     if (claimed == null) {
       return;
     }

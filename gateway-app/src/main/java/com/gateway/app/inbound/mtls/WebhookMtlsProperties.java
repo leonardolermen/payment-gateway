@@ -29,7 +29,9 @@ public record WebhookMtlsProperties(
     allowedSubjects =
         allowedSubjects == null
             ? List.of()
-            : allowedSubjects.stream().filter(s -> s != null && !s.isBlank()).toList();
+            : allowedSubjects.stream()
+                .filter(subject -> subject != null && !subject.isBlank())
+                .toList();
   }
 
   public boolean enabled() {

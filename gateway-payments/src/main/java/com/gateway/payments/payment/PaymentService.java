@@ -174,7 +174,7 @@ public class PaymentService {
       }
     }
     return transactionTemplate.execute(
-        s -> {
+        transaction -> {
           Payment payment = payments.findByMerchantAndId(merchantId, id).orElseThrow();
           if (payment.status() != PaymentStatus.PENDING) {
             throw new DomainException(
@@ -269,7 +269,7 @@ public class PaymentService {
   public Settlement settle(
       MerchantId merchantId, String paymentId, ReceivedPix pix, EventSource by) {
     return transactionTemplate.execute(
-        s -> {
+        transaction -> {
           Optional<Payment> found = payments.findByMerchantAndId(merchantId, paymentId);
           if (found.isEmpty()) {
             return Settlement.UNKNOWN_PAYMENT;
@@ -400,18 +400,20 @@ public class PaymentService {
             target -> target.provider().find(target.credentials(), payment.pix().txid()));
     Optional<ReceivedPix> confirmed =
         atBank
-            .filter(c -> c.status() == ChargeStatus.COMPLETED && c.received() != null)
+            .filter(
+                charge -> charge.status() == ChargeStatus.COMPLETED && charge.received() != null)
             .flatMap(
-                c ->
-                    c.received().stream()
-                        .filter(x -> Objects.equals(x.endToEndId(), hinted.endToEndId()))
+                charge ->
+                    charge.received().stream()
+                        .filter(
+                            received -> Objects.equals(received.endToEndId(), hinted.endToEndId()))
                         .findFirst());
     if (confirmed.isPresent()) {
       return settle(merchantId, payment.id(), confirmed.get(), EventSource.PROVIDER_WEBHOOK);
     }
-    String bankSays = atBank.map(c -> c.status().name()).orElse("NOT_FOUND");
+    String bankSays = atBank.map(charge -> charge.status().name()).orElse("NOT_FOUND");
     transactionTemplate.executeWithoutResult(
-        s -> {
+        transaction -> {
           Payment loaded = payments.findById(payment.id()).orElseThrow();
           payments.save(
               loaded,
@@ -448,7 +450,7 @@ public class PaymentService {
   public Settlement settleBoleto(
       MerchantId merchantId, String paymentId, BoletoStatus status, EventSource by) {
     return transactionTemplate.execute(
-        s -> {
+        transaction -> {
           Optional<Payment> found = payments.findByMerchantAndId(merchantId, paymentId);
           if (found.isEmpty()) {
             return Settlement.UNKNOWN_PAYMENT;

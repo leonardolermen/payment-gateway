@@ -69,7 +69,7 @@ public class JobRunner {
   /** Creates the RECONCILE singleton if it is not there yet; safe to call on every boot. */
   public void scheduleReconciliation() {
     if (!Boolean.TRUE.equals(
-        transactionTemplate.execute(s -> jobs.enqueue(Job.reconcile(clock))))) {
+        transactionTemplate.execute(transaction -> jobs.enqueue(Job.reconcile(clock))))) {
       log.debug("reconcile job already scheduled");
     }
   }
@@ -78,7 +78,7 @@ public class JobRunner {
   public int runDue(Instant now) {
     List<Job> claimed =
         transactionTemplate.execute(
-            s -> jobs.claimDue(now, BATCH, props.jobLease(), props.reconcileLease()));
+            transaction -> jobs.claimDue(now, BATCH, props.jobLease(), props.reconcileLease()));
     if (claimed == null) {
       return 0;
     }
@@ -123,7 +123,7 @@ public class JobRunner {
                 job.createdAt());
       }
       Job toSave = next;
-      transactionTemplate.executeWithoutResult(s -> jobs.save(toSave));
+      transactionTemplate.executeWithoutResult(transaction -> jobs.save(toSave));
     }
     return claimed.size();
   }

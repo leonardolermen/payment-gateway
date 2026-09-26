@@ -279,9 +279,9 @@ class PaymentRepositoryIntegrationTest {
             b,
             Instant.parse("2026-11-01T02:59:59Z"),
             clock);
-    tx().executeWithoutResult(s -> repository.save(p, List.of(p.createdEvent())));
+    tx().executeWithoutResult(transaction -> repository.save(p, List.of(p.createdEvent())));
     tx().executeWithoutResult(
-            s -> {
+            transaction -> {
               Payment loaded = repository.findById(p.id()).orElseThrow();
               PaymentEvent ev =
                   loaded.markPendingBolecode(
@@ -315,7 +315,7 @@ class PaymentRepositoryIntegrationTest {
   @Test
   void aPixPaymentStillReadsBackWithANullBoletoAndItsNestedTxid() {
     Payment p = fresh();
-    tx().executeWithoutResult(s -> repository.save(p, List.of(p.createdEvent())));
+    tx().executeWithoutResult(transaction -> repository.save(p, List.of(p.createdEvent())));
     Payment back = repository.findById(p.id()).orElseThrow();
     assertThat(back.method()).isEqualTo(PaymentMethod.PIX);
     assertThat(back.boleto()).isNull();

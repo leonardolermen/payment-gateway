@@ -65,7 +65,7 @@ public class JobRepositoryImpl implements JobRepository {
     }
     List<JobEntity> due =
         jpa.selectDue(now, now.minus(lease), now.minus(reconcileLease), Limit.of(limit));
-    due.forEach(e -> e.claimedAt = now);
+    due.forEach(job -> job.claimedAt = now);
     return due.stream().map(JobRepositoryImpl::toDomain).toList();
   }
 

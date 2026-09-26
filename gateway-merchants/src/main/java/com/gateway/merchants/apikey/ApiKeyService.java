@@ -39,7 +39,7 @@ public class ApiKeyService {
     Instant now = Instant.now();
     long valid =
         repo.findActiveByMerchantAndEnvironment(merchantId, environment).stream()
-            .filter(k -> k.isValid(now))
+            .filter(apiKey -> apiKey.isValid(now))
             .count();
     if (valid >= MAX_ACTIVE) {
       throw new DomainException(
@@ -87,17 +87,23 @@ public class ApiKeyService {
     byte[] hash = ApiKey.hashOf(plainKey, props.apiKeyPepper()).getBytes(StandardCharsets.UTF_8);
     Instant now = Instant.now();
     return repo.findByPrefix(ApiKey.prefixOf(plainKey)).stream()
-        .filter(k -> MessageDigest.isEqual(hash, k.hash().getBytes(StandardCharsets.UTF_8)))
-        .filter(k -> k.isValid(now))
-        .filter(k -> merchants.findById(k.merchantId()).map(m -> m.isActive()).orElse(false))
+        .filter(
+            apiKey -> MessageDigest.isEqual(hash, apiKey.hash().getBytes(StandardCharsets.UTF_8)))
+        .filter(apiKey -> apiKey.isValid(now))
+        .filter(
+            apiKey ->
+                merchants
+                    .findById(apiKey.merchantId())
+                    .map(merchant -> merchant.isActive())
+                    .orElse(false))
         .findFirst()
-        .map(k -> new Authenticated(k.merchantId(), k.environment(), k.id()));
+        .map(apiKey -> new Authenticated(apiKey.merchantId(), apiKey.environment(), apiKey.id()));
   }
 
   @Transactional
   public void revoke(MerchantId merchantId, String apiKeyId) {
     repo.findById(apiKeyId)
-        .filter(k -> k.merchantId().equals(merchantId))
+        .filter(apiKey -> apiKey.merchantId().equals(merchantId))
         .map(ApiKey::revoke)
         .ifPresent(repo::save);
   }

@@ -69,7 +69,7 @@ public class ItauTokenClient {
 
   /** Also the HttpClient: a credential replaced by the merchant must not keep the old key alive. */
   public void evict(String fingerprint) {
-    cache.keySet().removeIf(k -> k.startsWith(fingerprint + "|"));
+    cache.keySet().removeIf(cacheKey -> cacheKey.startsWith(fingerprint + "|"));
   }
 
   public HttpClient httpClientFor(

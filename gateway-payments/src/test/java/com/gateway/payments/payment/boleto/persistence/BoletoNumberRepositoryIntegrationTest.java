@@ -26,9 +26,9 @@ class BoletoNumberRepositoryIntegrationTest extends ServiceIntegrationTestBase {
     MerchantId other = MerchantId.next();
     // Extracted to typed locals: javac's inference can't settle the assertThat overload (String vs.
     // IntPredicate/Predicate<T>) while T is still open on the nested tx.execute(...) call.
-    String first = tx.execute(s -> numbers.next(merchant));
-    String second = tx.execute(s -> numbers.next(merchant));
-    String otherFirst = tx.execute(s -> numbers.next(other));
+    String first = tx.execute(transaction -> numbers.next(merchant));
+    String second = tx.execute(transaction -> numbers.next(merchant));
+    String otherFirst = tx.execute(transaction -> numbers.next(other));
     assertThat(first).isEqualTo("00000001");
     assertThat(second).isEqualTo("00000002");
     assertThat(otherFirst).isEqualTo("00000001");
@@ -51,7 +51,7 @@ class BoletoNumberRepositoryIntegrationTest extends ServiceIntegrationTestBase {
     Callable<String> take =
         () -> {
           go.await();
-          return tx.execute(s -> numbers.next(merchant));
+          return tx.execute(transaction -> numbers.next(merchant));
         };
     try (var pool = Executors.newFixedThreadPool(2)) {
       List<Future<String>> futures =
@@ -73,7 +73,7 @@ class BoletoNumberRepositoryIntegrationTest extends ServiceIntegrationTestBase {
         merchant.value());
     // @Repository translates data-access exceptions, so the raw IllegalStateException surfaces as
     // its root cause, not directly — same pattern as JobsAndOutboxClaimIntegrationTest.
-    assertThatThrownBy(() -> tx.execute(s -> numbers.next(merchant)))
+    assertThatThrownBy(() -> tx.execute(transaction -> numbers.next(merchant)))
         .hasRootCauseInstanceOf(IllegalStateException.class)
         .hasRootCauseMessage("nosso numero exhausted for merchant " + merchant.value());
   }

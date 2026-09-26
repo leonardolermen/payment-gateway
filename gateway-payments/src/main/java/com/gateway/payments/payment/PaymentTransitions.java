@@ -37,6 +37,9 @@ public final class PaymentTransitions {
   }
 
   public static boolean allowed(PaymentStatus from, PaymentStatus to, EventSource by) {
-    return TABLE.stream().anyMatch(t -> t.from() == from && t.to() == to && t.by().contains(by));
+    return TABLE.stream()
+        .anyMatch(
+            transition ->
+                transition.from() == from && transition.to() == to && transition.by().contains(by));
   }
 }

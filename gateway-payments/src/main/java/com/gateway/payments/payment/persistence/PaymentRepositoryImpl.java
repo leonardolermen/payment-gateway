@@ -114,7 +114,7 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   public Optional<Payment> findByMerchantAndTxid(
       MerchantId merchantId, String provider, String txid) {
     return jpa.findByProviderAndTxid(provider, txid)
-        .filter(e -> e.merchantId.equals(merchantId.value()))
+        .filter(entity -> entity.merchantId.equals(merchantId.value()))
         .map(PaymentRepositoryImpl::toDomain);
   }
 

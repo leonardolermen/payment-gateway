@@ -196,7 +196,7 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
     Payment p = newCharge(100);
     new TransactionTemplate(txManager)
         .executeWithoutResult(
-            s -> {
+            transaction -> {
               Payment loaded = payments.findById(p.id()).orElseThrow();
               payments.save(
                   loaded,

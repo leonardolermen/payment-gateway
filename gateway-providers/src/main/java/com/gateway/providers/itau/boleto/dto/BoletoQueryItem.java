@@ -54,7 +54,7 @@ public record BoletoQueryItem(
       return Optional.empty();
     }
     return dadoBoleto.dadosIndividuaisBoleto().stream()
-        .filter(i -> nossoNumero.equals(i.numeroNossoNumero()))
+        .filter(item -> nossoNumero.equals(item.numeroNossoNumero()))
         .findFirst();
   }
 

@@ -112,7 +112,7 @@ public class ExpirationService {
           // the sweep report work it did not do.
           if (payments
               .findById(payment.id())
-              .map(x -> x.status() != PaymentStatus.CREATED)
+              .map(reloaded -> reloaded.status() != PaymentStatus.CREATED)
               .orElse(false)) {
             changed++;
           }
@@ -244,7 +244,7 @@ public class ExpirationService {
   private boolean markExpired(String paymentId) {
     return Boolean.TRUE.equals(
         transactionTemplate.execute(
-            s -> {
+            transaction -> {
               Payment loaded = payments.findById(paymentId).orElseThrow();
               if (loaded.status() != PaymentStatus.PENDING) {
                 return false; // a webhook or a poll got there while we were asking the bank

@@ -87,13 +87,13 @@ public class ItauBoletoProvider implements BoletoMethodProvider {
     ItauCredentials credentials = boletoCreds(c);
     BoletoPixResponse res =
         clients(c).issue().post(credentials, BoletoPixRequest.forIssue(r, credentials));
-    BoletoPixResponse.Individual i = res.first();
+    BoletoPixResponse.Individual individual = res.first();
     BoletoPixResponse.DadosQrcode qrCode = res.dadosQrcode();
     return new IssuedBoleto(
-        i.idBoletoIndividual(),
-        i.numeroLinhaDigitavel(),
-        i.codigoBarras(),
-        ItauDates.date(i.dataLimitePagamento()),
+        individual.idBoletoIndividual(),
+        individual.numeroLinhaDigitavel(),
+        individual.codigoBarras(),
+        ItauDates.date(individual.dataLimitePagamento()),
         qrCode == null ? null : qrCode.txid(),
         qrCode == null ? null : qrCode.emv(),
         qrCode == null ? null : qrCode.chave());
@@ -163,28 +163,31 @@ public class ItauBoletoProvider implements BoletoMethodProvider {
   }
 
   static BoletoStatus toStatus(BoletoQueryItem item, String nossoNumero) {
-    BoletoQueryItem.Individual i = item.individual(nossoNumero).orElseThrow();
+    BoletoQueryItem.Individual individual = item.individual(nossoNumero).orElseThrow();
     Optional<BoletoQueryItem.Pagamento> last = item.lastPayment();
     return new BoletoStatus(
-        BoletoSituations.parse(i.situacaoGeralBoleto()),
+        BoletoSituations.parse(individual.situacaoGeralBoleto()),
         last.map(
-                p ->
-                    p.valorPagoTotalCobranca() == null
+                pagamento ->
+                    pagamento.valorPagoTotalCobranca() == null
                         ? null
-                        : BoletoAmounts.fromItau(p.valorPagoTotalCobranca()))
-            .orElse(null),
-        last.map(p -> ItauDates.paidAt(p.dataHoraInclusaoPagamento(), p.dataInclusaoPagamento()))
+                        : BoletoAmounts.fromItau(pagamento.valorPagoTotalCobranca()))
             .orElse(null),
         last.map(
-                p ->
-                    p.codigoMeioPagamento() != null
-                        ? p.codigoMeioPagamento()
-                        : p.descricaoMeioPagamento())
+                pagamento ->
+                    ItauDates.paidAt(
+                        pagamento.dataHoraInclusaoPagamento(), pagamento.dataInclusaoPagamento()))
             .orElse(null),
-        i.idBoletoIndividual(),
-        i.numeroLinhaDigitavel(),
-        i.codigoBarras(),
-        ItauDates.date(i.dataLimitePagamento()),
+        last.map(
+                pagamento ->
+                    pagamento.codigoMeioPagamento() != null
+                        ? pagamento.codigoMeioPagamento()
+                        : pagamento.descricaoMeioPagamento())
+            .orElse(null),
+        individual.idBoletoIndividual(),
+        individual.numeroLinhaDigitavel(),
+        individual.codigoBarras(),
+        ItauDates.date(individual.dataLimitePagamento()),
         item.dadoBoleto().qrcodePix() == null ? null : item.dadoBoleto().qrcodePix().emv());
   }
 }

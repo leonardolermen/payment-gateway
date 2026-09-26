@@ -80,7 +80,7 @@ public class WebhookEndpointsController {
   private WebhookEndpoint mine(UUID id) {
     return service
         .find(id)
-        .filter(e -> e.tenantId().equals(tenant()))
+        .filter(endpoint -> endpoint.tenantId().equals(tenant()))
         .orElseThrow(() -> new NotFoundException("endpoint", id.toString()));
   }
 }

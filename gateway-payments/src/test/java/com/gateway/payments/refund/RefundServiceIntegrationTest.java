@@ -41,7 +41,7 @@ class RefundServiceIntegrationTest extends ServiceIntegrationTestBase {
     bank.markPaid(p.id(), "E2E" + p.id(), Money.brl(cents));
     return new TransactionTemplate(txManager)
         .execute(
-            s -> {
+            transaction -> {
               Payment loaded = payments.findById(p.id()).orElseThrow();
               return payments.save(
                   loaded,

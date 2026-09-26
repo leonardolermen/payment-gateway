@@ -97,7 +97,10 @@ public class ReconciliationService {
       try {
         PaymentStatus before = payment.status();
         boletoPolling.check(payment.id(), EventSource.RECONCILIATION);
-        if (payments.findById(payment.id()).map(x -> x.status() != before).orElse(false)) {
+        if (payments
+            .findById(payment.id())
+            .map(reloaded -> reloaded.status() != before)
+            .orElse(false)) {
           changed++;
         }
       } catch (RuntimeException e) {
@@ -196,7 +199,9 @@ public class ReconciliationService {
           && payment.pix() != null
           && charge.received().stream()
               .noneMatch(
-                  x -> java.util.Objects.equals(x.endToEndId(), payment.pix().endToEndId()))) {
+                  received ->
+                      java.util.Objects.equals(
+                          received.endToEndId(), payment.pix().endToEndId()))) {
         changed +=
             open(
                 payment,

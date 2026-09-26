@@ -48,7 +48,7 @@ public class OutboxRepositoryImpl implements OutboxRepository {
     }
     Instant now = Instant.now();
     List<OutboxEntity> claimable = jpa.selectClaimable(now.minus(lease), Limit.of(limit));
-    claimable.forEach(e -> e.claimedAt = now);
+    claimable.forEach(message -> message.claimedAt = now);
     return claimable.stream().map(OutboxRepositoryImpl::toDomain).toList();
   }
 

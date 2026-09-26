@@ -93,7 +93,7 @@ public class RefundService {
 
     Refund refund =
         transactionTemplate.execute(
-            s -> {
+            transaction -> {
               Payment locked = payments.findByIdForUpdate(paymentId).orElseThrow();
               if (locked.status() != PaymentStatus.COMPLETED) {
                 throw new DomainException(
@@ -130,8 +130,8 @@ public class RefundService {
               // the original.
               long reserved =
                   refunds.findByPayment(paymentId).stream()
-                      .filter(x -> x.state() != RefundState.FAILED)
-                      .mapToLong(x -> x.amount().cents())
+                      .filter(existing -> existing.state() != RefundState.FAILED)
+                      .mapToLong(existing -> existing.amount().cents())
                       .sum();
               long remaining = locked.amount().cents() - reserved;
               Money amount =
@@ -178,7 +178,7 @@ public class RefundService {
       } else {
         String code = "PROVIDER_DECLINED";
         transactionTemplate.executeWithoutResult(
-            s -> {
+            transaction -> {
               Refund loaded = refunds.findById(refund.id()).orElseThrow();
               loaded.markFailed(ProviderErrors.message(code));
               events.emitRefund(merchantId, "refund.failed", refunds.save(loaded), payment);
@@ -189,7 +189,7 @@ public class RefundService {
 
     Refund processing =
         transactionTemplate.execute(
-            s -> {
+            transaction -> {
               Refund loaded = refunds.findById(refund.id()).orElseThrow();
               loaded.markProcessing();
               Refund saved = refunds.save(loaded);
@@ -220,7 +220,7 @@ public class RefundService {
   public Refund get(MerchantId merchantId, String refundId) {
     return refunds
         .findById(refundId)
-        .filter(r -> r.merchantId().equals(merchantId))
+        .filter(refund -> refund.merchantId().equals(merchantId))
         .orElseThrow(() -> new NotFoundException("refund", refundId));
   }
 
@@ -241,7 +241,7 @@ public class RefundService {
    */
   public void applyProviderUpdate(RefundResult result) {
     transactionTemplate.executeWithoutResult(
-        s -> {
+        transaction -> {
           Refund probe = refunds.findById(result.refundId()).orElse(null);
           if (probe == null) {
             log.warn("provider update for unknown refund {}", result.refundId());
@@ -295,7 +295,7 @@ public class RefundService {
    */
   public void giveUp(String refundId) {
     transactionTemplate.executeWithoutResult(
-        s -> {
+        transaction -> {
           Refund probe = refunds.findById(refundId).orElse(null);
           if (probe == null) {
             return;
@@ -337,7 +337,7 @@ public class RefundService {
           "webhook refund update for refund {} does not match its merchant or payment; ignored",
           refund.id());
       transactionTemplate.executeWithoutResult(
-          s ->
+          transaction ->
               paymentService.openDivergence(
                   payment,
                   "UNCONFIRMED_REFUND_WEBHOOK",
