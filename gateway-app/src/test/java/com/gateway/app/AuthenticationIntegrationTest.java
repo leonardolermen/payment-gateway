@@ -80,10 +80,10 @@ class AuthenticationIntegrationTest {
         .exchange()
         .expectStatus()
         .isForbidden();
-    http().get().uri("/v1/me").exchange().expectStatus().isUnauthorized();
+    http().get().uri("/v1/merchant").exchange().expectStatus().isUnauthorized();
     http()
         .get()
-        .uri("/v1/me")
+        .uri("/v1/merchant")
         .header("Authorization", "Bearer gk_live_INVALID0000000000000000000")
         .exchange()
         .expectStatus()
@@ -98,7 +98,7 @@ class AuthenticationIntegrationTest {
     Map<String, Object> me =
         http()
             .get()
-            .uri("/v1/me")
+            .uri("/v1/merchant")
             .header("Authorization", "Bearer " + key)
             .exchange()
             .expectStatus()
@@ -124,7 +124,7 @@ class AuthenticationIntegrationTest {
         .isNoContent();
     http()
         .get()
-        .uri("/v1/me")
+        .uri("/v1/merchant")
         .header("Authorization", "Bearer " + k.get("key"))
         .exchange()
         .expectStatus()
@@ -138,7 +138,7 @@ class AuthenticationIntegrationTest {
     for (int i = 0; i < 5; i++) {
       http()
           .get()
-          .uri("/v1/me")
+          .uri("/v1/merchant")
           .header("Authorization", "Bearer " + key)
           .exchange()
           .expectStatus()
@@ -146,7 +146,7 @@ class AuthenticationIntegrationTest {
     }
     http()
         .get()
-        .uri("/v1/me")
+        .uri("/v1/merchant")
         .header("Authorization", "Bearer " + key)
         .exchange()
         .expectStatus()
@@ -244,7 +244,7 @@ class AuthenticationIntegrationTest {
         .isForbidden();
     http()
         .get()
-        .uri("/v1/me")
+        .uri("/v1/merchant")
         .header("Authorization", "Bearer " + key)
         .exchange()
         .expectStatus()

@@ -266,3 +266,12 @@ fora do modelo. Rejeitado: estender o regex de nomes da regra para aceitar `Fact
 sufixo. Em vez disso eles recebem a porta `UnitOfWork`, com `TransactionalRunner` como único adaptador.
 Custo se errado: uma indireção a mais, e uma inconsistência enquanto os serviços antigos continuam
 recebendo o template direto.
+
+## 2026-09-26 — `GET /v1/me` virou `GET /v1/merchant`
+O recurso é o merchant por trás da API key, e nomear a rota pela perspectiva de quem chama só lê bem
+enquanto existe um tipo de chamador; `/v1/merchant` diz o que a resposta é. A classe e o record
+acompanham (`MeController`/`Me` → `MerchantController`/`Merchant`); o corpo não muda
+(`{merchant_id, name, environment}`). Rejeitado: manter `/v1/me` por ser contrato, e rejeitado servir
+as duas com a antiga redirecionando — não há cliente em produção, e uma rota viva "por enquanto" nunca
+morre. Custo se errado: quem chamava `/v1/me` recebe 404 sem aviso; a autenticação não muda, porque
+`ProtectedRoutes.requiresApiKey` casa pelo prefixo `/v1/` e não pelo caminho exato.

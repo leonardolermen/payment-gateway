@@ -23,7 +23,7 @@ If port 5432 is already taken on your machine, map `5433:5432` in `docker-compos
 ```bash
 curl -s -XPOST localhost:8080/v1/admin/merchants -H 'X-Admin-Key: dev-admin' -H 'Content-Type: application/json' -d '{"name":"Store"}'
 curl -s -XPOST localhost:8080/v1/admin/merchants/<id>/api-keys -H 'X-Admin-Key: dev-admin' -H 'Content-Type: application/json' -d '{"environment":"TEST"}'
-curl -s localhost:8080/v1/me -H 'Authorization: Bearer gk_test_…'
+curl -s localhost:8080/v1/merchant -H 'Authorization: Bearer gk_test_…'
 ```
 
 ## Modules

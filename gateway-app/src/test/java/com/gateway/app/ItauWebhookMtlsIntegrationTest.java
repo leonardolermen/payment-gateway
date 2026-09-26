@@ -511,7 +511,7 @@ class ItauWebhookMtlsIntegrationTest {
     HttpResponse<String> res =
         client(BANK)
             .send(
-                HttpRequest.newBuilder(URI.create(mtlsUrl("/v1/me")))
+                HttpRequest.newBuilder(URI.create(mtlsUrl("/v1/merchant")))
                     .header("Authorization", "Bearer " + m.testKey())
                     .GET()
                     .build(),
