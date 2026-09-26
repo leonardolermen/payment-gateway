@@ -46,15 +46,28 @@ class ObservabilityIntegrationTest {
     assertThat(withHeader.getResponseHeaders().getFirst("X-Correlation-Id")).isEqualTo("abc-123");
 
     var withoutHeader =
-        http().get().uri("/actuator/health").exchange().expectStatus().isOk().returnResult(String.class);
+        http()
+            .get()
+            .uri("/actuator/health")
+            .exchange()
+            .expectStatus()
+            .isOk()
+            .returnResult(String.class);
     assertThat(withoutHeader.getResponseHeaders().getFirst("X-Correlation-Id")).isNotBlank();
   }
 
   @Test
   void oversizedCorrelationIdIsReplaced() {
     String huge = "a".repeat(200);
-    var result = http().get().uri("/actuator/health").header("X-Correlation-Id", huge)
-        .exchange().expectStatus().isOk().returnResult(String.class);
+    var result =
+        http()
+            .get()
+            .uri("/actuator/health")
+            .header("X-Correlation-Id", huge)
+            .exchange()
+            .expectStatus()
+            .isOk()
+            .returnResult(String.class);
     String echoed = result.getResponseHeaders().getFirst("X-Correlation-Id");
     assertThat(echoed).isNotBlank().isNotEqualTo(huge).hasSizeLessThanOrEqualTo(64);
   }

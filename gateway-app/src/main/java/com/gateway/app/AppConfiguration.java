@@ -10,14 +10,15 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 /**
  * Deviation from the brief, hit while wiring {@code @Import(MerchantsConfiguration.class)} in this
- * task rather than in Task 6 as the module's docstring anticipated: {@code MerchantsConfiguration}'s
- * own {@code @EntityScan}/{@code @EnableJpaRepositories}, scoped to {@code com.gateway.merchants.repository},
- * makes Boot skip the package {@code AutoConfigurationPackages} would otherwise register for
- * webhook-delivery ({@code com.barrier.webhookdelivery.repository}) — context refresh failed with
- * {@code NoSuchBeanDefinitionException} for {@code DeliveryJpaRepository}. Scanning only that one
- * package here (not {@code com.gateway.merchants.repository} too — declaring it in both places
- * threw {@code BeanDefinitionOverrideException} for {@code merchantJpaRepository}) fixes it, per the
- * docstring's "Task 6 note".
+ * task rather than in Task 6 as the module's docstring anticipated: {@code
+ * MerchantsConfiguration}'s own {@code @EntityScan}/{@code @EnableJpaRepositories}, scoped to the
+ * persistence package of each merchants concept, makes Boot skip the package {@code
+ * AutoConfigurationPackages} would otherwise register for webhook-delivery ({@code
+ * com.barrier.webhookdelivery.repository}) — context refresh failed with {@code
+ * NoSuchBeanDefinitionException} for {@code DeliveryJpaRepository}. Scanning only that one package
+ * here (not merchants' own persistence packages too — declaring it in both places threw {@code
+ * BeanDefinitionOverrideException} for {@code merchantJpaRepository}) fixes it, per the docstring's
+ * "Task 6 note".
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(AppConfiguration.AppProperties.class)
@@ -25,12 +26,24 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @EnableJpaRepositories("com.barrier.webhookdelivery.repository")
 public class AppConfiguration {
   /** The app owns the one Clock; modules (providers today) only inject it. */
-  @Bean Clock clock() { return Clock.systemUTC(); }
+  @Bean
+  Clock clock() {
+    return Clock.systemUTC();
+  }
 
-  /** Same "gateway" prefix as MerchantsProperties; each record binds only the fields it declares. */
+  /**
+   * Same "gateway" prefix as MerchantsProperties; each record binds only the fields it declares.
+   */
   @ConfigurationProperties(prefix = "gateway")
   public record AppProperties(String adminKey, RateLimit rateLimit) {
-    public AppProperties { if (rateLimit == null) rateLimit = new RateLimit(600); }
-    public record RateLimit(int requestsPerMinute) { public RateLimit { if (requestsPerMinute <= 0) requestsPerMinute = 600; } }
+    public AppProperties {
+      if (rateLimit == null) rateLimit = new RateLimit(600);
+    }
+
+    public record RateLimit(int requestsPerMinute) {
+      public RateLimit {
+        if (requestsPerMinute <= 0) requestsPerMinute = 600;
+      }
+    }
   }
 }

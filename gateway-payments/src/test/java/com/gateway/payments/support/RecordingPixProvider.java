@@ -1,12 +1,14 @@
 package com.gateway.payments.support;
 
 import com.gateway.kernel.money.Money;
-import com.gateway.kernel.provider.pix.Charge;
-import com.gateway.kernel.provider.pix.ChargeStatus;
-import com.gateway.kernel.provider.pix.PixProvider;
+import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.kernel.provider.ProviderCredentials;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.kernel.provider.ProviderWebhookEvent;
+import com.gateway.kernel.provider.pix.Charge;
+import com.gateway.kernel.provider.pix.ChargeStatus;
+import com.gateway.kernel.provider.pix.PixIssueRequest;
+import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.kernel.provider.pix.ReceivedPix;
 import com.gateway.kernel.provider.pix.RefundRequest;
 import com.gateway.kernel.provider.pix.RefundResult;
@@ -27,10 +29,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * only. It is not a product provider: the product talks to a real bank (the sandbox for TEST), and
  * this class never leaves {@code src/test}.
  *
- * <p>The Spring context is shared between test classes, so every call is recorded as
- * {@code op:key} and assertions filter by the test's own txid instead of resetting shared state.
+ * <p>The Spring context is shared between test classes, so every call is recorded as {@code op:key}
+ * and assertions filter by the test's own txid instead of resetting shared state.
  */
-public class RecordingPixProvider implements PixProvider {
+public class RecordingPixProvider implements PixMethodProvider {
   private final Clock clock;
   private final Map<String, Charge> charges = new ConcurrentHashMap<>();
   private final Map<String, RefundResult> refunds = new ConcurrentHashMap<>();
@@ -51,13 +53,26 @@ public class RecordingPixProvider implements PixProvider {
     return "ITAU";
   }
 
+  @Override
+  public PaymentMethod method() {
+    return PaymentMethod.PIX;
+  }
+
+  /**
+   * The double has no credential to inspect: what it exercises is the flow, not the credential
+   * shape.
+   */
+  @Override
+  public void requireIssueCredentials(ProviderCredentials c) {}
+
   public void failNextCreateWith(ProviderException e) {
     this.failNextCreate = e;
   }
 
   /** The PUT reached the bank and created the charge, but the response never came back. */
   public void timeoutNextCreateButCreateAnyway() {
-    landNextCreateThenFailWith(new ProviderException(ProviderException.Code.TIMEOUT, "read timed out", null));
+    landNextCreateThenFailWith(
+        new ProviderException(ProviderException.Code.TIMEOUT, "read timed out", null));
   }
 
   /** The charge is created at the bank, but the caller sees {@code e} (a 503 from a proxy, say). */
@@ -78,13 +93,30 @@ public class RecordingPixProvider implements PixProvider {
     Charge c = charges.get(txid);
     charges.put(
         txid,
-        new Charge(txid, ChargeStatus.COMPLETED, c.amount(), c.pixCopiaECola(), c.location(), c.createdAt(), c.expiresInSeconds(),
+        new Charge(
+            txid,
+            ChargeStatus.COMPLETED,
+            c.amount(),
+            c.pixCopiaECola(),
+            c.location(),
+            c.createdAt(),
+            c.expiresInSeconds(),
             List.of(new ReceivedPix(endToEndId, amount, clock.instant(), "payer"))));
   }
 
   public void setStatus(String txid, ChargeStatus status) {
     Charge c = charges.get(txid);
-    charges.put(txid, new Charge(txid, status, c.amount(), c.pixCopiaECola(), c.location(), c.createdAt(), c.expiresInSeconds(), c.received()));
+    charges.put(
+        txid,
+        new Charge(
+            txid,
+            status,
+            c.amount(),
+            c.pixCopiaECola(),
+            c.location(),
+            c.createdAt(),
+            c.expiresInSeconds(),
+            c.received()));
   }
 
   /** The refund PUT fails with {@code e} and the bank keeps nothing (findRefund stays empty). */
@@ -110,8 +142,11 @@ public class RecordingPixProvider implements PixProvider {
   }
 
   @Override
-  public Charge createCharge(
-      ProviderCredentials c, String txid, Money amount, int expiresInSeconds, String payerDocument, String payerName, String description) {
+  public Charge issue(ProviderCredentials c, PixIssueRequest request) {
+    String txid = request.txid();
+    Money amount = request.amount();
+    int expiresInSeconds = request.expiresInSeconds();
+
     calls.add("createCharge:" + txid);
     ProviderException fail = failNextCreate;
     if (fail != null) {
@@ -119,12 +154,29 @@ public class RecordingPixProvider implements PixProvider {
       throw fail;
     }
     Charge charge =
-        new Charge(txid, ChargeStatus.ACTIVE, amount, "00020101021226" + txid, "pix.example/qr/" + txid, clock.instant(), expiresInSeconds, List.of());
+        new Charge(
+            txid,
+            ChargeStatus.ACTIVE,
+            amount,
+            "00020101021226" + txid,
+            "pix.example/qr/" + txid,
+            clock.instant(),
+            expiresInSeconds,
+            List.of());
     charges.put(txid, charge);
     String echoed = echoTxid;
     if (echoed != null) {
       echoTxid = null;
-      charge = new Charge(echoed, charge.status(), charge.amount(), charge.pixCopiaECola(), charge.location(), charge.createdAt(), charge.expiresInSeconds(), charge.received());
+      charge =
+          new Charge(
+              echoed,
+              charge.status(),
+              charge.amount(),
+              charge.pixCopiaECola(),
+              charge.location(),
+              charge.createdAt(),
+              charge.expiresInSeconds(),
+              charge.received());
     }
     ProviderException after = landThenFail;
     if (after != null) {
@@ -135,7 +187,7 @@ public class RecordingPixProvider implements PixProvider {
   }
 
   @Override
-  public Optional<Charge> findCharge(ProviderCredentials c, String txid) {
+  public Optional<Charge> find(ProviderCredentials c, String txid) {
     calls.add("findCharge:" + txid);
     ProviderException fail = failFind.remove(txid);
     if (fail != null) {
@@ -145,14 +197,16 @@ public class RecordingPixProvider implements PixProvider {
   }
 
   @Override
-  public void cancelCharge(ProviderCredentials c, String txid) {
+  public void cancel(ProviderCredentials c, String txid) {
     calls.add("cancelCharge:" + txid);
     Charge charge = charges.get(txid);
     if (charge == null) {
-      throw new ProviderException(ProviderException.Code.NOT_FOUND, 404, "CobNaoEncontrado", "not found");
+      throw new ProviderException(
+          ProviderException.Code.NOT_FOUND, 404, "CobNaoEncontrado", "not found");
     }
     if (charge.status() != ChargeStatus.ACTIVE) {
-      throw new ProviderException(ProviderException.Code.INVALID, 400, "CobOperacaoInvalida", "not active");
+      throw new ProviderException(
+          ProviderException.Code.INVALID, 400, "CobOperacaoInvalida", "not active");
     }
     setStatus(txid, ChargeStatus.REMOVED_BY_MERCHANT);
   }
@@ -165,13 +219,15 @@ public class RecordingPixProvider implements PixProvider {
       failNextRefund = null;
       throw fail;
     }
-    RefundResult result = new RefundResult(r.refundId(), nextRefundStatus, r.amount(), null, clock.instant(), null);
+    RefundResult result =
+        new RefundResult(r.refundId(), nextRefundStatus, r.amount(), null, clock.instant(), null);
     refunds.put(r.refundId(), result);
     return result;
   }
 
   @Override
-  public Optional<RefundResult> findRefund(ProviderCredentials c, String endToEndId, String refundId) {
+  public Optional<RefundResult> findRefund(
+      ProviderCredentials c, String endToEndId, String refundId) {
     calls.add("findRefund:" + refundId);
     return Optional.ofNullable(refunds.get(refundId));
   }
@@ -184,8 +240,8 @@ public class RecordingPixProvider implements PixProvider {
 
   /**
    * Test body format, one item per line: a Pix is {@code endToEndId txid cents}; a refund update is
-   * {@code REFUND refundId endToEndId STATUS}. Anything else is unreadable, which is what lets a test
-   * drive the FAILED path.
+   * {@code REFUND refundId endToEndId STATUS}. Anything else is unreadable, which is what lets a
+   * test drive the FAILED path.
    */
   @Override
   public ProviderWebhookEvent parseWebhook(byte[] body) {
@@ -196,20 +252,31 @@ public class RecordingPixProvider implements PixProvider {
     for (String line : new String(body, StandardCharsets.UTF_8).strip().split("\n")) {
       String[] parts = line.strip().split(" ");
       if (parts.length == 4 && parts[0].equals("REFUND")) {
-        refundUpdates.add(new RefundResult(parts[1], RefundStatus.valueOf(parts[3]), Money.brl(1), "from the body", clock.instant(), clock.instant()));
+        refundUpdates.add(
+            new RefundResult(
+                parts[1],
+                RefundStatus.valueOf(parts[3]),
+                Money.brl(1),
+                "from the body",
+                clock.instant(),
+                clock.instant()));
         refundE2e.put(parts[1], parts[2]);
         continue;
       }
       if (parts.length != 3) {
         throw new IllegalArgumentException("unreadable webhook line: " + line);
       }
-      received.add(new ReceivedPix(parts[0], Money.brl(Long.parseLong(parts[2])), clock.instant(), "payer"));
+      received.add(
+          new ReceivedPix(parts[0], Money.brl(Long.parseLong(parts[2])), clock.instant(), "payer"));
       txids.put(parts[0], parts[1]);
     }
     return new ProviderWebhookEvent(received, refundUpdates, txids, refundE2e);
   }
 
-  /** A charge the bank created on its own (the Pix side of a Bolecode); findCharge and listCharges see it like any other. */
+  /**
+   * A charge the bank created on its own (the Pix side of a Bolecode); findCharge and listCharges
+   * see it like any other.
+   */
   public void register(Charge c) {
     charges.put(c.txid(), c);
   }

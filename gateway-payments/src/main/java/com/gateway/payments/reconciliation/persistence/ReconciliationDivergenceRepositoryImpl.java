@@ -12,7 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ReconciliationDivergenceRepositoryImpl implements ReconciliationDivergenceRepository {
   private final ReconciliationDivergenceJpaRepository jpa;
 
-  @PersistenceContext private EntityManager em;
+  @PersistenceContext private EntityManager entityManager;
 
   public ReconciliationDivergenceRepositoryImpl(ReconciliationDivergenceJpaRepository jpa) {
     this.jpa = jpa;
@@ -20,7 +20,8 @@ public class ReconciliationDivergenceRepositoryImpl implements ReconciliationDiv
 
   @Override
   public void save(ReconciliationDivergence d) {
-    ReconciliationDivergenceEntity e = jpa.findById(d.id()).orElseGet(ReconciliationDivergenceEntity::new);
+    ReconciliationDivergenceEntity e =
+        jpa.findById(d.id()).orElseGet(ReconciliationDivergenceEntity::new);
     e.id = d.id();
     e.paymentId = d.paymentId();
     e.gatewayStatus = d.gatewayStatus();
@@ -40,7 +41,8 @@ public class ReconciliationDivergenceRepositoryImpl implements ReconciliationDiv
   @Transactional
   public boolean openIfAbsent(ReconciliationDivergence d) {
     int inserted =
-        em.createNativeQuery(
+        entityManager
+            .createNativeQuery(
                 """
                 INSERT INTO payments.reconciliation_divergences (id, payment_id, gateway_status, provider_status, detail, status, created_at)
                 VALUES (:id, :paymentId, :gatewayStatus, :providerStatus, :detail, 'OPEN', :createdAt)
@@ -58,10 +60,13 @@ public class ReconciliationDivergenceRepositoryImpl implements ReconciliationDiv
 
   @Override
   public List<ReconciliationDivergence> open() {
-    return jpa.findByStatus("OPEN").stream().map(ReconciliationDivergenceRepositoryImpl::toDomain).toList();
+    return jpa.findByStatus("OPEN").stream()
+        .map(ReconciliationDivergenceRepositoryImpl::toDomain)
+        .toList();
   }
 
   private static ReconciliationDivergence toDomain(ReconciliationDivergenceEntity e) {
-    return new ReconciliationDivergence(e.id, e.paymentId, e.gatewayStatus, e.providerStatus, e.detail, e.status, e.createdAt);
+    return new ReconciliationDivergence(
+        e.id, e.paymentId, e.gatewayStatus, e.providerStatus, e.detail, e.status, e.createdAt);
   }
 }

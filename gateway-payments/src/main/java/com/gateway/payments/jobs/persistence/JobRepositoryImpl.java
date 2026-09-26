@@ -17,18 +17,22 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class JobRepositoryImpl implements JobRepository {
   private final JobJpaRepository jpa;
 
-  @PersistenceContext private EntityManager em;
+  @PersistenceContext private EntityManager entityManager;
 
   public JobRepositoryImpl(JobJpaRepository jpa) {
     this.jpa = jpa;
   }
 
-  /** {@code uq_jobs_type_ref} backs this: one job per (type, ref), same {@code ON CONFLICT DO NOTHING} reasoning as {@code IdempotencyRepositoryImpl}. */
+  /**
+   * {@code uq_jobs_type_ref} backs this: one job per (type, ref), same {@code ON CONFLICT DO
+   * NOTHING} reasoning as {@code IdempotencyRepositoryImpl}.
+   */
   @Override
   @Transactional
   public boolean enqueue(Job j) {
     int inserted =
-        em.createNativeQuery(
+        entityManager
+            .createNativeQuery(
                 """
                 INSERT INTO payments.jobs (id, type, ref_id, next_run_at, attempts, status, claimed_at, last_error, created_at)
                 VALUES (:id, :type, :refId, :nextRunAt, :attempts, :status, :claimedAt, :lastError, :createdAt)
@@ -50,16 +54,18 @@ public class JobRepositoryImpl implements JobRepository {
   /**
    * {@code PESSIMISTIC_WRITE} + {@code SKIP LOCKED} (see {@code JobJpaRepository.selectDue}) keeps
    * two workers off the same row; it says nothing about a caller with no transaction at all, where
-   * the lock would be released the instant it is taken. Copied from
-   * {@code DeliveryRepositoryImpl.claimDue} in webhook-delivery, including this guard.
+   * the lock would be released the instant it is taken. Copied from {@code
+   * DeliveryRepositoryImpl.claimDue} in webhook-delivery, including this guard.
    */
   @Override
   public List<Job> claimDue(Instant now, int limit, Duration lease, Duration reconcileLease) {
     if (!TransactionSynchronizationManager.isActualTransactionActive()) {
-      throw new IllegalStateException("claimDue must run inside a transaction: the SKIP LOCKED claim depends on it.");
+      throw new IllegalStateException(
+          "claimDue must run inside a transaction: the SKIP LOCKED claim depends on it.");
     }
-    List<JobEntity> due = jpa.selectDue(now, now.minus(lease), now.minus(reconcileLease), Limit.of(limit));
-    due.forEach(e -> e.claimedAt = now);
+    List<JobEntity> due =
+        jpa.selectDue(now, now.minus(lease), now.minus(reconcileLease), Limit.of(limit));
+    due.forEach(job -> job.claimedAt = now);
     return due.stream().map(JobRepositoryImpl::toDomain).toList();
   }
 
@@ -91,6 +97,15 @@ public class JobRepositoryImpl implements JobRepository {
   }
 
   private static Job toDomain(JobEntity e) {
-    return new Job(e.id, JobType.valueOf(e.type), e.refId, e.nextRunAt, e.attempts, e.status, e.claimedAt, e.lastError, e.createdAt);
+    return new Job(
+        e.id,
+        JobType.valueOf(e.type),
+        e.refId,
+        e.nextRunAt,
+        e.attempts,
+        e.status,
+        e.claimedAt,
+        e.lastError,
+        e.createdAt);
   }
 }

@@ -20,44 +20,81 @@ public final class BoletoErrors {
   private BoletoErrors() {}
 
   public static ProviderException from(int status, String body) {
-    BoletoProblem p = parse(body);
+    BoletoProblem problem = parse(body);
     String message;
-    if (p != null && p.mensagem() != null) {
-      StringBuilder sb = new StringBuilder(p.mensagem());
-      if (p.campos() != null && !p.campos().isEmpty()) {
-        sb.append(" [");
-        for (int i = 0; i < p.campos().size(); i++) {
-          if (i > 0) sb.append("; ");
-          sb.append(p.campos().get(i).campo()).append(": ").append(p.campos().get(i).mensagem());
+
+    if (problem != null && problem.mensagem() != null) {
+      StringBuilder stringBuilder = new StringBuilder(problem.mensagem());
+      if (problem.campos() != null && !problem.campos().isEmpty()) {
+        stringBuilder.append(" [");
+        for (int i = 0; i < problem.campos().size(); i++) {
+          if (i > 0) {
+            stringBuilder.append("; ");
+          }
+          stringBuilder
+              .append(problem.campos().get(i).campo())
+              .append(": ")
+              .append(problem.campos().get(i).mensagem());
         }
-        sb.append(']');
+        stringBuilder.append(']');
       }
-      message = sb.toString();
+      message = stringBuilder.toString();
     } else {
-      message = "Itaú boleto HTTP " + status + (body == null || body.isBlank() ? "" : ": " + truncate(body));
+      message =
+          "Itaú boleto HTTP "
+              + status
+              + (body == null || body.isBlank() ? "" : ": " + truncate(body));
     }
-    return new ProviderException(code(status), status, p == null ? null : p.codigo(), message);
+
+    return new ProviderException(
+        code(status), status, problem == null ? null : problem.codigo(), message);
   }
 
   static Code code(int status) {
-    if (status == 202) return Code.TIMEOUT; // "operação em andamento": the bank has not decided yet, treat like a lost answer
-    if (status == 400 || status == 422) return Code.DECLINED;
-    if (status == 401 || status == 403) return Code.UNAUTHENTICATED;
-    if (status == 404 || status == 410) return Code.NOT_FOUND;
-    if (status == 504) return Code.TIMEOUT;
-    if (status >= 500) return Code.UNAVAILABLE;
+    if (status == 202)
+      return Code
+          .TIMEOUT; // "operação em andamento": the bank has not decided yet, treat like a lost
+    // answer
+    if (status == 400 || status == 422) {
+      return Code.DECLINED;
+    }
+    if (status == 401 || status == 403) {
+      return Code.UNAUTHENTICATED;
+    }
+    if (status == 404 || status == 410) {
+      return Code.NOT_FOUND;
+    }
+    if (status == 504) {
+      return Code.TIMEOUT;
+    }
+    if (status >= 500) {
+      return Code.UNAVAILABLE;
+    }
+
     return Code.UNKNOWN;
   }
 
-  /** The 422 of a baixa on a boleto the bank already settled says "pago"/"liquidado" in its text (no schema, no code). */
+  /**
+   * The 422 of a baixa on a boleto the bank already settled says "pago"/"liquidado" in its text (no
+   * schema, no code).
+   */
   public static boolean mentionsAlreadyPaid(String body) {
-    if (body == null) return false;
-    String plain = Normalizer.normalize(body, Normalizer.Form.NFD).replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
+    if (body == null) {
+      return false;
+    }
+    String plain =
+        Normalizer.normalize(body, Normalizer.Form.NFD)
+            .replaceAll("\\p{M}", "")
+            .toLowerCase(Locale.ROOT);
+
     return plain.contains("pago") || plain.contains("liquidado");
   }
 
   private static BoletoProblem parse(String body) {
-    if (body == null || body.isBlank()) return null;
+    if (body == null || body.isBlank()) {
+      return null;
+    }
+
     try {
       return MAPPER.readValue(body, BoletoProblem.class);
     } catch (RuntimeException e) {
@@ -65,5 +102,7 @@ public final class BoletoErrors {
     }
   }
 
-  private static String truncate(String s) { return s.length() <= MAX_RAW ? s : s.substring(0, MAX_RAW) + "…"; }
+  private static String truncate(String s) {
+    return s.length() <= MAX_RAW ? s : s.substring(0, MAX_RAW) + "…";
+  }
 }

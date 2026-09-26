@@ -14,7 +14,11 @@ public final class Ulid {
   private Ulid() {}
 
   /** Monotonic within a millisecond: two ids generated back to back sort in generation order. */
-  public static String next() { return UlidCreator.getMonotonicUlid().toString(); }
+  public static String next() {
+    return UlidCreator.getMonotonicUlid().toString();
+  }
 
-  public static boolean isValid(String s) { return s != null && FORMAT.matcher(s).matches(); }
+  public static boolean isValid(String s) {
+    return s != null && FORMAT.matcher(s).matches();
+  }
 }

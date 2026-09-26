@@ -13,7 +13,14 @@ public class ProviderRequestRepositoryImpl implements ProviderRequestRepository 
   }
 
   @Override
-  public void record(String paymentId, String provider, String operation, String request, String response, int status, long latencyMs) {
+  public void record(
+      String paymentId,
+      String provider,
+      String operation,
+      String request,
+      String response,
+      int status,
+      long latencyMs) {
     ProviderRequestEntity e = new ProviderRequestEntity();
     e.id = Ulid.next();
     e.paymentId = paymentId;

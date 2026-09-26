@@ -1,19 +1,19 @@
 package com.gateway.payments.payment;
 
-import com.gateway.payments.jobs.JobRunner;
-import com.gateway.payments.reconciliation.ReconciliationService;
-import com.gateway.payments.support.ServiceIntegrationTestBase;
-
 import static org.assertj.core.api.Assertions.*;
 
 import com.gateway.kernel.money.Money;
-import com.gateway.kernel.provider.pix.ChargeStatus;
 import com.gateway.kernel.provider.ProviderEnvironment;
+import com.gateway.kernel.provider.pix.ChargeStatus;
+import com.gateway.kernel.provider.pix.PixIssueRequest;
 import com.gateway.payments.jobs.Job;
+import com.gateway.payments.jobs.JobRunner;
 import com.gateway.payments.jobs.JobType;
 import com.gateway.payments.jobs.persistence.JobRepository;
 import com.gateway.payments.payment.persistence.PaymentRepository;
+import com.gateway.payments.reconciliation.ReconciliationService;
 import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceRepository;
+import com.gateway.payments.support.ServiceIntegrationTestBase;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -80,73 +80,124 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
     assertThat(reload(p).status()).isEqualTo(PaymentStatus.EXPIRED);
     bank.markPaid(p.id(), "E2E" + p.id(), Money.brl(1000));
 
-    reconciliation.reconcile(merchant, ProviderEnvironment.TEST, clock.instant().minus(Duration.ofDays(1)), clock.instant());
+    reconciliation.reconcile(
+        merchant,
+        ProviderEnvironment.TEST,
+        clock.instant().minus(Duration.ofDays(1)),
+        clock.instant());
 
     Payment after = reload(p);
     assertThat(after.status()).isEqualTo(PaymentStatus.COMPLETED);
     assertThat(payments.events(p.id()).getLast().source()).isEqualTo(EventSource.RECONCILIATION);
-    assertThat(outboxTypes(p.id())).containsExactly("payment.pending", "payment.expired", "payment.completed");
+    assertThat(outboxTypes(p.id()))
+        .containsExactly("payment.pending", "payment.expired", "payment.completed");
   }
 
   @Test
   void reconciliationOpensDivergenceForTheRest() {
     Payment p = newCharge(1000);
-    new TransactionTemplate(txManager).executeWithoutResult(s -> {
-      Payment loaded = reload(p);
-      payments.save(loaded, List.of(loaded.markCompleted("E2E" + p.id(), Money.brl(1000), clock.instant(), EventSource.PROVIDER_WEBHOOK)));
-    });
+    new TransactionTemplate(txManager)
+        .executeWithoutResult(
+            transaction -> {
+              Payment loaded = reload(p);
+              payments.save(
+                  loaded,
+                  List.of(
+                      loaded.markCompleted(
+                          "E2E" + p.id(),
+                          Money.brl(1000),
+                          clock.instant(),
+                          EventSource.PROVIDER_WEBHOOK)));
+            });
     bank.setStatus(p.id(), ChargeStatus.REMOVED_BY_PSP);
 
     reconciliation.reconcileAll(clock.instant().plus(Duration.ofMinutes(30)));
-    reconciliation.reconcileAll(clock.instant().plus(Duration.ofMinutes(45))); // a second run does not duplicate it
+    reconciliation.reconcileAll(
+        clock.instant().plus(Duration.ofMinutes(45))); // a second run does not duplicate it
 
     assertThat(divergences.open())
         .filteredOn(d -> d.paymentId().equals(p.id()))
         .singleElement()
-        .satisfies(d -> {
-          assertThat(d.gatewayStatus()).isEqualTo("COMPLETED");
-          assertThat(d.providerStatus()).isEqualTo("REMOVED_BY_PSP");
-        });
+        .satisfies(
+            d -> {
+              assertThat(d.gatewayStatus()).isEqualTo("COMPLETED");
+              assertThat(d.providerStatus()).isEqualTo("REMOVED_BY_PSP");
+            });
     List<PaymentEvent> events = payments.events(p.id());
     assertThat(events.getLast().type()).isEqualTo("completed");
     assertThat(reload(p).status()).isEqualTo(PaymentStatus.COMPLETED);
   }
 
-  /** Critical 1(c): COMPLETED here, but the bank never concluded it (a forged webhook got through, say). */
+  /**
+   * Critical 1(c): COMPLETED here, but the bank never concluded it (a forged webhook got through,
+   * say).
+   */
   @Test
   void reconciliationFlagsACompletedPaymentTheBankStillHasActive() {
     Payment p = newCharge(1000);
-    new TransactionTemplate(txManager).executeWithoutResult(s -> {
-      Payment loaded = reload(p);
-      payments.save(loaded, List.of(loaded.markCompleted("E2E" + p.id(), Money.brl(1000), clock.instant(), EventSource.PROVIDER_WEBHOOK)));
-    });
+    new TransactionTemplate(txManager)
+        .executeWithoutResult(
+            transaction -> {
+              Payment loaded = reload(p);
+              payments.save(
+                  loaded,
+                  List.of(
+                      loaded.markCompleted(
+                          "E2E" + p.id(),
+                          Money.brl(1000),
+                          clock.instant(),
+                          EventSource.PROVIDER_WEBHOOK)));
+            });
 
-    reconciliation.reconcile(merchant, ProviderEnvironment.TEST, clock.instant().minus(Duration.ofDays(1)), clock.instant());
+    reconciliation.reconcile(
+        merchant,
+        ProviderEnvironment.TEST,
+        clock.instant().minus(Duration.ofDays(1)),
+        clock.instant());
 
-    assertThat(divergences.open()).filteredOn(d -> d.paymentId().equals(p.id())).singleElement()
-        .satisfies(d -> {
-          assertThat(d.gatewayStatus()).isEqualTo("COMPLETED");
-          assertThat(d.providerStatus()).isEqualTo("ACTIVE");
-        });
+    assertThat(divergences.open())
+        .filteredOn(d -> d.paymentId().equals(p.id()))
+        .singleElement()
+        .satisfies(
+            d -> {
+              assertThat(d.gatewayStatus()).isEqualTo("COMPLETED");
+              assertThat(d.providerStatus()).isEqualTo("ACTIVE");
+            });
     assertThat(reload(p).status()).isEqualTo(PaymentStatus.COMPLETED);
   }
 
   @Test
   void reconciliationFlagsACompletedPaymentWhoseEndToEndIdTheBankDoesNotKnow() {
     Payment p = newCharge(1000);
-    new TransactionTemplate(txManager).executeWithoutResult(s -> {
-      Payment loaded = reload(p);
-      payments.save(loaded, List.of(loaded.markCompleted("E2E-OURS" + p.id(), Money.brl(1000), clock.instant(), EventSource.PROVIDER_WEBHOOK)));
-    });
+    new TransactionTemplate(txManager)
+        .executeWithoutResult(
+            transaction -> {
+              Payment loaded = reload(p);
+              payments.save(
+                  loaded,
+                  List.of(
+                      loaded.markCompleted(
+                          "E2E-OURS" + p.id(),
+                          Money.brl(1000),
+                          clock.instant(),
+                          EventSource.PROVIDER_WEBHOOK)));
+            });
     bank.markPaid(p.id(), "E2E-BANK" + p.id(), Money.brl(1000));
 
-    reconciliation.reconcile(merchant, ProviderEnvironment.TEST, clock.instant().minus(Duration.ofDays(1)), clock.instant());
+    reconciliation.reconcile(
+        merchant,
+        ProviderEnvironment.TEST,
+        clock.instant().minus(Duration.ofDays(1)),
+        clock.instant());
 
-    assertThat(divergences.open()).filteredOn(d -> d.paymentId().equals(p.id())).singleElement()
-        .satisfies(d -> {
-          assertThat(d.providerStatus()).isEqualTo("COMPLETED");
-          assertThat(d.detail()).contains("E2E-BANK" + p.id());
-        });
+    assertThat(divergences.open())
+        .filteredOn(d -> d.paymentId().equals(p.id()))
+        .singleElement()
+        .satisfies(
+            d -> {
+              assertThat(d.providerStatus()).isEqualTo("COMPLETED");
+              assertThat(d.detail()).contains("E2E-BANK" + p.id());
+            });
   }
 
   @Test
@@ -161,15 +212,32 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
   @Test
   void theReconcileJobHasItsOwnLongerLease() {
     jdbc.update("DELETE FROM payments.jobs WHERE type = 'RECONCILE'");
-    new TransactionTemplate(txManager).executeWithoutResult(s -> jobs.enqueue(Job.reconcile(clock)));
+    new TransactionTemplate(txManager)
+        .executeWithoutResult(transaction -> jobs.enqueue(Job.reconcile(clock)));
     clock.advance(Duration.ofMinutes(1));
-    // A run claimed 5 minutes ago is still in progress: past the 2 min jobLease, inside the 10 min reconcileLease.
-    jdbc.update("UPDATE payments.jobs SET claimed_at = ? WHERE type = 'RECONCILE'", java.sql.Timestamp.from(clock.instant().minus(Duration.ofMinutes(5))));
+    // A run claimed 5 minutes ago is still in progress: past the 2 min jobLease, inside the 10 min
+    // reconcileLease.
+    jdbc.update(
+        "UPDATE payments.jobs SET claimed_at = ? WHERE type = 'RECONCILE'",
+        java.sql.Timestamp.from(clock.instant().minus(Duration.ofMinutes(5))));
 
-    List<Job> claimed = new TransactionTemplate(txManager).execute(s -> jobs.claimDue(clock.instant(), 100, Duration.ofMinutes(2), Duration.ofMinutes(10)));
+    List<Job> claimed =
+        new TransactionTemplate(txManager)
+            .execute(
+                transaction ->
+                    jobs.claimDue(
+                        clock.instant(), 100, Duration.ofMinutes(2), Duration.ofMinutes(10)));
     assertThat(claimed).noneMatch(j -> j.type() == JobType.RECONCILE);
 
-    List<Job> later = new TransactionTemplate(txManager).execute(s -> jobs.claimDue(clock.instant().plus(Duration.ofMinutes(6)), 100, Duration.ofMinutes(2), Duration.ofMinutes(10)));
+    List<Job> later =
+        new TransactionTemplate(txManager)
+            .execute(
+                transaction ->
+                    jobs.claimDue(
+                        clock.instant().plus(Duration.ofMinutes(6)),
+                        100,
+                        Duration.ofMinutes(2),
+                        Duration.ofMinutes(10)));
     assertThat(later).anyMatch(j -> j.type() == JobType.RECONCILE);
     jdbc.update("DELETE FROM payments.jobs WHERE type = 'RECONCILE'");
   }
@@ -178,7 +246,8 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
   void theReconcileJobIsRescheduledNeverDone() {
     // The singleton may already exist, rescheduled by another test's runner pass.
     jdbc.update("DELETE FROM payments.jobs WHERE type = 'RECONCILE'");
-    new TransactionTemplate(txManager).executeWithoutResult(s -> jobs.enqueue(Job.reconcile(clock)));
+    new TransactionTemplate(txManager)
+        .executeWithoutResult(transaction -> jobs.enqueue(Job.reconcile(clock)));
     clock.advance(Duration.ofMinutes(1));
 
     while (runner.runDue(clock.instant()) > 0) {}
@@ -194,11 +263,13 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
     Payment p = newCharge(1000);
     clock.advance(Duration.ofHours(2));
 
-    // The context is shared: other tests' jobs are due too, so drain until nothing is left to claim.
+    // The context is shared: other tests' jobs are due too, so drain until nothing is left to
+    // claim.
     while (runner.runDue(clock.instant()) > 0) {}
 
     assertThat(reload(p).status()).isEqualTo(PaymentStatus.EXPIRED);
-    assertThat(jobs.findByTypeAndRef(JobType.EXPIRE_PAYMENT, p.id()).orElseThrow().status()).isEqualTo("DONE");
+    assertThat(jobs.findByTypeAndRef(JobType.EXPIRE_PAYMENT, p.id()).orElseThrow().status())
+        .isEqualTo("DONE");
   }
 
   @Test
@@ -214,14 +285,25 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
 
   /** A payment left CREATED, as if the process died between the insert and the bank's answer. */
   Payment stuckCreated() {
-    Payment p = Payment.create(merchant, ProviderEnvironment.TEST, "ITAU", Money.brl(1000), null, null, null, 3600, clock);
-    return new TransactionTemplate(txManager).execute(s -> payments.save(p, List.of(p.createdEvent())));
+    Payment p =
+        Payment.create(
+            merchant,
+            ProviderEnvironment.TEST,
+            "ITAU",
+            Money.brl(1000),
+            null,
+            null,
+            null,
+            3600,
+            clock);
+    return new TransactionTemplate(txManager)
+        .execute(transaction -> payments.save(p, List.of(p.createdEvent())));
   }
 
   @Test
   void stuckCreatedWithAnActiveChargeIsAdopted() {
     Payment p = stuckCreated();
-    bank.createCharge(null, p.id(), Money.brl(1000), 3600, null, null, null);
+    bank.issue(null, new PixIssueRequest(p.id(), Money.brl(1000), 3600, null, null, null));
     clock.advance(Duration.ofMinutes(11));
 
     expiration.sweepStuckCreated(clock.instant());
@@ -237,7 +319,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
   @Test
   void stuckCreatedAlreadyPaidIsAdoptedThenCompleted() {
     Payment p = stuckCreated();
-    bank.createCharge(null, p.id(), Money.brl(1000), 3600, null, null, null);
+    bank.issue(null, new PixIssueRequest(p.id(), Money.brl(1000), 3600, null, null, null));
     bank.markPaid(p.id(), "E2E" + p.id(), Money.brl(1000));
     clock.advance(Duration.ofMinutes(11));
 
@@ -271,9 +353,14 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
 
   @Test
   void reconciliationOpensADivergenceForAFailedPaymentPaidAtTheBank() {
-    bank.landNextCreateThenFailWith(new com.gateway.kernel.provider.ProviderException(
-        com.gateway.kernel.provider.ProviderException.Code.DECLINED, 422, null, "declined but created"));
-    assertThatThrownBy(() -> newCharge(1000)).isInstanceOf(com.gateway.kernel.errors.DomainException.class);
+    bank.landNextCreateThenFailWith(
+        new com.gateway.kernel.provider.ProviderException(
+            com.gateway.kernel.provider.ProviderException.Code.DECLINED,
+            422,
+            null,
+            "declined but created"));
+    assertThatThrownBy(() -> newCharge(1000))
+        .isInstanceOf(com.gateway.kernel.errors.DomainException.class);
     Payment p = paymentService.list(merchant, 10, null).getFirst();
     bank.markPaid(p.id(), "E2E" + p.id(), Money.brl(1000));
 
@@ -281,7 +368,9 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
     reconciliation.reconcileAll(clock.instant().plus(Duration.ofMinutes(45)));
 
     assertThat(reload(p).status()).isEqualTo(PaymentStatus.FAILED);
-    assertThat(divergences.open()).filteredOn(d -> d.paymentId().equals(p.id())).singleElement()
+    assertThat(divergences.open())
+        .filteredOn(d -> d.paymentId().equals(p.id()))
+        .singleElement()
         .satisfies(d -> assertThat(d.detail()).startsWith("paid at bank while FAILED"));
     assertThat(outboxTypes(p.id())).containsExactly("payment.failed");
   }

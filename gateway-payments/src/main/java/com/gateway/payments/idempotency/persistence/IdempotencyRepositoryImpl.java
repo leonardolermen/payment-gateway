@@ -14,7 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class IdempotencyRepositoryImpl implements IdempotencyRepository {
   private final IdempotencyJpaRepository jpa;
 
-  @PersistenceContext private EntityManager em;
+  @PersistenceContext private EntityManager entityManager;
 
   public IdempotencyRepositoryImpl(IdempotencyJpaRepository jpa) {
     this.jpa = jpa;
@@ -23,9 +23,9 @@ public class IdempotencyRepositoryImpl implements IdempotencyRepository {
   /**
    * {@code ON CONFLICT DO NOTHING} and not {@code save} + catch the duplicate-key exception: the
    * catch only works when each save commits on its own. Inside a caller's transaction the INSERT
-   * would wait for flush, the violation would surface outside the try, and Postgres would abort
-   * the whole surrounding transaction for what should have been a no-op — same reasoning as
-   * {@code DeliveryRepositoryImpl.saveIfAbsent} in webhook-delivery.
+   * would wait for flush, the violation would surface outside the try, and Postgres would abort the
+   * whole surrounding transaction for what should have been a no-op — same reasoning as {@code
+   * DeliveryRepositoryImpl.saveIfAbsent} in webhook-delivery.
    *
    * <p>Native SQL is safe here, unlike {@code OutboxJpaRepository.selectClaimable}: the table is
    * qualified with its fixed schema ({@code payments}), so the connection's {@code search_path}
@@ -35,7 +35,8 @@ public class IdempotencyRepositoryImpl implements IdempotencyRepository {
   @Transactional
   public boolean insertIfAbsent(IdempotencyKey k) {
     int inserted =
-        em.createNativeQuery(
+        entityManager
+            .createNativeQuery(
                 """
                 INSERT INTO payments.idempotency_keys
                   (merchant_id, key, request_hash, status, response_code, response_body, resource_id, created_at)
@@ -57,7 +58,8 @@ public class IdempotencyRepositoryImpl implements IdempotencyRepository {
 
   @Override
   public Optional<IdempotencyKey> find(MerchantId merchantId, String key) {
-    return jpa.findById(new IdempotencyKeyId(merchantId.value(), key)).map(IdempotencyRepositoryImpl::toDomain);
+    return jpa.findById(new IdempotencyKeyId(merchantId.value(), key))
+        .map(IdempotencyRepositoryImpl::toDomain);
   }
 
   @Override
@@ -65,7 +67,10 @@ public class IdempotencyRepositoryImpl implements IdempotencyRepository {
   public void finish(IdempotencyKey k) {
     IdempotencyKeyEntity e =
         jpa.findById(new IdempotencyKeyId(k.merchantId().value(), k.key()))
-            .orElseThrow(() -> new IllegalStateException("no idempotency key row for " + k.merchantId().value() + "/" + k.key()));
+            .orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        "no idempotency key row for " + k.merchantId().value() + "/" + k.key()));
     e.status = k.status().name();
     e.responseCode = k.responseCode();
     e.responseBody = k.responseBody();
@@ -81,6 +86,13 @@ public class IdempotencyRepositoryImpl implements IdempotencyRepository {
 
   private static IdempotencyKey toDomain(IdempotencyKeyEntity e) {
     return new IdempotencyKey(
-        new MerchantId(e.merchantId), e.key, e.requestHash, IdempotencyStatus.valueOf(e.status), e.responseCode, e.responseBody, e.resourceId, e.createdAt);
+        new MerchantId(e.merchantId),
+        e.key,
+        e.requestHash,
+        IdempotencyStatus.valueOf(e.status),
+        e.responseCode,
+        e.responseBody,
+        e.resourceId,
+        e.createdAt);
   }
 }

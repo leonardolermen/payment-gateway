@@ -16,6 +16,12 @@ spring:
     open-in-view: false
   jackson:
     property-naming-strategy: SNAKE_CASE
+    deserialization:
+      # A field we do not know is a mistake, not a nicety to tolerate. Spring Boot's default is to
+      # ignore it, which would silently swallow a due_date sent on a PIX body (the create request is
+      # polymorphic on method), and equally a misspelled expires_in that then gets the default expiry.
+      # On a payments API the merchant has to hear about it: 400, naming nothing but the fact.
+      fail-on-unknown-properties: true
   flyway:
     enabled: true
     # One schema per module; Flyway creates the listed schemas. Versions are prefixed per module

@@ -1,17 +1,16 @@
 package com.gateway.payments.inbox;
 
-import com.gateway.payments.payment.PaymentService;
-import com.gateway.payments.provider.ProviderGateway;
-import com.gateway.payments.refund.RefundService;
-
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.ids.Ulid;
 import com.gateway.kernel.provider.ProviderWebhookEvent;
 import com.gateway.kernel.provider.pix.ReceivedPix;
 import com.gateway.kernel.provider.pix.RefundResult;
+import com.gateway.payments.inbox.persistence.WebhookInboxRepository;
 import com.gateway.payments.jobs.Job;
 import com.gateway.payments.jobs.persistence.JobRepository;
-import com.gateway.payments.inbox.persistence.WebhookInboxRepository;
+import com.gateway.payments.payment.PaymentService;
+import com.gateway.payments.provider.ProviderGateway;
+import com.gateway.payments.refund.RefundService;
 import java.time.Clock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,7 +29,7 @@ public class WebhookInboxService {
   private final ProviderGateway providers;
   private final PaymentService paymentService;
   private final RefundService refundService;
-  private final TransactionTemplate tx;
+  private final TransactionTemplate transactionTemplate;
   private final Clock clock;
 
   public WebhookInboxService(
@@ -39,29 +38,33 @@ public class WebhookInboxService {
       ProviderGateway providers,
       PaymentService paymentService,
       RefundService refundService,
-      TransactionTemplate tx,
+      TransactionTemplate transactionTemplate,
       Clock clock) {
     this.inbox = inbox;
     this.jobs = jobs;
     this.providers = providers;
     this.paymentService = paymentService;
     this.refundService = refundService;
-    this.tx = tx;
+    this.transactionTemplate = transactionTemplate;
     this.clock = clock;
   }
 
   public String accept(String provider, MerchantId merchantId, String rawHeaders, byte[] body) {
     String id = Ulid.next();
-    tx.executeWithoutResult(s -> {
-      inbox.save(new WebhookInboxEntry(id, provider, merchantId, rawHeaders, body, "RECEIVED", null, clock.instant()));
-      jobs.enqueue(Job.processWebhook(id, clock));
-    });
+    transactionTemplate.executeWithoutResult(
+        transaction -> {
+          inbox.save(
+              new WebhookInboxEntry(
+                  id, provider, merchantId, rawHeaders, body, "RECEIVED", null, clock.instant()));
+          jobs.enqueue(Job.processWebhook(id, clock));
+        });
     return id;
   }
 
   /**
    * The body is a hint: every Pix and every refund update is confirmed with the bank before it
-   * moves anything ({@link PaymentService#settleFromWebhook}, {@link RefundService#confirmFromWebhook}).
+   * moves anything ({@link PaymentService#settleFromWebhook}, {@link
+   * RefundService#confirmFromWebhook}).
    *
    * <p>One transaction per payment (inside {@link PaymentService#settle}), not one for the whole
    * body: a batch of Pix in one webhook must not roll back the ones that succeeded because a later
@@ -75,7 +78,7 @@ public class WebhookInboxService {
     }
     ProviderWebhookEvent event;
     try {
-      event = providers.provider(entry.provider()).parseWebhook(entry.rawBody());
+      event = providers.pixProvider(entry.provider()).parseWebhook(entry.rawBody());
     } catch (RuntimeException e) {
       log.warn("unreadable {} webhook {}", entry.provider(), inboxId, e);
       mark(entry, "FAILED", e.getClass().getSimpleName() + ": " + e.getMessage());
@@ -83,16 +86,21 @@ public class WebhookInboxService {
     }
     boolean matched = false;
     for (ReceivedPix pix : event.received()) {
-      String txid = event.txidByEndToEndId() == null ? null : event.txidByEndToEndId().get(pix.endToEndId());
+      String txid =
+          event.txidByEndToEndId() == null ? null : event.txidByEndToEndId().get(pix.endToEndId());
       if (txid == null) {
         continue; // static QR or key transfer: not a charge of ours (NOTES.md)
       }
-      PaymentService.Settlement outcome = paymentService.settleFromWebhook(entry.merchantId(), txid, pix);
+      PaymentService.Settlement outcome =
+          paymentService.settleFromWebhook(entry.merchantId(), txid, pix);
       matched |= outcome != PaymentService.Settlement.UNKNOWN_PAYMENT;
     }
     if (event.refundUpdates() != null) {
       for (RefundResult update : event.refundUpdates()) {
-        String e2e = event.endToEndIdByRefundId() == null ? null : event.endToEndIdByRefundId().get(update.refundId());
+        String e2e =
+            event.endToEndIdByRefundId() == null
+                ? null
+                : event.endToEndIdByRefundId().get(update.refundId());
         matched |= refundService.confirmFromWebhook(entry.merchantId(), e2e, update);
       }
     }
@@ -101,7 +109,17 @@ public class WebhookInboxService {
 
   private void mark(WebhookInboxEntry e, String status, String error) {
     String err = error == null || error.length() <= 500 ? error : error.substring(0, 500);
-    tx.executeWithoutResult(
-        s -> inbox.save(new WebhookInboxEntry(e.id(), e.provider(), e.merchantId(), e.rawHeaders(), e.rawBody(), status, err, e.receivedAt())));
+    transactionTemplate.executeWithoutResult(
+        transaction ->
+            inbox.save(
+                new WebhookInboxEntry(
+                    e.id(),
+                    e.provider(),
+                    e.merchantId(),
+                    e.rawHeaders(),
+                    e.rawBody(),
+                    status,
+                    err,
+                    e.receivedAt())));
   }
 }

@@ -1,8 +1,8 @@
 package com.gateway.app.api.refund;
 
-import com.gateway.app.api.support.IdempotencyFilter;
 import com.gateway.app.api.refund.dto.RefundRequestBody;
 import com.gateway.app.api.refund.dto.RefundResponse;
+import com.gateway.app.api.support.IdempotencyFilter;
 import com.gateway.app.security.MerchantContext;
 import com.gateway.kernel.money.Money;
 import com.gateway.payments.refund.Refund;
@@ -21,19 +21,32 @@ import org.springframework.web.bind.annotation.RestController;
 public class RefundsController {
   private final RefundService refunds;
 
-  public RefundsController(RefundService refunds) { this.refunds = refunds; }
+  public RefundsController(RefundService refunds) {
+    this.refunds = refunds;
+  }
 
   @PostMapping("/v1/payments/{paymentId}/refunds")
-  public ResponseEntity<RefundResponse> request(@PathVariable String paymentId, @RequestBody(required = false) RefundRequestBody body) {
+  public ResponseEntity<RefundResponse> request(
+      @PathVariable String paymentId, @RequestBody(required = false) RefundRequestBody body) {
     Long cents = body == null ? null : body.amount();
-    if (cents != null && cents <= 0) throw new IllegalArgumentException("amount must be a positive number of cents");
-    Refund r = refunds.request(MerchantContext.current().merchantId(), paymentId, cents == null ? null : Money.brl(cents));
-    return ResponseEntity.status(HttpStatus.CREATED).header(IdempotencyFilter.RESOURCE_ID_HEADER, r.id()).body(RefundResponse.from(r));
+    if (cents != null && cents <= 0) {
+      throw new IllegalArgumentException("amount must be a positive number of cents");
+    }
+    Refund refund =
+        refunds.request(
+            MerchantContext.current().merchantId(),
+            paymentId,
+            cents == null ? null : Money.brl(cents));
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .header(IdempotencyFilter.RESOURCE_ID_HEADER, refund.id())
+        .body(RefundResponse.from(refund));
   }
 
   @GetMapping("/v1/payments/{paymentId}/refunds")
   public List<RefundResponse> list(@PathVariable String paymentId) {
-    return refunds.list(MerchantContext.current().merchantId(), paymentId).stream().map(RefundResponse::from).toList();
+    return refunds.list(MerchantContext.current().merchantId(), paymentId).stream()
+        .map(RefundResponse::from)
+        .toList();
   }
 
   @GetMapping("/v1/refunds/{id}")

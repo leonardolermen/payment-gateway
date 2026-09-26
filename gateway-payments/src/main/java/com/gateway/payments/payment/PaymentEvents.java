@@ -4,10 +4,10 @@ import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.ids.Ulid;
 import com.gateway.kernel.money.Money;
 import com.gateway.payments.outbox.OutboxMessage;
+import com.gateway.payments.outbox.persistence.OutboxRepository;
 import com.gateway.payments.payment.boleto.BoletoDetails;
 import com.gateway.payments.payment.pix.PixDetails;
 import com.gateway.payments.refund.Refund;
-import com.gateway.payments.outbox.persistence.OutboxRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -44,16 +44,34 @@ public class PaymentEvents {
     append(merchantId, r.id(), p.id(), type, refundJson(r));
   }
 
-  private void append(MerchantId merchantId, String aggregateId, String partitionKey, String type, Map<String, Object> body) {
+  private void append(
+      MerchantId merchantId,
+      String aggregateId,
+      String partitionKey,
+      String type,
+      Map<String, Object> body) {
     outbox.append(
-        new OutboxMessage(Ulid.next(), merchantId, aggregateId, partitionKey, type, json.writeValueAsString(body), "PENDING", null, clock.instant()));
+        new OutboxMessage(
+            Ulid.next(),
+            merchantId,
+            aggregateId,
+            partitionKey,
+            type,
+            json.writeValueAsString(body),
+            "PENDING",
+            null,
+            clock.instant()));
   }
 
-  /** Public for the contract test in gateway-app that holds it to the REST {@code PaymentResponse}'s key set. */
+  /**
+   * Public for the contract test in gateway-app that holds it to the REST {@code PaymentResponse}'s
+   * key set.
+   */
   public static Map<String, Object> paymentJson(Payment p) {
     Map<String, Object> m = new LinkedHashMap<>();
     m.put("id", p.id());
-    // Same spelling as the REST API (PaymentResponse): one resource, one vocabulary, whichever way it arrives.
+    // Same spelling as the REST API (PaymentResponse): one resource, one vocabulary, whichever way
+    // it arrives.
     m.put("status", p.status().name());
     m.put("method", p.method().name());
     m.put("provider", p.provider());
@@ -69,7 +87,8 @@ public class PaymentEvents {
     pixJson.put("location", pix == null ? null : pix.location());
     pixJson.put("end_to_end_id", pix == null ? null : pix.endToEndId());
     m.put("pix", pixJson);
-    // Same keys as PaymentResponse.Boleto (gateway-app); null for a Pix payment so the key set is stable.
+    // Same keys as PaymentResponse.Boleto (gateway-app); null for a Pix payment so the key set is
+    // stable.
     BoletoDetails boleto = p.boleto();
     if (boleto == null) {
       m.put("boleto", null);
@@ -78,7 +97,9 @@ public class PaymentEvents {
       boletoJson.put("linha_digitavel", boleto.linhaDigitavel());
       boletoJson.put("codigo_barras", boleto.codigoBarras());
       boletoJson.put("due_date", boleto.dueDate() == null ? null : boleto.dueDate().toString());
-      boletoJson.put("payment_limit_date", boleto.paymentLimitDate() == null ? null : boleto.paymentLimitDate().toString());
+      boletoJson.put(
+          "payment_limit_date",
+          boleto.paymentLimitDate() == null ? null : boleto.paymentLimitDate().toString());
       boletoJson.put("paid_via", boleto.paidVia() == null ? null : boleto.paidVia().name());
       m.put("boleto", boletoJson);
     }

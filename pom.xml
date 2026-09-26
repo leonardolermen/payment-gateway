@@ -33,6 +33,7 @@
         <wiremock.version>3.13.0</wiremock.version>
         <json-schema-validator.version>1.5.6</json-schema-validator.version>
         <bcpkix.version>1.80</bcpkix.version>
+        <spotless.version>3.10.3</spotless.version>
     </properties>
 
     <repositories>
@@ -42,6 +43,49 @@
             <url>https://maven.pkg.github.com/leonardolermen/webhook-delivery</url>
         </repository>
     </repositories>
+
+    <build>
+        <plugins>
+            <!--
+              Wrapping and imports only, and only because no human keeps a column limit by hand across
+              five modules.
+
+              google-java-format and not palantir: palantir wraps at 120 but indents with four spaces,
+              and this repository has been two spaces since the first commit. Indentation is what you
+              read on every line; the column limit is what you hit on a few. So the indentation won and
+              the limit followed the tool, from 120 to 100 (CLAUDE.md and .editorconfig say 100).
+
+              NOT bound to a phase: what a formatter cannot do is the part of the standard that matters
+              (a name that says what the thing is, a blank line between two ideas), so `verify` failing
+              on a column would say the wrong thing about what this repository cares about. Run
+              `./mvnw spotless:apply` before committing, or `spotless:check` to see what it would touch.
+            -->
+            <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>${spotless.version}</version>
+                <configuration>
+                    <java>
+                        <includes>
+                            <include>src/main/java/**/*.java</include>
+                            <include>src/test/java/**/*.java</include>
+                        </includes>
+                        <excludes>
+                            <!--
+                              google-java-format's parser cannot read `case Outcome.InProgress() ->`: a record
+                              pattern with no components inside a switch rule. It fails with "')' expected"
+                              rather than formatting it. The code is valid Java 21 and the switch is the
+                              clearest way to write that dispatch, so the file stays and the tool steps around
+                              it. Format it by hand, to the same 100 columns.
+                            -->
+                            <exclude>src/main/java/com/gateway/app/api/support/IdempotencyFilter.java</exclude>
+                        </excludes>
+                        <googleJavaFormat/>
+                    </java>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 
     <dependencyManagement>
         <dependencies>

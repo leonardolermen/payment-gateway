@@ -16,7 +16,10 @@ interface JobJpaRepository extends JpaRepository<JobEntity, String> {
 
   Optional<JobEntity> findByTypeAndRefId(String type, String refId);
 
-  /** Same {@code PESSIMISTIC_WRITE} + {@code lock.timeout = -2} pattern as {@code OutboxJpaRepository}. */
+  /**
+   * Same {@code PESSIMISTIC_WRITE} + {@code lock.timeout = -2} pattern as {@code
+   * OutboxJpaRepository}.
+   */
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "-2"))
   @Query(
@@ -29,5 +32,8 @@ interface JobJpaRepository extends JpaRepository<JobEntity, String> {
        ORDER BY j.nextRunAt ASC
       """)
   List<JobEntity> selectDue(
-      @Param("now") Instant now, @Param("leaseCutoff") Instant leaseCutoff, @Param("reconcileCutoff") Instant reconcileCutoff, Limit limit);
+      @Param("now") Instant now,
+      @Param("leaseCutoff") Instant leaseCutoff,
+      @Param("reconcileCutoff") Instant reconcileCutoff,
+      Limit limit);
 }

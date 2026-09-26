@@ -7,11 +7,11 @@ import com.gateway.app.api.admin.dto.MerchantResponse;
 import com.gateway.app.api.admin.dto.ProviderCredentialRequest;
 import com.gateway.app.inbound.mtls.WebhookMtlsProperties;
 import com.gateway.kernel.ids.MerchantId;
-import com.gateway.merchants.domain.Merchant;
-import com.gateway.merchants.domain.Provider;
-import com.gateway.merchants.service.ApiKeyService;
-import com.gateway.merchants.service.MerchantService;
-import com.gateway.merchants.service.ProviderCredentialService;
+import com.gateway.merchants.apikey.ApiKeyService;
+import com.gateway.merchants.credential.Provider;
+import com.gateway.merchants.credential.ProviderCredentialService;
+import com.gateway.merchants.merchant.Merchant;
+import com.gateway.merchants.merchant.MerchantService;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -27,7 +27,11 @@ public class MerchantsAdminController {
   private final ObjectMapper objectMapper;
   private final WebhookMtlsProperties mtls;
 
-  public MerchantsAdminController(MerchantService merchants, ApiKeyService apiKeys, ProviderCredentialService credentials, ObjectMapper objectMapper,
+  public MerchantsAdminController(
+      MerchantService merchants,
+      ApiKeyService apiKeys,
+      ProviderCredentialService credentials,
+      ObjectMapper objectMapper,
       WebhookMtlsProperties mtls) {
     this.merchants = merchants;
     this.apiKeys = apiKeys;
@@ -36,7 +40,9 @@ public class MerchantsAdminController {
     this.mtls = mtls;
   }
 
-  private MerchantResponse response(Merchant m) { return MerchantResponse.from(m, mtls.inboundWebhookUrl(m.inboundWebhookToken())); }
+  private MerchantResponse response(Merchant m) {
+    return MerchantResponse.from(m, mtls.inboundWebhookUrl(m.inboundWebhookToken()));
+  }
 
   @PostMapping
   public ResponseEntity<MerchantResponse> create(@RequestBody MerchantRequest req) {
@@ -64,13 +70,15 @@ public class MerchantsAdminController {
   }
 
   @PostMapping("/{id}/api-keys")
-  public ResponseEntity<ApiKeyIssuedResponse> issueApiKey(@PathVariable String id, @RequestBody ApiKeyEnvironmentRequest req) {
+  public ResponseEntity<ApiKeyIssuedResponse> issueApiKey(
+      @PathVariable String id, @RequestBody ApiKeyEnvironmentRequest req) {
     var issued = apiKeys.issue(new MerchantId(id), req.environment());
     return ResponseEntity.status(HttpStatus.CREATED).body(ApiKeyIssuedResponse.from(issued));
   }
 
   @PostMapping("/{id}/api-keys/rotate")
-  public ResponseEntity<ApiKeyIssuedResponse> rotateApiKey(@PathVariable String id, @RequestBody ApiKeyEnvironmentRequest req) {
+  public ResponseEntity<ApiKeyIssuedResponse> rotateApiKey(
+      @PathVariable String id, @RequestBody ApiKeyEnvironmentRequest req) {
     var issued = apiKeys.rotate(new MerchantId(id), req.environment());
     return ResponseEntity.status(HttpStatus.CREATED).body(ApiKeyIssuedResponse.from(issued));
   }
@@ -83,7 +91,10 @@ public class MerchantsAdminController {
 
   @PutMapping("/{id}/providers/{provider}/credentials")
   @ResponseStatus(HttpStatus.NO_CONTENT)
-  public void storeProviderCredential(@PathVariable String id, @PathVariable Provider provider, @RequestBody ProviderCredentialRequest req) {
+  public void storeProviderCredential(
+      @PathVariable String id,
+      @PathVariable Provider provider,
+      @RequestBody ProviderCredentialRequest req) {
     byte[] payload = objectMapper.writeValueAsBytes(req.payload());
     credentials.store(new MerchantId(id), provider, req.environment(), payload);
   }

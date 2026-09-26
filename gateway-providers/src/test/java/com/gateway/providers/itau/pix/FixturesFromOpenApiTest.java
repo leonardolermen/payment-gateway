@@ -26,12 +26,44 @@ class FixturesFromOpenApiTest {
     return M.readTree(Files.readString(Path.of("src/test/resources/itau/fixtures/" + file)));
   }
 
-  @Test void putCobRequestMin() throws Exception { assertThat(fixture("put_cob_request_min.json")).isEqualTo(example("request_put_cobranca_imediata_campos_obrigatorios")); }
-  @Test void putCob201() throws Exception { assertThat(fixture("put_cob_201.json")).isEqualTo(example("response_200_cobranca_imediata_txid")); }
+  @Test
+  void putCobRequestMin() throws Exception {
+    assertThat(fixture("put_cob_request_min.json"))
+        .isEqualTo(example("request_put_cobranca_imediata_campos_obrigatorios"));
+  }
+
+  @Test
+  void putCob201() throws Exception {
+    assertThat(fixture("put_cob_201.json"))
+        .isEqualTo(example("response_200_cobranca_imediata_txid"));
+  }
+
   // The OpenAPI nests this example's payload under value.value.
-  @Test void getCob200Active() throws Exception { assertThat(fixture("get_cob_200_active.json")).isEqualTo(example("200_cobranca_txid").path("value")); }
-  @Test void patchCancel() throws Exception { assertThat(fixture("patch_cob_cancel_request.json")).isEqualTo(example("request_patch_cobranca_imediata_status")); }
-  @Test void putDevolucaoRequest() throws Exception { assertThat(fixture("put_devolucao_request.json")).isEqualTo(example("request_put_devolucao_campos_obrigatorios")); }
-  @Test void getDevolucao200() throws Exception { assertThat(fixture("get_devolucao_200_done.json")).isEqualTo(example("200_devolucao")); }
-  @Test void getCobList200() throws Exception { assertThat(fixture("get_cob_list_200.json")).isEqualTo(example("200_cobrancas").path("value")); }
+  @Test
+  void getCob200Active() throws Exception {
+    assertThat(fixture("get_cob_200_active.json"))
+        .isEqualTo(example("200_cobranca_txid").path("value"));
+  }
+
+  @Test
+  void patchCancel() throws Exception {
+    assertThat(fixture("patch_cob_cancel_request.json"))
+        .isEqualTo(example("request_patch_cobranca_imediata_status"));
+  }
+
+  @Test
+  void putDevolucaoRequest() throws Exception {
+    assertThat(fixture("put_devolucao_request.json"))
+        .isEqualTo(example("request_put_devolucao_campos_obrigatorios"));
+  }
+
+  @Test
+  void getDevolucao200() throws Exception {
+    assertThat(fixture("get_devolucao_200_done.json")).isEqualTo(example("200_devolucao"));
+  }
+
+  @Test
+  void getCobList200() throws Exception {
+    assertThat(fixture("get_cob_list_200.json")).isEqualTo(example("200_cobrancas").path("value"));
+  }
 }

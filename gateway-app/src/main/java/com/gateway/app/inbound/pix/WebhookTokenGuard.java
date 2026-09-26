@@ -1,8 +1,8 @@
 package com.gateway.app.inbound.pix;
 
 import com.gateway.kernel.errors.NotFoundException;
-import com.gateway.merchants.domain.Merchant;
-import com.gateway.merchants.service.MerchantService;
+import com.gateway.merchants.merchant.Merchant;
+import com.gateway.merchants.merchant.MerchantService;
 import org.springframework.stereotype.Component;
 
 /**
@@ -14,9 +14,13 @@ import org.springframework.stereotype.Component;
 public class WebhookTokenGuard {
   private final MerchantService merchants;
 
-  public WebhookTokenGuard(MerchantService merchants) { this.merchants = merchants; }
+  public WebhookTokenGuard(MerchantService merchants) {
+    this.merchants = merchants;
+  }
 
   public Merchant resolve(String token) {
-    return merchants.findByInboundWebhookToken(token).orElseThrow(() -> new NotFoundException("webhook", "unknown"));
+    return merchants
+        .findByInboundWebhookToken(token)
+        .orElseThrow(() -> new NotFoundException("webhook", "unknown"));
   }
 }

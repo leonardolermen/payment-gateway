@@ -15,11 +15,11 @@ import org.springframework.data.repository.query.Param;
 interface OutboxJpaRepository extends JpaRepository<OutboxEntity, String> {
 
   /**
-   * Pending messages whose lease is free or expired, locked for exclusive claiming. Same pattern
-   * as {@code DeliveryJpaRepository.selectClaimable} in webhook-delivery: {@code PESSIMISTIC_WRITE}
-   * + {@code jakarta.persistence.lock.timeout = -2} is what Hibernate turns into {@code SKIP
-   * LOCKED} — without it, concurrent claimers would queue behind each other instead of getting
-   * disjoint sets.
+   * Pending messages whose lease is free or expired, locked for exclusive claiming. Same pattern as
+   * {@code DeliveryJpaRepository.selectClaimable} in webhook-delivery: {@code PESSIMISTIC_WRITE} +
+   * {@code jakarta.persistence.lock.timeout = -2} is what Hibernate turns into {@code SKIP LOCKED}
+   * — without it, concurrent claimers would queue behind each other instead of getting disjoint
+   * sets.
    */
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "-2"))

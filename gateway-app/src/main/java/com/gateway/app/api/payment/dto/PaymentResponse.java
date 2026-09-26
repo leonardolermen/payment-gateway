@@ -31,10 +31,22 @@ public record PaymentResponse(
     long refundedAmount,
     Instant createdAt) {
 
-  /** Explicit name: the global SNAKE_CASE strategy does not split the single-letter "E" of copiaECola. */
-  public record Pix(String txid, @JsonProperty("copia_e_cola") String copiaECola, String location, String endToEndId) {}
+  /**
+   * Explicit name: the global SNAKE_CASE strategy does not split the single-letter "E" of
+   * copiaECola.
+   */
+  public record Pix(
+      String txid,
+      @JsonProperty("copia_e_cola") String copiaECola,
+      String location,
+      String endToEndId) {}
 
-  public record Boleto(String linhaDigitavel, String codigoBarras, LocalDate dueDate, LocalDate paymentLimitDate, String paidVia) {}
+  public record Boleto(
+      String linhaDigitavel,
+      String codigoBarras,
+      LocalDate dueDate,
+      LocalDate paymentLimitDate,
+      String paidVia) {}
 
   public static PaymentResponse from(Payment p) {
     PixDetails pix = p.pix();
@@ -49,8 +61,17 @@ public record PaymentResponse(
         p.amount().currency(),
         p.reference(),
         p.description(),
-        pix == null ? new Pix(p.id(), null, null, null) : new Pix(pix.txid(), pix.pixCopiaECola(), pix.location(), pix.endToEndId()),
-        boleto == null ? null : new Boleto(boleto.linhaDigitavel(), boleto.codigoBarras(), boleto.dueDate(), boleto.paymentLimitDate(), boleto.paidVia() == null ? null : boleto.paidVia().name()),
+        pix == null
+            ? new Pix(p.id(), null, null, null)
+            : new Pix(pix.txid(), pix.pixCopiaECola(), pix.location(), pix.endToEndId()),
+        boleto == null
+            ? null
+            : new Boleto(
+                boleto.linhaDigitavel(),
+                boleto.codigoBarras(),
+                boleto.dueDate(),
+                boleto.paymentLimitDate(),
+                boleto.paidVia() == null ? null : boleto.paidVia().name()),
         p.expiresAt(),
         p.paidAt(),
         p.paidAmount() == null ? null : p.paidAmount().cents(),

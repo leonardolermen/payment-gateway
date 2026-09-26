@@ -10,9 +10,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.gateway.kernel.ids.MerchantId;
+import com.gateway.payments.PaymentsProperties;
 import com.gateway.payments.outbox.OutboxMessage;
 import com.gateway.payments.outbox.persistence.OutboxRepository;
-import com.gateway.payments.PaymentsProperties;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -28,16 +28,22 @@ class OutboxRelayTest {
   private final OutboxRepository outbox = mock(OutboxRepository.class);
   private final MerchantEvents events = mock(MerchantEvents.class);
   private final TransactionTemplate tx = mock(TransactionTemplate.class);
-  private final OutboxRelay relay = new OutboxRelay(outbox, events, tx, PaymentsProperties.defaults());
+  private final OutboxRelay relay =
+      new OutboxRelay(outbox, events, tx, PaymentsProperties.defaults());
 
   @SuppressWarnings("unchecked")
   private void claims(OutboxMessage... rows) {
-    when(tx.execute(any())).thenAnswer(inv -> ((TransactionCallback<Object>) inv.getArgument(0)).doInTransaction(new SimpleTransactionStatus()));
+    when(tx.execute(any()))
+        .thenAnswer(
+            inv ->
+                ((TransactionCallback<Object>) inv.getArgument(0))
+                    .doInTransaction(new SimpleTransactionStatus()));
     when(outbox.claimPending(eq(100), any())).thenReturn(List.of(rows));
   }
 
   private static OutboxMessage row(String id, String partitionKey, String type) {
-    return new OutboxMessage(id, MERCHANT, partitionKey, partitionKey, type, "{}", "PENDING", null, Instant.now());
+    return new OutboxMessage(
+        id, MERCHANT, partitionKey, partitionKey, type, "{}", "PENDING", null, Instant.now());
   }
 
   @Test
@@ -47,7 +53,8 @@ class OutboxRelayTest {
     OutboxMessage other = row("m3", "pay_Y", "payment.pending");
     claims(first, second, other);
     doThrow(new IllegalStateException("intake down"))
-        .when(events).emitRaw(any(), eq("payment.pending"), eq("pay_X"), eq("pay_X"), any(), any());
+        .when(events)
+        .emitRaw(any(), eq("payment.pending"), eq("pay_X"), eq("pay_X"), any(), any());
 
     relay.relay();
 
@@ -66,7 +73,8 @@ class OutboxRelayTest {
     relay.relay();
 
     ArgumentCaptor<UUID> ids = ArgumentCaptor.forClass(UUID.class);
-    verify(events, org.mockito.Mockito.times(2)).emitRaw(any(), any(), any(), any(), any(), ids.capture());
+    verify(events, org.mockito.Mockito.times(2))
+        .emitRaw(any(), any(), any(), any(), any(), ids.capture());
     assertThat(ids.getAllValues()).hasSize(2).containsOnly(OutboxRelay.eventId(m));
   }
 }
