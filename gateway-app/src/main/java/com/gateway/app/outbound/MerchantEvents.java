@@ -26,8 +26,19 @@ public class MerchantEvents {
     this.mapper = mapper;
   }
 
-  public IntakeResult emit(MerchantId merchantId, String eventType, String aggregateId, String partitionKey, Object payload) {
-    return emitRaw(merchantId, eventType, aggregateId, partitionKey, mapper.writeValueAsString(payload), UUID.randomUUID());
+  public IntakeResult emit(
+      MerchantId merchantId,
+      String eventType,
+      String aggregateId,
+      String partitionKey,
+      Object payload) {
+    return emitRaw(
+        merchantId,
+        eventType,
+        aggregateId,
+        partitionKey,
+        mapper.writeValueAsString(payload),
+        UUID.randomUUID());
   }
 
   /**
@@ -35,13 +46,26 @@ public class MerchantEvents {
    * chose for merchants. Passed through untouched, because a round-trip through a {@code Map} and
    * this app's mapper (global SNAKE_CASE) could rename keys the payments module already wrote.
    *
-   * <p>{@code eventId} is the caller's: the relay derives it from the outbox row id, so a row emitted
-   * twice (crash between emit and markSent) reaches the merchant with the same
-   * {@code X-Gateway-Event-Id} both times and the merchant's dedup works. A random id per call made
-   * every redelivery look like a new event.
+   * <p>{@code eventId} is the caller's: the relay derives it from the outbox row id, so a row
+   * emitted twice (crash between emit and markSent) reaches the merchant with the same {@code
+   * X-Gateway-Event-Id} both times and the merchant's dedup works. A random id per call made every
+   * redelivery look like a new event.
    */
-  public IntakeResult emitRaw(MerchantId merchantId, String eventType, String aggregateId, String partitionKey, String rawJson, UUID eventId) {
-    return intake.accept(new DeliveryRequest(
-        merchantId.value(), eventType, eventId, aggregateId, partitionKey, rawJson, MDC.get("correlationId")));
+  public IntakeResult emitRaw(
+      MerchantId merchantId,
+      String eventType,
+      String aggregateId,
+      String partitionKey,
+      String rawJson,
+      UUID eventId) {
+    return intake.accept(
+        new DeliveryRequest(
+            merchantId.value(),
+            eventType,
+            eventId,
+            aggregateId,
+            partitionKey,
+            rawJson,
+            MDC.get("correlationId")));
   }
 }

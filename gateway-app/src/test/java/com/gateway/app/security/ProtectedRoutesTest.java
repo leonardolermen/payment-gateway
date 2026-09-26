@@ -8,7 +8,7 @@ class ProtectedRoutesTest {
 
   @Test
   void apiRoutesRequireAnApiKey() {
-    assertThat(ProtectedRoutes.requiresApiKey("/v1/me")).isTrue();
+    assertThat(ProtectedRoutes.requiresApiKey("/v1/merchant")).isTrue();
   }
 
   @Test

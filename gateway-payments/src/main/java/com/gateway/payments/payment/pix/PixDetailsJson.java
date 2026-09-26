@@ -30,7 +30,11 @@ public final class PixDetailsJson {
     if (json == null) {
       return new PixDetails(null, null, null, null);
     }
-    return new PixDetails(field(json, "txid"), field(json, "pixCopiaECola"), field(json, "location"), field(json, "endToEndId"));
+    return new PixDetails(
+        field(json, "txid"),
+        field(json, "pixCopiaECola"),
+        field(json, "location"),
+        field(json, "endToEndId"));
   }
 
   // Postgres reformats jsonb on the way back out — in particular it adds a space after ':' — so an
@@ -39,48 +43,49 @@ public final class PixDetailsJson {
   // fixed by write() above, so the JSON text is otherwise stable; the unique index on txid reads
   // details->>'txid' directly and does not depend on key order at all.
   private static String field(String json, String key) {
-    Matcher m = Pattern.compile("\"" + key + "\":\\s*(null|\"((?:\\\\.|[^\"\\\\])*)\")").matcher(json);
-    if (!m.find()) {
+    Matcher matcher =
+        Pattern.compile("\"" + key + "\":\\s*(null|\"((?:\\\\.|[^\"\\\\])*)\")").matcher(json);
+    if (!matcher.find()) {
       return null;
     }
-    return m.group(2) == null ? null : unescape(m.group(2));
+    return matcher.group(2) == null ? null : unescape(matcher.group(2));
   }
 
   private static String jsonString(String s) {
     if (s == null) {
       return "null";
     }
-    StringBuilder sb = new StringBuilder(s.length() + 2).append('"');
+    StringBuilder stringBuilder = new StringBuilder(s.length() + 2).append('"');
     for (int i = 0; i < s.length(); i++) {
       char c = s.charAt(i);
       switch (c) {
-        case '"' -> sb.append("\\\"");
-        case '\\' -> sb.append("\\\\");
-        case '\n' -> sb.append("\\n");
-        case '\r' -> sb.append("\\r");
-        case '\t' -> sb.append("\\t");
-        default -> sb.append(c);
+        case '"' -> stringBuilder.append("\\\"");
+        case '\\' -> stringBuilder.append("\\\\");
+        case '\n' -> stringBuilder.append("\\n");
+        case '\r' -> stringBuilder.append("\\r");
+        case '\t' -> stringBuilder.append("\\t");
+        default -> stringBuilder.append(c);
       }
     }
-    return sb.append('"').toString();
+    return stringBuilder.append('"').toString();
   }
 
   private static String unescape(String s) {
-    StringBuilder sb = new StringBuilder(s.length());
+    StringBuilder stringBuilder = new StringBuilder(s.length());
     for (int i = 0; i < s.length(); i++) {
       char c = s.charAt(i);
       if (c == '\\' && i + 1 < s.length()) {
         char next = s.charAt(++i);
         switch (next) {
-          case 'n' -> sb.append('\n');
-          case 'r' -> sb.append('\r');
-          case 't' -> sb.append('\t');
-          default -> sb.append(next);
+          case 'n' -> stringBuilder.append('\n');
+          case 'r' -> stringBuilder.append('\r');
+          case 't' -> stringBuilder.append('\t');
+          default -> stringBuilder.append(next);
         }
       } else {
-        sb.append(c);
+        stringBuilder.append(c);
       }
     }
-    return sb.toString();
+    return stringBuilder.toString();
   }
 }

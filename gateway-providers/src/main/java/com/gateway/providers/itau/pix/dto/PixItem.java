@@ -10,4 +10,10 @@ import java.util.List;
  * as a String through Jackson's scalar coercion.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record PixItem(String endToEndId, String txid, String valor, Instant horario, String infoPagador, List<DevolucaoResponse> devolucoes) {}
+public record PixItem(
+    String endToEndId,
+    String txid,
+    String valor,
+    Instant horario,
+    String infoPagador,
+    List<DevolucaoResponse> devolucoes) {}

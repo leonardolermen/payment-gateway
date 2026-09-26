@@ -23,7 +23,7 @@ If port 5432 is already taken on your machine, map `5433:5432` in `docker-compos
 ```bash
 curl -s -XPOST localhost:8080/v1/admin/merchants -H 'X-Admin-Key: dev-admin' -H 'Content-Type: application/json' -d '{"name":"Store"}'
 curl -s -XPOST localhost:8080/v1/admin/merchants/<id>/api-keys -H 'X-Admin-Key: dev-admin' -H 'Content-Type: application/json' -d '{"environment":"TEST"}'
-curl -s localhost:8080/v1/me -H 'Authorization: Bearer gk_test_…'
+curl -s localhost:8080/v1/merchant -H 'Authorization: Bearer gk_test_…'
 ```
 
 ## Modules
@@ -96,8 +96,33 @@ webhook in this version — see DECISOES). The response carries both:
 Request: `customer` is required and complete — `name`, `document` (CPF 11 digits or CNPJ 14 digits) and
 `address{street, district, city, state (UF), zip (8 digits)}`; a missing field is `422 CUSTOMER_REQUIRED`
 naming it. `due_date` defaults to today + 3 days (São Paulo) and must not be in the past; `payment_limit_days`
-defaults to 30 (max 3650). `expires_in` is Pix-only: a Bolecode expires at the end of its payment limit date,
-never at the due date (a late boleto still pays, with the bank's interest rules out of scope).
+defaults to 30 (max 3650). `expires_in` does not exist here: a Bolecode expires at the end of its payment
+limit date, never at the due date (a late boleto still pays, with the bank's interest rules out of scope).
+
+### The create request is shaped by its method
+
+`method` chooses the body, and the two shapes do not overlap:
+
+```bash
+# PIX: expires_in (seconds, default from config); customer optional, only its document is used
+curl -s -XPOST localhost:8080/v1/payments -H 'Authorization: Bearer gk_test_…' \
+  -H 'Idempotency-Key: order-42' -H 'Content-Type: application/json' \
+  -d '{"method":"PIX","amount":15990,"currency":"BRL","reference":"order-42","expires_in":3600}'
+
+# BOLECODE: due_date, payment_limit_days and a complete customer
+curl -s -XPOST localhost:8080/v1/payments -H 'Authorization: Bearer gk_test_…' \
+  -H 'Idempotency-Key: order-43' -H 'Content-Type: application/json' \
+  -d '{"method":"BOLECODE","amount":12990,"currency":"BRL","reference":"order-43",
+       "due_date":"2026-10-01","payment_limit_days":30,
+       "customer":{"name":"Ana Silva","document":"529.982.247-25",
+                   "address":{"street":"Av. Paulista 1000","district":"Bela Vista","city":"São Paulo",
+                              "state":"SP","zip":"01310-100"}}}'
+```
+
+A field that belongs to the other method — `due_date` on a PIX body, `expires_in` on a BOLECODE one — is
+`400 INVALID_REQUEST`, and so is any field this API does not know: a property we silently ignored would be a
+misspelled `expires_in` quietly taking the default expiry. An unknown or missing `method` is
+`400 INVALID_REQUEST` with `method must be PIX or BOLECODE`.
 
 `payment.completed` says how it was paid: `boleto.paid_via` is `PIX` or `BOLETO`. `POST …/cancel` does the
 bank's baixa; if the bank already shows the boleto paid, the payment completes and the cancel answers

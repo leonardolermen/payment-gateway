@@ -27,19 +27,25 @@ public final class PemKeyStores {
 
   static SSLContext mutualTls(String certificatePem, String privateKeyPem, KeyStore trustStore) {
     try {
-      X509Certificate cert = (X509Certificate) CertificateFactory.getInstance("X.509")
-          .generateCertificate(new ByteArrayInputStream(certificatePem.getBytes()));
+      X509Certificate cert =
+          (X509Certificate)
+              CertificateFactory.getInstance("X.509")
+                  .generateCertificate(new ByteArrayInputStream(certificatePem.getBytes()));
       PrivateKey key = readPrivateKey(privateKeyPem);
-      if (!keyMatches(cert, key)) throw new IllegalArgumentException("private key does not match the certificate");
+      if (!keyMatches(cert, key)) {
+        throw new IllegalArgumentException("private key does not match the certificate");
+      }
       char[] pw = new char[0];
-      KeyStore ks = KeyStore.getInstance("PKCS12");
-      ks.load(null, null);
-      ks.setKeyEntry("itau", key, pw, new X509Certificate[] {cert});
-      KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-      kmf.init(ks, pw);
+      KeyStore keyStore = KeyStore.getInstance("PKCS12");
+      keyStore.load(null, null);
+      keyStore.setKeyEntry("itau", key, pw, new X509Certificate[] {cert});
+      KeyManagerFactory kmf =
+          KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+      kmf.init(keyStore, pw);
       TrustManager[] tms = null;
       if (trustStore != null) {
-        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        TrustManagerFactory tmf =
+            TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
         tmf.init(trustStore);
         tms = tmf.getTrustManagers();
       }
@@ -57,7 +63,9 @@ public final class PemKeyStores {
     try {
       KeyStore ts = KeyStore.getInstance("PKCS12");
       ts.load(null, null);
-      for (int i = 0; i < cas.size(); i++) ts.setCertificateEntry("ca-" + i, cas.get(i));
+      for (int i = 0; i < cas.size(); i++) {
+        ts.setCertificateEntry("ca-" + i, cas.get(i));
+      }
       return ts;
     } catch (Exception e) {
       throw new IllegalStateException(e);
@@ -65,12 +73,17 @@ public final class PemKeyStores {
   }
 
   private static PrivateKey readPrivateKey(String pem) throws Exception {
-    try (PEMParser p = new PEMParser(new StringReader(pem))) {
-      Object o = p.readObject();
-      JcaPEMKeyConverter c = new JcaPEMKeyConverter();
-      if (o instanceof PrivateKeyInfo info) return c.getPrivateKey(info);
-      if (o instanceof PEMKeyPair pair) return c.getKeyPair(pair).getPrivate();
-      throw new IllegalArgumentException("unsupported private key PEM: " + (o == null ? "empty" : o.getClass().getSimpleName()));
+    try (PEMParser pemParser = new PEMParser(new StringReader(pem))) {
+      Object o = pemParser.readObject();
+      JcaPEMKeyConverter converter = new JcaPEMKeyConverter();
+      if (o instanceof PrivateKeyInfo info) {
+        return converter.getPrivateKey(info);
+      }
+      if (o instanceof PEMKeyPair pair) {
+        return converter.getKeyPair(pair).getPrivate();
+      }
+      throw new IllegalArgumentException(
+          "unsupported private key PEM: " + (o == null ? "empty" : o.getClass().getSimpleName()));
     }
   }
 
@@ -79,13 +92,13 @@ public final class PemKeyStores {
     byte[] nonce = new byte[32];
     new SecureRandom().nextBytes(nonce);
     String alg = key.getAlgorithm().equals("EC") ? "SHA256withECDSA" : "SHA256withRSA";
-    Signature s = Signature.getInstance(alg);
-    s.initSign(key);
-    s.update(nonce);
-    byte[] sig = s.sign();
-    Signature v = Signature.getInstance(alg);
-    v.initVerify(cert.getPublicKey());
-    v.update(nonce);
-    return v.verify(sig);
+    Signature signer = Signature.getInstance(alg);
+    signer.initSign(key);
+    signer.update(nonce);
+    byte[] sig = signer.sign();
+    Signature verifier = Signature.getInstance(alg);
+    verifier.initVerify(cert.getPublicKey());
+    verifier.update(nonce);
+    return verifier.verify(sig);
   }
 }

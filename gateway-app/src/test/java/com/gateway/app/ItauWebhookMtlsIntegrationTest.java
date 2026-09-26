@@ -1,7 +1,5 @@
 package com.gateway.app;
 
-import com.gateway.merchants.domain.Merchant;
-
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
@@ -12,6 +10,7 @@ import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.gateway.merchants.merchant.Merchant;
 import com.gateway.providers.itau.auth.TestCertificates;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import java.io.ByteArrayInputStream;
@@ -35,8 +34,8 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLException;
 import javax.net.ssl.TrustManagerFactory;
 import org.awaitility.Awaitility;
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
@@ -61,15 +60,18 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * The inbound bank webhook over a real second Tomcat connector with client-certificate verification.
- * Certificates come from gateway-providers' TestCertificates (test-jar): the app trusts BANK's CA, and
- * OTHER is an unrelated CA whose client certificate must fail the handshake. The mTLS port is picked
- * by opening and closing a ServerSocket(0) before the context starts; the window for another process
- * to take it is the context startup, acceptable for a test.
+ * The inbound bank webhook over a real second Tomcat connector with client-certificate
+ * verification. Certificates come from gateway-providers' TestCertificates (test-jar): the app
+ * trusts BANK's CA, and OTHER is an unrelated CA whose client certificate must fail the handshake.
+ * The mTLS port is picked by opening and closing a ServerSocket(0) before the context starts; the
+ * window for another process to take it is the context startup, acceptable for a test.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = {"gateway.rate-limit.requests-per-minute=1000", "gateway.payments.jobs-poll-ms=200"})
+    properties = {
+      "gateway.rate-limit.requests-per-minute=1000",
+      "gateway.payments.jobs-poll-ms=200"
+    })
 @ActiveProfiles("test")
 @Testcontainers
 class ItauWebhookMtlsIntegrationTest {
@@ -90,16 +92,27 @@ class ItauWebhookMtlsIntegrationTest {
       ITAU.start();
       BANK = TestCertificates.generate();
       OTHER = TestCertificates.generate();
-      BANK_SUBJECT = ((java.security.cert.X509Certificate) CertificateFactory.getInstance("X.509")
-          .generateCertificate(new ByteArrayInputStream(BANK.clientCertPem().getBytes(StandardCharsets.US_ASCII))))
-          .getSubjectX500Principal().getName();
-      try (ServerSocket s = new ServerSocket(0)) { MTLS_PORT = s.getLocalPort(); }
+      BANK_SUBJECT =
+          ((java.security.cert.X509Certificate)
+                  CertificateFactory.getInstance("X.509")
+                      .generateCertificate(
+                          new ByteArrayInputStream(
+                              BANK.clientCertPem().getBytes(StandardCharsets.US_ASCII))))
+              .getSubjectX500Principal()
+              .getName();
+      try (ServerSocket s = new ServerSocket(0)) {
+        MTLS_PORT = s.getLocalPort();
+      }
       SERVER_KEYSTORE = File.createTempFile("webhook-server", ".p12");
       TRUSTSTORE = File.createTempFile("webhook-trust", ".p12");
       SERVER_KEYSTORE.deleteOnExit();
       TRUSTSTORE.deleteOnExit();
-      try (var o = new FileOutputStream(SERVER_KEYSTORE)) { BANK.serverKeyStore().store(o, BANK.serverPassword()); }
-      try (var o = new FileOutputStream(TRUSTSTORE)) { BANK.caTrust().store(o, "changeit".toCharArray()); }
+      try (var o = new FileOutputStream(SERVER_KEYSTORE)) {
+        BANK.serverKeyStore().store(o, BANK.serverPassword());
+      }
+      try (var o = new FileOutputStream(TRUSTSTORE)) {
+        BANK.caTrust().store(o, "changeit".toCharArray());
+      }
     } catch (Exception e) {
       throw new ExceptionInInitializerError(e);
     }
@@ -115,7 +128,8 @@ class ItauWebhookMtlsIntegrationTest {
     r.add("gateway.webhooks.mtls.keystore-password", () -> new String(BANK.serverPassword()));
     r.add("gateway.webhooks.mtls.truststore", TRUSTSTORE::getAbsolutePath);
     r.add("gateway.webhooks.mtls.truststore-password", () -> "changeit");
-    // The allow-list is on for the whole class, so every 202 below also proves a listed subject passes;
+    // The allow-list is on for the whole class, so every 202 below also proves a listed subject
+    // passes;
     // a mismatching subject is covered by MtlsPortFilterTest (one CA here issues one client cert).
     r.add("gateway.webhooks.mtls.allowed-subjects", () -> BANK_SUBJECT);
     r.add("gateway.webhooks.mtls.max-body-bytes", () -> "4096");
@@ -123,23 +137,38 @@ class ItauWebhookMtlsIntegrationTest {
 
   @BeforeAll
   static void stubs() {
-    ITAU.stubFor(post(urlEqualTo("/api/oauth/jwt"))
-        .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json")
-            .withBody("{\"access_token\":\"tok-123\",\"token_type\":\"Bearer\",\"expires_in\":300}")));
-    ITAU.stubFor(put(urlMatching("/cob/[A-Za-z0-9]+"))
-        .willReturn(aResponse().withStatus(201).withHeader("Content-Type", "application/json").withBody(fixture("put_cob_201.json"))));
+    ITAU.stubFor(
+        post(urlEqualTo("/api/oauth/jwt"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"access_token\":\"tok-123\",\"token_type\":\"Bearer\",\"expires_in\":300}")));
+    ITAU.stubFor(
+        put(urlMatching("/cob/[A-Za-z0-9]+"))
+            .willReturn(
+                aResponse()
+                    .withStatus(201)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(fixture("put_cob_201.json"))));
   }
 
   @AfterAll
-  static void stop() { ITAU.stop(); }
+  static void stop() {
+    ITAU.stop();
+  }
 
   @LocalServerPort int port;
   @Autowired JdbcTemplate jdbc;
 
-  private RestTestClient http() { return RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build(); }
+  private RestTestClient http() {
+    return RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build();
+  }
 
   private static String fixture(String name) {
-    try (InputStream in = ItauWebhookMtlsIntegrationTest.class.getResourceAsStream("/itau/fixtures/" + name)) {
+    try (InputStream in =
+        ItauWebhookMtlsIntegrationTest.class.getResourceAsStream("/itau/fixtures/" + name)) {
       return new String(in.readAllBytes(), StandardCharsets.UTF_8);
     } catch (IOException e) {
       throw new IllegalStateException(e);
@@ -150,40 +179,102 @@ class ItauWebhookMtlsIntegrationTest {
 
   @SuppressWarnings("unchecked")
   private Merchant merchant() {
-    String id = (String) http().post().uri("/v1/admin/merchants").header("X-Admin-Key", "test-admin").contentType(MediaType.APPLICATION_JSON)
-        .body(Map.of("name", "Pix Store")).exchange().expectStatus().isCreated().expectBody(Map.class).returnResult().getResponseBody().get("id");
-    String url = (String) http().get().uri("/v1/admin/merchants/" + id).header("X-Admin-Key", "test-admin").exchange()
-        .expectStatus().isOk().expectBody(Map.class).returnResult().getResponseBody().get("inbound_webhook_url");
+    String id =
+        (String)
+            http()
+                .post()
+                .uri("/v1/admin/merchants")
+                .header("X-Admin-Key", "test-admin")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("name", "Pix Store"))
+                .exchange()
+                .expectStatus()
+                .isCreated()
+                .expectBody(Map.class)
+                .returnResult()
+                .getResponseBody()
+                .get("id");
+    String url =
+        (String)
+            http()
+                .get()
+                .uri("/v1/admin/merchants/" + id)
+                .header("X-Admin-Key", "test-admin")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody(Map.class)
+                .returnResult()
+                .getResponseBody()
+                .get("inbound_webhook_url");
     assertThat(url).startsWith("https://localhost:" + MTLS_PORT + "/v1/providers/itau/webhooks/");
     String token = url.substring(url.lastIndexOf('/') + 1);
-    String key = (String) http().post().uri("/v1/admin/merchants/" + id + "/api-keys").header("X-Admin-Key", "test-admin")
-        .contentType(MediaType.APPLICATION_JSON).body(Map.of("environment", "TEST")).exchange()
-        .expectBody(Map.class).returnResult().getResponseBody().get("key");
-    http().put().uri("/v1/admin/merchants/" + id + "/providers/ITAU/credentials")
-        .header("X-Admin-Key", "test-admin").contentType(MediaType.APPLICATION_JSON)
-        .body(Map.of("environment", "TEST",
-            "payload", Map.of("client_id", "sandbox-client", "client_secret", "sandbox-secret", "pix_key", "a1f4102e-a446-4a57-bcce-6fa48899c1d1")))
-        .exchange().expectStatus().is2xxSuccessful();
+    String key =
+        (String)
+            http()
+                .post()
+                .uri("/v1/admin/merchants/" + id + "/api-keys")
+                .header("X-Admin-Key", "test-admin")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("environment", "TEST"))
+                .exchange()
+                .expectBody(Map.class)
+                .returnResult()
+                .getResponseBody()
+                .get("key");
+    http()
+        .put()
+        .uri("/v1/admin/merchants/" + id + "/providers/ITAU/credentials")
+        .header("X-Admin-Key", "test-admin")
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(
+            Map.of(
+                "environment",
+                "TEST",
+                "payload",
+                Map.of(
+                    "client_id",
+                    "sandbox-client",
+                    "client_secret",
+                    "sandbox-secret",
+                    "pix_key",
+                    "a1f4102e-a446-4a57-bcce-6fa48899c1d1")))
+        .exchange()
+        .expectStatus()
+        .is2xxSuccessful();
     return new Merchant(id, token, key);
   }
 
   @SuppressWarnings("unchecked")
   private Map<String, Object> getJson(String apiKey, String uri) {
-    return http().get().uri(uri).header("Authorization", "Bearer " + apiKey).exchange()
-        .expectStatus().isOk().expectBody(Map.class).returnResult().getResponseBody();
+    return http()
+        .get()
+        .uri(uri)
+        .header("Authorization", "Bearer " + apiKey)
+        .exchange()
+        .expectStatus()
+        .isOk()
+        .expectBody(Map.class)
+        .returnResult()
+        .getResponseBody();
   }
 
   private static String webhookFor(String txid) {
     return fixture("webhook_pix.json")
         .replace("7978c0c97ea847e78e8849634473c1f1", txid)
         .replace("\"110.00\"", "\"159.90\"")
-        .replace("\"2020-01-01T00:00:00Z\"", "\"" + Instant.now().truncatedTo(ChronoUnit.SECONDS) + "\"")
+        .replace(
+            "\"2020-01-01T00:00:00Z\"", "\"" + Instant.now().truncatedTo(ChronoUnit.SECONDS) + "\"")
         .replaceAll("(?s),\\s*\"devolucoes\": \\[.*?\\]\\s*(?=})", "");
   }
 
-  /** A client that trusts the test server and presents {@code clientCert} (or no certificate when null). */
+  /**
+   * A client that trusts the test server and presents {@code clientCert} (or no certificate when
+   * null).
+   */
   private static HttpClient client(TestCertificates.Bundle clientCert) throws Exception {
-    TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+    TrustManagerFactory tmf =
+        TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
     tmf.init(BANK.caTrust());
     SSLContext ctx = SSLContext.getInstance("TLS");
     if (clientCert == null) {
@@ -191,10 +282,18 @@ class ItauWebhookMtlsIntegrationTest {
     } else {
       KeyStore ks = KeyStore.getInstance("PKCS12");
       ks.load(null, null);
-      Certificate cert = CertificateFactory.getInstance("X.509")
-          .generateCertificate(new ByteArrayInputStream(clientCert.clientCertPem().getBytes(StandardCharsets.US_ASCII)));
-      ks.setKeyEntry("client", privateKey(clientCert.clientKeyPem()), "pw".toCharArray(), new Certificate[] {cert});
-      KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+      Certificate cert =
+          CertificateFactory.getInstance("X.509")
+              .generateCertificate(
+                  new ByteArrayInputStream(
+                      clientCert.clientCertPem().getBytes(StandardCharsets.US_ASCII)));
+      ks.setKeyEntry(
+          "client",
+          privateKey(clientCert.clientKeyPem()),
+          "pw".toCharArray(),
+          new Certificate[] {cert});
+      KeyManagerFactory kmf =
+          KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
       kmf.init(ks, "pw".toCharArray());
       ctx.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
     }
@@ -205,79 +304,152 @@ class ItauWebhookMtlsIntegrationTest {
     try (PEMParser p = new PEMParser(new StringReader(pem))) {
       Object o = p.readObject();
       JcaPEMKeyConverter conv = new JcaPEMKeyConverter();
-      return o instanceof PEMKeyPair kp ? conv.getKeyPair(kp).getPrivate() : conv.getPrivateKey((PrivateKeyInfo) o);
+      return o instanceof PEMKeyPair kp
+          ? conv.getKeyPair(kp).getPrivate()
+          : conv.getPrivateKey((PrivateKeyInfo) o);
     }
   }
 
-  private static HttpResponse<String> postWebhook(HttpClient client, String url, String body) throws Exception {
-    return client.send(HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(10))
-        .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build(),
+  private static HttpResponse<String> postWebhook(HttpClient client, String url, String body)
+      throws Exception {
+    return client.send(
+        HttpRequest.newBuilder(URI.create(url))
+            .timeout(Duration.ofSeconds(10))
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(body))
+            .build(),
         HttpResponse.BodyHandlers.ofString());
   }
 
-  private static String mtlsUrl(String path) { return "https://localhost:" + MTLS_PORT + path; }
+  private static String mtlsUrl(String path) {
+    return "https://localhost:" + MTLS_PORT + path;
+  }
 
   @Test
   @SuppressWarnings("unchecked")
   void webhookOverMtlsWithItauCaIsAcceptedAndProcessed() throws Exception {
     Merchant m = merchant();
-    String paymentId = (String) http().post().uri("/v1/payments").header("Authorization", "Bearer " + m.testKey())
-        .header("Idempotency-Key", "w1").contentType(MediaType.APPLICATION_JSON)
-        .body(Map.of("amount", 15990, "currency", "BRL", "method", "PIX", "reference", "order-9"))
-        .exchange().expectStatus().isCreated().expectBody(Map.class).returnResult().getResponseBody().get("id");
+    String paymentId =
+        (String)
+            http()
+                .post()
+                .uri("/v1/payments")
+                .header("Authorization", "Bearer " + m.testKey())
+                .header("Idempotency-Key", "w1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(
+                    Map.of(
+                        "amount",
+                        15990,
+                        "currency",
+                        "BRL",
+                        "method",
+                        "PIX",
+                        "reference",
+                        "order-9"))
+                .exchange()
+                .expectStatus()
+                .isCreated()
+                .expectBody(Map.class)
+                .returnResult()
+                .getResponseBody()
+                .get("id");
 
-    ITAU.stubFor(get(urlEqualTo("/cob/" + paymentId))
-        .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json")
-            .withBody(fixture("get_cob_200_completed.json").replace("7978c0c97ea847e78e8849634473c1f1", paymentId).replace("\"567.89\"", "\"159.90\""))));
+    ITAU.stubFor(
+        get(urlEqualTo("/cob/" + paymentId))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        fixture("get_cob_200_completed.json")
+                            .replace("7978c0c97ea847e78e8849634473c1f1", paymentId)
+                            .replace("\"567.89\"", "\"159.90\""))));
 
     long start = System.nanoTime();
-    HttpResponse<String> res = postWebhook(client(BANK), mtlsUrl("/v1/providers/itau/webhooks/" + m.token() + "/pix"), webhookFor(paymentId));
+    HttpResponse<String> res =
+        postWebhook(
+            client(BANK),
+            mtlsUrl("/v1/providers/itau/webhooks/" + m.token() + "/pix"),
+            webhookFor(paymentId));
     Duration took = Duration.ofNanos(System.nanoTime() - start);
     assertThat(res.statusCode()).isEqualTo(202);
     assertThat(took).isLessThan(Duration.ofSeconds(2));
 
-    Awaitility.await().atMost(Duration.ofSeconds(15))
-        .until(() -> "COMPLETED".equals(getJson(m.testKey(), "/v1/payments/" + paymentId).get("status")));
+    Awaitility.await()
+        .atMost(Duration.ofSeconds(15))
+        .until(
+            () ->
+                "COMPLETED"
+                    .equals(getJson(m.testKey(), "/v1/payments/" + paymentId).get("status")));
   }
 
   @Test
   void theRegisteredUrlWithoutPixIsAcceptedToo() throws Exception {
     Merchant m = merchant();
-    assertThat(postWebhook(client(BANK), mtlsUrl("/v1/providers/itau/webhooks/" + m.token()), "{\"pix\":[]}").statusCode()).isEqualTo(202);
+    assertThat(
+            postWebhook(
+                    client(BANK),
+                    mtlsUrl("/v1/providers/itau/webhooks/" + m.token()),
+                    "{\"pix\":[]}")
+                .statusCode())
+        .isEqualTo(202);
   }
 
   @Test
   void webhookWithoutClientCertificateIsRefusedAtHandshake() {
-    assertThatThrownBy(() -> postWebhook(client(null), mtlsUrl("/v1/providers/itau/webhooks/" + "0".repeat(26) + "/pix"), "{}"))
-        .isInstanceOf(IOException.class).satisfies(ItauWebhookMtlsIntegrationTest::tlsRefusal);
+    assertThatThrownBy(
+            () ->
+                postWebhook(
+                    client(null),
+                    mtlsUrl("/v1/providers/itau/webhooks/" + "0".repeat(26) + "/pix"),
+                    "{}"))
+        .isInstanceOf(IOException.class)
+        .satisfies(ItauWebhookMtlsIntegrationTest::tlsRefusal);
   }
 
   @Test
   void webhookWithCertificateFromAnotherCaIsRefused() {
-    assertThatThrownBy(() -> postWebhook(client(OTHER), mtlsUrl("/v1/providers/itau/webhooks/" + "0".repeat(26) + "/pix"), "{}"))
-        .isInstanceOf(IOException.class).satisfies(ItauWebhookMtlsIntegrationTest::tlsRefusal);
+    assertThatThrownBy(
+            () ->
+                postWebhook(
+                    client(OTHER),
+                    mtlsUrl("/v1/providers/itau/webhooks/" + "0".repeat(26) + "/pix"),
+                    "{}"))
+        .isInstanceOf(IOException.class)
+        .satisfies(ItauWebhookMtlsIntegrationTest::tlsRefusal);
   }
 
   /**
-   * The refusal must come from TLS, not from any later I/O error. With TLS 1.3 the client may finish
-   * its side of the handshake and only see the server's alert on the first read, so the SSLException
-   * can sit anywhere in the cause chain.
+   * The refusal must come from TLS, not from any later I/O error. With TLS 1.3 the client may
+   * finish its side of the handshake and only see the server's alert on the first read, so the
+   * SSLException can sit anywhere in the cause chain.
    */
   private static void tlsRefusal(Throwable t) {
     for (Throwable c = t; c != null; c = c.getCause()) {
-      if (c instanceof SSLException) return;
-      if (String.valueOf(c.getMessage()).contains("fatal alert")) return;
+      if (c instanceof SSLException) {
+        return;
+      }
+      if (String.valueOf(c.getMessage()).contains("fatal alert")) {
+        return;
+      }
     }
     throw new AssertionError("expected a TLS refusal in the cause chain", t);
   }
 
-  private int inboxRows() { return jdbc.queryForObject("SELECT count(*) FROM payments.webhook_inbox", Integer.class); }
+  private int inboxRows() {
+    return jdbc.queryForObject("SELECT count(*) FROM payments.webhook_inbox", Integer.class);
+  }
 
   @Test
   void oversizedBodyWithContentLengthIs413AndNothingIsStored() throws Exception {
     Merchant m = merchant();
     int before = inboxRows();
-    HttpResponse<String> res = postWebhook(client(BANK), mtlsUrl("/v1/providers/itau/webhooks/" + m.token() + "/pix"), "x".repeat(5000));
+    HttpResponse<String> res =
+        postWebhook(
+            client(BANK),
+            mtlsUrl("/v1/providers/itau/webhooks/" + m.token() + "/pix"),
+            "x".repeat(5000));
     assertThat(res.statusCode()).isEqualTo(413);
     assertThat(res.body()).contains("urn:gateway:PAYLOAD_TOO_LARGE");
     assertThat(inboxRows()).isEqualTo(before);
@@ -288,10 +460,19 @@ class ItauWebhookMtlsIntegrationTest {
     Merchant m = merchant();
     int before = inboxRows();
     byte[] big = "x".repeat(5000).getBytes(StandardCharsets.US_ASCII);
-    // ofInputStream has no known length, so the client sends Transfer-Encoding: chunked, no Content-Length.
-    HttpResponse<String> res = client(BANK).send(HttpRequest.newBuilder(URI.create(mtlsUrl("/v1/providers/itau/webhooks/" + m.token() + "/pix")))
-        .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofInputStream(() -> new ByteArrayInputStream(big))).build(),
-        HttpResponse.BodyHandlers.ofString());
+    // ofInputStream has no known length, so the client sends Transfer-Encoding: chunked, no
+    // Content-Length.
+    HttpResponse<String> res =
+        client(BANK)
+            .send(
+                HttpRequest.newBuilder(
+                        URI.create(mtlsUrl("/v1/providers/itau/webhooks/" + m.token() + "/pix")))
+                    .header("Content-Type", "application/json")
+                    .POST(
+                        HttpRequest.BodyPublishers.ofInputStream(
+                            () -> new ByteArrayInputStream(big)))
+                    .build(),
+                HttpResponse.BodyHandlers.ofString());
     assertThat(res.statusCode()).isEqualTo(413);
     assertThat(inboxRows()).isEqualTo(before);
   }
@@ -299,24 +480,42 @@ class ItauWebhookMtlsIntegrationTest {
   @Test
   void webhookOnThePlainPortIs404() {
     Merchant m = merchant();
-    http().post().uri("/v1/providers/itau/webhooks/" + m.token() + "/pix").contentType(MediaType.APPLICATION_JSON).body("{\"pix\":[]}")
-        .exchange().expectStatus().isNotFound();
+    http()
+        .post()
+        .uri("/v1/providers/itau/webhooks/" + m.token() + "/pix")
+        .contentType(MediaType.APPLICATION_JSON)
+        .body("{\"pix\":[]}")
+        .exchange()
+        .expectStatus()
+        .isNotFound();
   }
 
   @Test
   void unknownTokenIs404() throws Exception {
-    HttpResponse<String> res = postWebhook(client(BANK), mtlsUrl("/v1/providers/itau/webhooks/" + "0".repeat(26) + "/pix"), "{\"pix\":[]}");
+    HttpResponse<String> res =
+        postWebhook(
+            client(BANK),
+            mtlsUrl("/v1/providers/itau/webhooks/" + "0".repeat(26) + "/pix"),
+            "{\"pix\":[]}");
     assertThat(res.statusCode()).isEqualTo(404);
-    // The problem's "instance" echoes the caller's own path, which tells it nothing new; what must not
-    // happen is a distinguishable answer (401/403/422) that would confirm a token's shape or existence.
+    // The problem's "instance" echoes the caller's own path, which tells it nothing new; what must
+    // not
+    // happen is a distinguishable answer (401/403/422) that would confirm a token's shape or
+    // existence.
     assertThat(res.body()).contains("urn:gateway:NOT_FOUND").doesNotContain("merchant");
   }
 
   @Test
   void apiRoutesOnTheMtlsPortAre403() throws Exception {
     Merchant m = merchant();
-    HttpResponse<String> res = client(BANK).send(HttpRequest.newBuilder(URI.create(mtlsUrl("/v1/me")))
-        .header("Authorization", "Bearer " + m.testKey()).GET().build(), HttpResponse.BodyHandlers.ofString());
+    HttpResponse<String> res =
+        client(BANK)
+            .send(
+                HttpRequest.newBuilder(URI.create(mtlsUrl("/v1/merchant")))
+                    .header("Authorization", "Bearer " + m.testKey())
+                    .GET()
+                    .build(),
+                HttpResponse.BodyHandlers.ofString());
     assertThat(res.statusCode()).isEqualTo(403);
   }
 }

@@ -12,8 +12,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * through explicit {@code @Import} of their configuration classes, one by one, so what each module
  * exposes stays readable. The webhook-delivery library's autoconfiguration wires its services, but
  * {@code AppConfiguration} scans its {@code repository} package explicitly with its own
- * {@code @EntityScan}/{@code @EnableJpaRepositories}: {@code MerchantsConfiguration}'s narrower scan
- * (its own package only) stops Boot's default package-based autodetection from finding it.
+ * {@code @EntityScan}/{@code @EnableJpaRepositories}: {@code MerchantsConfiguration}'s narrower
+ * scan (its own package only) stops Boot's default package-based autodetection from finding it.
  */
 @SpringBootApplication
 @EnableScheduling

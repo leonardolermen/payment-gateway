@@ -14,7 +14,8 @@ class MaskerTest {
   void masksApiKeyAndBearer() {
     assertThat(Masker.mask("Authorization: Bearer gk_live_01ARZ3NDEKTSV4RRFFQ69G5FAV"))
         .isEqualTo("Authorization: Bearer ***");
-    assertThat(Masker.mask("key gk_test_01ARZ3NDEKTSV4RRFFQ69G5FAV used")).isEqualTo("key *** used");
+    assertThat(Masker.mask("key gk_test_01ARZ3NDEKTSV4RRFFQ69G5FAV used"))
+        .isEqualTo("key *** used");
   }
 
   @Test
@@ -22,7 +23,8 @@ class MaskerTest {
     assertThat(
             Masker.mask(
                 "{\"client_secret\":\"abc\",\"secret\":\"x\",\"pix_copia_e_cola\":\"000201…\",\"name\":\"ok\"}"))
-        .isEqualTo("{\"client_secret\":\"***\",\"secret\":\"***\",\"pix_copia_e_cola\":\"***\",\"name\":\"ok\"}");
+        .isEqualTo(
+            "{\"client_secret\":\"***\",\"secret\":\"***\",\"pix_copia_e_cola\":\"***\",\"name\":\"ok\"}");
   }
 
   @Test

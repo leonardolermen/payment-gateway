@@ -33,6 +33,14 @@ public class WebhookInboxRepositoryImpl implements WebhookInboxRepository {
   }
 
   private static WebhookInboxEntry toDomain(WebhookInboxEntity e) {
-    return new WebhookInboxEntry(e.id, e.provider, new MerchantId(e.merchantId), e.rawHeaders, e.rawBody, e.status, e.error, e.receivedAt);
+    return new WebhookInboxEntry(
+        e.id,
+        e.provider,
+        new MerchantId(e.merchantId),
+        e.rawHeaders,
+        e.rawBody,
+        e.status,
+        e.error,
+        e.receivedAt);
   }
 }

@@ -27,6 +27,12 @@ jobs:
         env:
           PACKAGES_USER: ${{ github.actor }}
           PACKAGES_READ_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
+      # After verify, and on its own: a column is not a reason to fail the build that proves the
+      # money still moves. `./mvnw spotless:apply` fixes whatever this reports.
+      - run: ./mvnw -B spotless:check
+        env:
+          PACKAGES_USER: ${{ github.actor }}
+          PACKAGES_READ_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
       - if: always()
         uses: actions/upload-artifact@v4
         with: { name: surefire-reports, path: "**/target/surefire-reports/**", retention-days: 7 }

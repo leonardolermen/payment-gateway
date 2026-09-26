@@ -1,8 +1,8 @@
 package com.gateway.app.outbound;
 
+import com.gateway.payments.PaymentsProperties;
 import com.gateway.payments.outbox.OutboxMessage;
 import com.gateway.payments.outbox.persistence.OutboxRepository;
-import com.gateway.payments.PaymentsProperties;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.List;
@@ -15,10 +15,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Moves the payments outbox into webhook-delivery. This is the only caller of {@link MerchantEvents}
- * for payment events: the payments module cannot import the app (ArchUnit {@code nobodyImportsApp}),
- * so it writes outbox rows in the same transaction as the state change, and this relay reads them
- * through the module's own {@link OutboxRepository} interface.
+ * Moves the payments outbox into webhook-delivery. This is the only caller of {@link
+ * MerchantEvents} for payment events: the payments module cannot import the app (ArchUnit {@code
+ * nobodyImportsApp}), so it writes outbox rows in the same transaction as the state change, and
+ * this relay reads them through the module's own {@link OutboxRepository} interface.
  *
  * <p>The claim is a short transaction ({@code SKIP LOCKED} + lease); the emit runs OUTSIDE it. Held
  * row locks across the intake's own writes would couple the two commits: a rollback here after the
@@ -33,20 +33,27 @@ public class OutboxRelay {
 
   private final OutboxRepository outbox;
   private final MerchantEvents events;
-  private final TransactionTemplate tx;
+  private final TransactionTemplate transactionTemplate;
   private final PaymentsProperties props;
 
-  public OutboxRelay(OutboxRepository outbox, MerchantEvents events, TransactionTemplate tx, PaymentsProperties props) {
+  public OutboxRelay(
+      OutboxRepository outbox,
+      MerchantEvents events,
+      TransactionTemplate transactionTemplate,
+      PaymentsProperties props) {
     this.outbox = outbox;
     this.events = events;
-    this.tx = tx;
+    this.transactionTemplate = transactionTemplate;
     this.props = props;
   }
 
   @Scheduled(fixedDelayString = "${gateway.payments.outbox-relay-ms:1000}")
   public void relay() {
-    List<OutboxMessage> claimed = tx.execute(s -> outbox.claimPending(BATCH, props.outboxLease()));
-    if (claimed == null) return;
+    List<OutboxMessage> claimed =
+        transactionTemplate.execute(transaction -> outbox.claimPending(BATCH, props.outboxLease()));
+    if (claimed == null) {
+      return;
+    }
     // Delivery is ordered per partition key (a payment's events). Once message N of a key fails,
     // emitting N+1 in the same batch would deliver it ahead of N's retry: every later message of
     // that key is released unsent, and the whole key retries together, in order, next tick.
@@ -57,11 +64,19 @@ public class OutboxRelay {
         continue;
       }
       try {
-        events.emitRaw(m.merchantId(), m.eventType(), m.aggregateId(), m.partitionKey(), m.payload(), eventId(m));
+        events.emitRaw(
+            m.merchantId(),
+            m.eventType(),
+            m.aggregateId(),
+            m.partitionKey(),
+            m.payload(),
+            eventId(m));
         outbox.markSent(m.id());
       } catch (RuntimeException e) {
-        // Released, not left claimed: waiting out the lease would delay this payment's later events too.
-        log.warn("outbox message {} ({}) not relayed; released for retry", m.id(), m.eventType(), e);
+        // Released, not left claimed: waiting out the lease would delay this payment's later events
+        // too.
+        log.warn(
+            "outbox message {} ({}) not relayed; released for retry", m.id(), m.eventType(), e);
         failedKeys.add(m.partitionKey());
         release(m);
       }

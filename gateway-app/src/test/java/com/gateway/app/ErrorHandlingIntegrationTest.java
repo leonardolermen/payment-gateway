@@ -33,14 +33,25 @@ class ErrorHandlingIntegrationTest {
   @RestController
   static class Boom {
     @GetMapping("/test-only/boom")
-    String boom() { throw new IllegalStateException("internal detail gk_live_SHOULDNOTLEAK"); }
+    String boom() {
+      throw new IllegalStateException("internal detail gk_live_SHOULDNOTLEAK");
+    }
   }
 
   @Test
   void unrelatedIllegalStateIsA500WithoutTheMessage() {
-    String body = RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build()
-        .get().uri("/test-only/boom").exchange()
-        .expectStatus().is5xxServerError().expectBody(String.class).returnResult().getResponseBody();
+    String body =
+        RestTestClient.bindToServer()
+            .baseUrl("http://localhost:" + port)
+            .build()
+            .get()
+            .uri("/test-only/boom")
+            .exchange()
+            .expectStatus()
+            .is5xxServerError()
+            .expectBody(String.class)
+            .returnResult()
+            .getResponseBody();
     assertThat(body).doesNotContain("SHOULDNOTLEAK").doesNotContain("internal detail");
   }
 }

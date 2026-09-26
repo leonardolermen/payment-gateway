@@ -1,7 +1,5 @@
 package com.gateway.payments.jobs.persistence;
 
-import com.gateway.payments.outbox.persistence.OutboxRepository;
-
 import static org.assertj.core.api.Assertions.*;
 
 import com.gateway.kernel.ids.MerchantId;
@@ -9,6 +7,7 @@ import com.gateway.kernel.ids.Ulid;
 import com.gateway.payments.TestApp;
 import com.gateway.payments.jobs.Job;
 import com.gateway.payments.outbox.OutboxMessage;
+import com.gateway.payments.outbox.persistence.OutboxRepository;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -54,9 +53,9 @@ class JobsAndOutboxClaimIntegrationTest {
 
   /**
    * {@code @Repository} translates data-access exceptions, so the raw {@code IllegalStateException}
-   * from {@code JobRepositoryImpl.claimDue} arrives wrapped as {@code InvalidDataAccessApiUsageException}
-   * with the original as its root cause — same shape as {@code DeliveryRepositoryImpl.claimDue}'s
-   * own test in webhook-delivery.
+   * from {@code JobRepositoryImpl.claimDue} arrives wrapped as {@code
+   * InvalidDataAccessApiUsageException} with the original as its root cause — same shape as {@code
+   * DeliveryRepositoryImpl.claimDue}'s own test in webhook-delivery.
    */
   @Test
   void claimDueOutsideATransactionThrows() {
@@ -69,7 +68,10 @@ class JobsAndOutboxClaimIntegrationTest {
   void enqueueReturnsWhetherItInsertedTheRow() {
     Job reconcile = Job.reconcile(clock);
     Boolean first = tx().execute(status -> jobs.enqueue(reconcile));
-    Boolean second = tx().execute(status -> jobs.enqueue(Job.reconcile(clock))); // same (type, ref_id="all"): conflicts
+    Boolean second =
+        tx().execute(
+                status ->
+                    jobs.enqueue(Job.reconcile(clock))); // same (type, ref_id="all"): conflicts
 
     assertThat(first).isTrue();
     assertThat(second).isFalse();
@@ -91,14 +93,16 @@ class JobsAndOutboxClaimIntegrationTest {
               () -> {
                 ready.countDown();
                 awaitQuietly(go);
-                return tx().execute(status -> jobs.claimDue(Instant.now(), 10, Duration.ofMinutes(5)));
+                return tx().execute(
+                        status -> jobs.claimDue(Instant.now(), 10, Duration.ofMinutes(5)));
               });
       var f2 =
           pool.submit(
               () -> {
                 ready.countDown();
                 awaitQuietly(go);
-                return tx().execute(status -> jobs.claimDue(Instant.now(), 10, Duration.ofMinutes(5)));
+                return tx().execute(
+                        status -> jobs.claimDue(Instant.now(), 10, Duration.ofMinutes(5)));
               });
       ready.await();
       go.countDown();
@@ -122,12 +126,14 @@ class JobsAndOutboxClaimIntegrationTest {
     tx().executeWithoutResult(status -> jobs.enqueue(j));
 
     // First claim, with a lease so short it is already expired by the time we look again.
-    List<Job> firstClaim = tx().execute(status -> jobs.claimDue(Instant.now(), 10, Duration.ofMillis(1)));
+    List<Job> firstClaim =
+        tx().execute(status -> jobs.claimDue(Instant.now(), 10, Duration.ofMillis(1)));
     assertThat(firstClaim).extracting(Job::id).contains(j.id());
 
     sleep(20);
 
-    List<Job> secondClaim = tx().execute(status -> jobs.claimDue(Instant.now(), 10, Duration.ofMillis(1)));
+    List<Job> secondClaim =
+        tx().execute(status -> jobs.claimDue(Instant.now(), 10, Duration.ofMillis(1)));
     assertThat(secondClaim).extracting(Job::id).contains(j.id());
   }
 
@@ -142,27 +148,50 @@ class JobsAndOutboxClaimIntegrationTest {
 
   @Test
   void claimPendingReturnsPendingMessagesAndMarkSentTakesThemOut() {
-    OutboxMessage m = new OutboxMessage(Ulid.next(), MerchantId.next(), Ulid.next(), null, "payment.created", "{}", "PENDING", null, Instant.now());
+    OutboxMessage m =
+        new OutboxMessage(
+            Ulid.next(),
+            MerchantId.next(),
+            Ulid.next(),
+            null,
+            "payment.created",
+            "{}",
+            "PENDING",
+            null,
+            Instant.now());
     tx().executeWithoutResult(status -> outbox.append(m));
 
-    List<OutboxMessage> claimed = tx().execute(status -> outbox.claimPending(10, Duration.ofMinutes(5)));
+    List<OutboxMessage> claimed =
+        tx().execute(status -> outbox.claimPending(10, Duration.ofMinutes(5)));
     assertThat(claimed).extracting(OutboxMessage::id).contains(m.id());
 
     outbox.markSent(m.id());
 
-    List<OutboxMessage> claimedAgain = tx().execute(status -> outbox.claimPending(10, Duration.ofMinutes(5)));
+    List<OutboxMessage> claimedAgain =
+        tx().execute(status -> outbox.claimPending(10, Duration.ofMinutes(5)));
     assertThat(claimedAgain).extracting(OutboxMessage::id).doesNotContain(m.id());
   }
 
   @Test
   void releaseMakesAClaimedMessageClaimableAgainImmediately() {
-    OutboxMessage m = new OutboxMessage(Ulid.next(), MerchantId.next(), Ulid.next(), null, "payment.created", "{}", "PENDING", null, Instant.now());
+    OutboxMessage m =
+        new OutboxMessage(
+            Ulid.next(),
+            MerchantId.next(),
+            Ulid.next(),
+            null,
+            "payment.created",
+            "{}",
+            "PENDING",
+            null,
+            Instant.now());
     tx().executeWithoutResult(status -> outbox.append(m));
 
     tx().executeWithoutResult(status -> outbox.claimPending(10, Duration.ofMinutes(5)));
     outbox.release(m.id());
 
-    List<OutboxMessage> claimedAgain = tx().execute(status -> outbox.claimPending(10, Duration.ofMinutes(5)));
+    List<OutboxMessage> claimedAgain =
+        tx().execute(status -> outbox.claimPending(10, Duration.ofMinutes(5)));
     assertThat(claimedAgain).extracting(OutboxMessage::id).contains(m.id());
   }
 

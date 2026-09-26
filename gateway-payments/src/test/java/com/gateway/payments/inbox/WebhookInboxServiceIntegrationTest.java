@@ -1,27 +1,26 @@
 package com.gateway.payments.inbox;
 
-import com.gateway.payments.jobs.JobRunner;
-import com.gateway.payments.refund.RefundService;
-import com.gateway.payments.support.ServiceIntegrationTestBase;
-
 import static org.assertj.core.api.Assertions.*;
 
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.ids.Ulid;
 import com.gateway.kernel.money.Money;
+import com.gateway.kernel.provider.ProviderException;
 import com.gateway.kernel.provider.pix.RefundResult;
 import com.gateway.kernel.provider.pix.RefundStatus;
-import com.gateway.payments.refund.Refund;
-import com.gateway.payments.refund.RefundState;
-import com.gateway.kernel.provider.ProviderException;
-import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceRepository;
+import com.gateway.payments.inbox.persistence.WebhookInboxRepository;
+import com.gateway.payments.jobs.JobRunner;
 import com.gateway.payments.jobs.JobType;
+import com.gateway.payments.jobs.persistence.JobRepository;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentStatus;
-import com.gateway.payments.jobs.persistence.JobRepository;
 import com.gateway.payments.payment.persistence.PaymentRepository;
-import com.gateway.payments.inbox.persistence.WebhookInboxRepository;
+import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceRepository;
+import com.gateway.payments.refund.Refund;
+import com.gateway.payments.refund.RefundService;
+import com.gateway.payments.refund.RefundState;
+import com.gateway.payments.support.ServiceIntegrationTestBase;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,7 +33,8 @@ class WebhookInboxServiceIntegrationTest extends ServiceIntegrationTestBase {
   @Autowired JobRepository jobs;
 
   String accept(String body) {
-    return inbox.accept("ITAU", merchant, "content-type: application/json", body.getBytes(StandardCharsets.UTF_8));
+    return inbox.accept(
+        "ITAU", merchant, "content-type: application/json", body.getBytes(StandardCharsets.UTF_8));
   }
 
   @Test
@@ -61,7 +61,9 @@ class WebhookInboxServiceIntegrationTest extends ServiceIntegrationTestBase {
     assertThat(done.paidAt()).isNotNull();
     assertThat(done.pix().endToEndId()).isEqualTo(e2e);
     assertThat(outboxTypes(p.id())).containsExactly("payment.pending", "payment.completed");
-    assertThat(outboxPayload(p.id(), "payment.completed")).contains("\"end_to_end_id\":\"" + e2e + "\"").contains("\"paid_amount\":1500");
+    assertThat(outboxPayload(p.id(), "payment.completed"))
+        .contains("\"end_to_end_id\":\"" + e2e + "\"")
+        .contains("\"paid_amount\":1500");
     assertThat(inboxRows.findById(id).orElseThrow().status()).isEqualTo("PROCESSED");
   }
 
@@ -74,7 +76,9 @@ class WebhookInboxServiceIntegrationTest extends ServiceIntegrationTestBase {
 
     inbox.process(accept(e2e + " " + p.id() + " 1500"));
 
-    assertThat(payments.events(p.id())).extracting(e -> e.type()).containsExactly("created", "pending", "completed", "ignored");
+    assertThat(payments.events(p.id()))
+        .extracting(e -> e.type())
+        .containsExactly("created", "pending", "completed", "ignored");
     assertThat(outboxTypes(p.id())).containsExactly("payment.pending", "payment.completed");
   }
 
@@ -87,7 +91,9 @@ class WebhookInboxServiceIntegrationTest extends ServiceIntegrationTestBase {
     inbox.process(id);
     inbox.process(id);
 
-    assertThat(payments.events(p.id())).extracting(e -> e.type()).containsExactly("created", "pending", "completed");
+    assertThat(payments.events(p.id()))
+        .extracting(e -> e.type())
+        .containsExactly("created", "pending", "completed");
   }
 
   @Autowired JobRunner runner;
@@ -97,7 +103,9 @@ class WebhookInboxServiceIntegrationTest extends ServiceIntegrationTestBase {
   @Test
   void lateWebhookOnAFailedPaymentOpensADivergence() {
     // The PUT landed but we were told it was refused: FAILED here, a payable QR at the bank.
-    bank.landNextCreateThenFailWith(new ProviderException(ProviderException.Code.INVALID, 400, "CobOperacaoInvalida", "invalid"));
+    bank.landNextCreateThenFailWith(
+        new ProviderException(
+            ProviderException.Code.INVALID, 400, "CobOperacaoInvalida", "invalid"));
     assertThatThrownBy(() -> newCharge(900)).isInstanceOf(DomainException.class);
     Payment failed = paymentService.list(merchant, 10, null).getFirst();
     assertThat(failed.status()).isEqualTo(PaymentStatus.FAILED);
@@ -108,9 +116,13 @@ class WebhookInboxServiceIntegrationTest extends ServiceIntegrationTestBase {
     while (runner.runDue(clock.instant()) > 0) {}
 
     assertThat(inboxRows.findById(id).orElseThrow().status()).isEqualTo("PROCESSED");
-    assertThat(jobs.findByTypeAndRef(JobType.PROCESS_WEBHOOK, id).orElseThrow().status()).isEqualTo("DONE");
-    assertThat(payments.findById(failed.id()).orElseThrow().status()).isEqualTo(PaymentStatus.FAILED);
-    assertThat(payments.events(failed.id())).extracting(e -> e.type()).containsExactly("created", "failed", "ignored");
+    assertThat(jobs.findByTypeAndRef(JobType.PROCESS_WEBHOOK, id).orElseThrow().status())
+        .isEqualTo("DONE");
+    assertThat(payments.findById(failed.id()).orElseThrow().status())
+        .isEqualTo(PaymentStatus.FAILED);
+    assertThat(payments.events(failed.id()))
+        .extracting(e -> e.type())
+        .containsExactly("created", "failed", "ignored");
     assertThat(outboxTypes(failed.id())).containsExactly("payment.failed");
     assertThat(divergences.open())
         .filteredOn(d -> d.paymentId().equals(failed.id()))
@@ -143,9 +155,13 @@ class WebhookInboxServiceIntegrationTest extends ServiceIntegrationTestBase {
     assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.PENDING);
     assertThat(bank.callsFor(p.id())).contains("findCharge:" + p.id());
     assertThat(outboxTypes(p.id())).containsExactly("payment.pending");
-    assertThat(payments.events(p.id())).extracting(e -> e.type()).containsExactly("created", "pending", "ignored");
+    assertThat(payments.events(p.id()))
+        .extracting(e -> e.type())
+        .containsExactly("created", "pending", "ignored");
     assertThat(payments.events(p.id()).getLast().payload()).contains("unconfirmed webhook");
-    assertThat(divergences.open()).filteredOn(d -> d.paymentId().equals(p.id())).singleElement()
+    assertThat(divergences.open())
+        .filteredOn(d -> d.paymentId().equals(p.id()))
+        .singleElement()
         .satisfies(d -> assertThat(d.providerStatus()).isEqualTo("UNCONFIRMED_WEBHOOK"));
   }
 
@@ -158,7 +174,10 @@ class WebhookInboxServiceIntegrationTest extends ServiceIntegrationTestBase {
 
     assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.PENDING);
     assertThat(outboxTypes(p.id())).containsExactly("payment.pending");
-    assertThat(divergences.open()).filteredOn(d -> d.paymentId().equals(p.id()) && d.providerStatus().equals("UNCONFIRMED_WEBHOOK")).hasSize(1);
+    assertThat(divergences.open())
+        .filteredOn(
+            d -> d.paymentId().equals(p.id()) && d.providerStatus().equals("UNCONFIRMED_WEBHOOK"))
+        .hasSize(1);
   }
 
   @Test
@@ -171,11 +190,14 @@ class WebhookInboxServiceIntegrationTest extends ServiceIntegrationTestBase {
 
     assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.PENDING);
     assertThat(outboxTypes(p.id())).containsExactly("payment.pending");
-    assertThat(divergences.open()).filteredOn(d -> d.paymentId().equals(p.id())).singleElement()
-        .satisfies(d -> {
-          assertThat(d.providerStatus()).isEqualTo("AMOUNT_MISMATCH");
-          assertThat(d.detail()).contains("100 cents").contains("1500");
-        });
+    assertThat(divergences.open())
+        .filteredOn(d -> d.paymentId().equals(p.id()))
+        .singleElement()
+        .satisfies(
+            d -> {
+              assertThat(d.providerStatus()).isEqualTo("AMOUNT_MISMATCH");
+              assertThat(d.detail()).contains("100 cents").contains("1500");
+            });
   }
 
   @Test
@@ -183,7 +205,9 @@ class WebhookInboxServiceIntegrationTest extends ServiceIntegrationTestBase {
     Payment p = newCharge(1500);
     String e2e = "E" + Ulid.next();
     bank.markPaid(p.id(), e2e, Money.brl(1500));
-    bank.failNextFindWith(p.id(), new ProviderException(ProviderException.Code.UNAVAILABLE, 503, null, "unavailable"));
+    bank.failNextFindWith(
+        p.id(),
+        new ProviderException(ProviderException.Code.UNAVAILABLE, 503, null, "unavailable"));
     String id = accept(e2e + " " + p.id() + " 1500");
 
     assertThatThrownBy(() -> inbox.process(id)).isInstanceOf(ProviderException.class);
@@ -209,7 +233,14 @@ class WebhookInboxServiceIntegrationTest extends ServiceIntegrationTestBase {
     String e2e = "E" + Ulid.next();
     Payment p = completed(1000, e2e);
     Refund r = refunds.request(merchant, p.id(), Money.brl(400));
-    bank.refundResult(new RefundResult(r.id(), RefundStatus.COMPLETED, Money.brl(400), null, clock.instant(), clock.instant()));
+    bank.refundResult(
+        new RefundResult(
+            r.id(),
+            RefundStatus.COMPLETED,
+            Money.brl(400),
+            null,
+            clock.instant(),
+            clock.instant()));
 
     String id = accept("REFUND " + r.id() + " " + e2e + " FAILED");
     inbox.process(id);
@@ -225,16 +256,30 @@ class WebhookInboxServiceIntegrationTest extends ServiceIntegrationTestBase {
     String e2e = "E" + Ulid.next();
     Payment victim = completed(1000, e2e);
     Refund r = refunds.request(merchant, victim.id(), Money.brl(400));
-    bank.refundResult(new RefundResult(r.id(), RefundStatus.COMPLETED, Money.brl(400), null, clock.instant(), clock.instant()));
+    bank.refundResult(
+        new RefundResult(
+            r.id(),
+            RefundStatus.COMPLETED,
+            Money.brl(400),
+            null,
+            clock.instant(),
+            clock.instant()));
 
     // Another merchant's webhook URL, naming the first merchant's refund.
-    String id = inbox.accept("ITAU", MerchantId.next(), "{}", ("REFUND " + r.id() + " " + e2e + " COMPLETED").getBytes(StandardCharsets.UTF_8));
+    String id =
+        inbox.accept(
+            "ITAU",
+            MerchantId.next(),
+            "{}",
+            ("REFUND " + r.id() + " " + e2e + " COMPLETED").getBytes(StandardCharsets.UTF_8));
     inbox.process(id);
 
     assertThat(refunds.get(merchant, r.id()).state()).isEqualTo(RefundState.PROCESSING);
     assertThat(bank.callsFor(r.id())).doesNotContain("findRefund:" + r.id());
     assertThat(inboxRows.findById(id).orElseThrow().status()).isEqualTo("IGNORED");
-    assertThat(divergences.open()).filteredOn(d -> d.paymentId().equals(victim.id())).singleElement()
+    assertThat(divergences.open())
+        .filteredOn(d -> d.paymentId().equals(victim.id()))
+        .singleElement()
         .satisfies(d -> assertThat(d.providerStatus()).isEqualTo("UNCONFIRMED_REFUND_WEBHOOK"));
   }
 
@@ -247,7 +292,12 @@ class WebhookInboxServiceIntegrationTest extends ServiceIntegrationTestBase {
     inbox.process(accept("REFUND " + r.id() + " E" + Ulid.next() + " COMPLETED"));
 
     assertThat(refunds.get(merchant, r.id()).state()).isEqualTo(RefundState.PROCESSING);
-    assertThat(divergences.open()).filteredOn(d -> d.paymentId().equals(p.id()) && d.providerStatus().equals("UNCONFIRMED_REFUND_WEBHOOK")).hasSize(1);
+    assertThat(divergences.open())
+        .filteredOn(
+            d ->
+                d.paymentId().equals(p.id())
+                    && d.providerStatus().equals("UNCONFIRMED_REFUND_WEBHOOK"))
+        .hasSize(1);
   }
 
   @Test

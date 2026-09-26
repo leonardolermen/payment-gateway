@@ -9,7 +9,8 @@ indent_style = space
 indent_size = 2
 
 [*.java]
-max_line_length = 120
+# 100 é o limite do google-java-format, que é quem manda na quebra de linha aqui (ver CLAUDE.md).
+max_line_length = 100
 # Continuação de linha recua 4, não alinha no parêntese.
 ij_java_continuation_indent_size = 4
 ij_java_keep_line_breaks = true

@@ -4,12 +4,12 @@ import static org.assertj.core.api.Assertions.*;
 
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.money.Money;
+import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.payments.TestApp;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentEvent;
-import com.gateway.payments.payment.PaymentMethod;
 import com.gateway.payments.payment.PaymentStatus;
 import com.gateway.payments.payment.boleto.BoletoDetails;
 import com.gateway.payments.payment.pix.PixDetails;
@@ -54,7 +54,16 @@ class PaymentRepositoryIntegrationTest {
   }
 
   Payment fresh() {
-    return Payment.create(MerchantId.next(), ProviderEnvironment.TEST, "ITAU", Money.brl(15990), "order-8812", "Order 8812", null, 3600, clock);
+    return Payment.create(
+        MerchantId.next(),
+        ProviderEnvironment.TEST,
+        "ITAU",
+        Money.brl(15990),
+        "order-8812",
+        "Order 8812",
+        null,
+        3600,
+        clock);
   }
 
   /** Persists a freshly-created payment (its own "created" event) inside a short transaction. */
@@ -67,9 +76,15 @@ class PaymentRepositoryIntegrationTest {
     Payment p = fresh();
     persistNew(p);
 
-    Long paymentRows = jdbc.queryForObject("SELECT count(*) FROM payments.payments WHERE id = ?", Long.class, p.id());
+    Long paymentRows =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM payments.payments WHERE id = ?", Long.class, p.id());
     assertThat(paymentRows).isEqualTo(1);
-    Long eventRows = jdbc.queryForObject("SELECT count(*) FROM payments.payment_events WHERE payment_id = ?", Long.class, p.id());
+    Long eventRows =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM payments.payment_events WHERE payment_id = ?",
+            Long.class,
+            p.id());
     assertThat(eventRows).isEqualTo(1);
   }
 
@@ -77,8 +92,11 @@ class PaymentRepositoryIntegrationTest {
   void findByIdRehydratesPixVersionAndStatus() {
     Payment p = fresh();
     PaymentEvent pendingEvent =
-        p.markPending(new PixDetails(p.id(), "000201...copia-e-cola", "pix.example.com/loc", null), Instant.parse("2026-09-24T13:00:00Z"));
-    tx().executeWithoutResult(status -> repository.save(p, List.of(p.createdEvent(), pendingEvent)));
+        p.markPending(
+            new PixDetails(p.id(), "000201...copia-e-cola", "pix.example.com/loc", null),
+            Instant.parse("2026-09-24T13:00:00Z"));
+    tx().executeWithoutResult(
+            status -> repository.save(p, List.of(p.createdEvent(), pendingEvent)));
 
     Payment loaded = repository.findById(p.id()).orElseThrow();
     assertThat(loaded.status()).isEqualTo(PaymentStatus.PENDING);
@@ -102,7 +120,8 @@ class PaymentRepositoryIntegrationTest {
     Payment p = fresh();
     persistNew(p);
 
-    // Two independent copies of the same persisted payment, as two callers loading concurrently would.
+    // Two independent copies of the same persisted payment, as two callers loading concurrently
+    // would.
     Payment copy1 = repository.findById(p.id()).orElseThrow();
     Payment copy2 = repository.findById(p.id()).orElseThrow();
 
@@ -111,7 +130,8 @@ class PaymentRepositoryIntegrationTest {
 
     tx().executeWithoutResult(status -> repository.save(copy1, List.of(e1)));
 
-    assertThatThrownBy(() -> tx().executeWithoutResult(status -> repository.save(copy2, List.of(e2))))
+    assertThatThrownBy(
+            () -> tx().executeWithoutResult(status -> repository.save(copy2, List.of(e2))))
         .isInstanceOf(OptimisticLockingFailureException.class)
         .isInstanceOf(ObjectOptimisticLockingFailureException.class);
   }
@@ -130,15 +150,18 @@ class PaymentRepositoryIntegrationTest {
     persistNew(p);
 
     tx().executeWithoutResult(
-        status -> {
-          Payment loaded1 = repository.findById(p.id()).orElseThrow();
-          PaymentEvent pending = loaded1.markPending(new PixDetails(p.id(), "a", "b", null), Instant.now());
-          repository.save(loaded1, List.of(pending));
+            status -> {
+              Payment loaded1 = repository.findById(p.id()).orElseThrow();
+              PaymentEvent pending =
+                  loaded1.markPending(new PixDetails(p.id(), "a", "b", null), Instant.now());
+              repository.save(loaded1, List.of(pending));
 
-          Payment loaded2 = repository.findById(p.id()).orElseThrow();
-          PaymentEvent completed = loaded2.markCompleted("E1", Money.brl(15990), Instant.now(), EventSource.PROVIDER_WEBHOOK);
-          repository.save(loaded2, List.of(completed));
-        });
+              Payment loaded2 = repository.findById(p.id()).orElseThrow();
+              PaymentEvent completed =
+                  loaded2.markCompleted(
+                      "E1", Money.brl(15990), Instant.now(), EventSource.PROVIDER_WEBHOOK);
+              repository.save(loaded2, List.of(completed));
+            });
 
     Payment reloaded = repository.findById(p.id()).orElseThrow();
     assertThat(reloaded.version()).isEqualTo(3);
@@ -146,19 +169,29 @@ class PaymentRepositoryIntegrationTest {
     assertThat(repository.events(p.id())).hasSize(3);
   }
 
-  /** Persists a payment that has already transitioned once, past its own creation: both events go in the same insert. */
+  /**
+   * Persists a payment that has already transitioned once, past its own creation: both events go in
+   * the same insert.
+   */
   void persistWithOneTransition(Payment p, PaymentEvent transitionEvent) {
-    tx().executeWithoutResult(status -> repository.save(p, List.of(p.createdEvent(), transitionEvent)));
+    tx().executeWithoutResult(
+            status -> repository.save(p, List.of(p.createdEvent(), transitionEvent)));
   }
 
   @Test
   void findPendingOlderThanReturnsOnlyPendingBeforeTheCutoff() {
     Payment expiredPending = fresh();
-    PaymentEvent e1 = expiredPending.markPending(new PixDetails(expiredPending.id(), "a", "b", null), Instant.parse("2026-09-24T12:30:00Z"));
+    PaymentEvent e1 =
+        expiredPending.markPending(
+            new PixDetails(expiredPending.id(), "a", "b", null),
+            Instant.parse("2026-09-24T12:30:00Z"));
     persistWithOneTransition(expiredPending, e1);
 
     Payment stillFreshPending = fresh();
-    PaymentEvent e2 = stillFreshPending.markPending(new PixDetails(stillFreshPending.id(), "a", "b", null), Instant.parse("2026-09-25T12:30:00Z"));
+    PaymentEvent e2 =
+        stillFreshPending.markPending(
+            new PixDetails(stillFreshPending.id(), "a", "b", null),
+            Instant.parse("2026-09-25T12:30:00Z"));
     persistWithOneTransition(stillFreshPending, e2);
 
     Payment created = fresh(); // status CREATED, not PENDING — must not match
@@ -168,7 +201,10 @@ class PaymentRepositoryIntegrationTest {
     // assert on membership rather than an exact list: only that this test's own PENDING-and-overdue
     // payment is included and its own not-yet-due / not-PENDING siblings are excluded.
     List<Payment> due = repository.findPendingOlderThan(Instant.parse("2026-09-24T18:00:00Z"), 100);
-    assertThat(due).extracting(Payment::id).contains(expiredPending.id()).doesNotContain(stillFreshPending.id(), created.id());
+    assertThat(due)
+        .extracting(Payment::id)
+        .contains(expiredPending.id())
+        .doesNotContain(stillFreshPending.id(), created.id());
     assertThat(due).allSatisfy(p -> assertThat(p.status()).isEqualTo(PaymentStatus.PENDING));
   }
 
@@ -176,11 +212,19 @@ class PaymentRepositoryIntegrationTest {
   void findByStatusInFiltersByStatusAndCreationTime() {
     Payment p = fresh();
     persistNew(p);
-    assertThat(repository.findByStatusIn(Set.of(PaymentStatus.CREATED), Instant.parse("2026-09-24T11:00:00Z"), 100))
+    assertThat(
+            repository.findByStatusIn(
+                Set.of(PaymentStatus.CREATED), Instant.parse("2026-09-24T11:00:00Z"), 100))
         .extracting(Payment::id)
         .contains(p.id());
-    assertThat(repository.findByStatusIn(Set.of(PaymentStatus.COMPLETED), Instant.parse("2026-09-24T11:00:00Z"), 100)).isEmpty();
-    assertThat(repository.findByStatusIn(Set.of(PaymentStatus.CREATED), Instant.parse("2026-09-24T13:00:00Z"), 100)).isEmpty();
+    assertThat(
+            repository.findByStatusIn(
+                Set.of(PaymentStatus.COMPLETED), Instant.parse("2026-09-24T11:00:00Z"), 100))
+        .isEmpty();
+    assertThat(
+            repository.findByStatusIn(
+                Set.of(PaymentStatus.CREATED), Instant.parse("2026-09-24T13:00:00Z"), 100))
+        .isEmpty();
   }
 
   @Test
@@ -190,7 +234,9 @@ class PaymentRepositoryIntegrationTest {
     Payment b = fresh();
     persistNew(b);
 
-    List<Payment> capped = repository.findByStatusIn(Set.of(PaymentStatus.CREATED), Instant.parse("2020-01-01T00:00:00Z"), 1);
+    List<Payment> capped =
+        repository.findByStatusIn(
+            Set.of(PaymentStatus.CREATED), Instant.parse("2020-01-01T00:00:00Z"), 1);
     assertThat(capped).hasSize(1);
   }
 
@@ -198,25 +244,53 @@ class PaymentRepositoryIntegrationTest {
   void eventsComeBackInSequenceOrder() {
     Payment p = fresh();
     PaymentEvent pending = p.markPending(new PixDetails(p.id(), "a", "b", null), Instant.now());
-    PaymentEvent completed = p.markCompleted("E1", Money.brl(15990), Instant.now(), EventSource.PROVIDER_WEBHOOK);
-    tx().executeWithoutResult(status -> repository.save(p, List.of(p.createdEvent(), pending, completed)));
+    PaymentEvent completed =
+        p.markCompleted("E1", Money.brl(15990), Instant.now(), EventSource.PROVIDER_WEBHOOK);
+    tx().executeWithoutResult(
+            status -> repository.save(p, List.of(p.createdEvent(), pending, completed)));
 
     List<PaymentEvent> events = repository.events(p.id());
     assertThat(events).extracting(PaymentEvent::sequence).containsExactly(1L, 2L, 3L);
-    assertThat(events).extracting(PaymentEvent::type).containsExactly("created", "pending", "completed");
+    assertThat(events)
+        .extracting(PaymentEvent::type)
+        .containsExactly("created", "pending", "completed");
   }
 
   @Test
   void aBolecodeRoundTripsWithBothBlocksAndIsFoundByTxid() {
-    BoletoDetails b = new BoletoDetails("00000007", null, null, null, LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 31), null);
-    Payment p = Payment.createBolecode(MerchantId.next(), ProviderEnvironment.TEST, "ITAU", Money.brl(500), "o-7", null, null, b, Instant.parse("2026-11-01T02:59:59Z"), clock);
-    tx().executeWithoutResult(s -> repository.save(p, List.of(p.createdEvent())));
-    tx().executeWithoutResult(s -> {
-      Payment loaded = repository.findById(p.id()).orElseThrow();
-      PaymentEvent ev = loaded.markPendingBolecode(new PixDetails("BL15000005206109000000000000007", "emv", null, null),
-          loaded.boleto().withIssued("uuid-7", "7".repeat(47), "7".repeat(44), null), Instant.parse("2026-11-01T02:59:59Z"), EventSource.API);
-      repository.save(loaded, List.of(ev));
-    });
+    BoletoDetails b =
+        new BoletoDetails(
+            "00000007",
+            null,
+            null,
+            null,
+            LocalDate.of(2026, 10, 1),
+            LocalDate.of(2026, 10, 31),
+            null);
+    Payment p =
+        Payment.createBolecode(
+            MerchantId.next(),
+            ProviderEnvironment.TEST,
+            "ITAU",
+            Money.brl(500),
+            "o-7",
+            null,
+            null,
+            b,
+            Instant.parse("2026-11-01T02:59:59Z"),
+            clock);
+    tx().executeWithoutResult(transaction -> repository.save(p, List.of(p.createdEvent())));
+    tx().executeWithoutResult(
+            transaction -> {
+              Payment loaded = repository.findById(p.id()).orElseThrow();
+              PaymentEvent ev =
+                  loaded.markPendingBolecode(
+                      new PixDetails("BL15000005206109000000000000007", "emv", null, null),
+                      loaded.boleto().withIssued("uuid-7", "7".repeat(47), "7".repeat(44), null),
+                      Instant.parse("2026-11-01T02:59:59Z"),
+                      EventSource.API);
+              repository.save(loaded, List.of(ev));
+            });
 
     Payment back = repository.findById(p.id()).orElseThrow();
     assertThat(back.method()).isEqualTo(PaymentMethod.BOLECODE);
@@ -224,20 +298,34 @@ class PaymentRepositoryIntegrationTest {
     assertThat(back.boleto().linhaDigitavel()).isEqualTo("7".repeat(47));
     assertThat(back.boleto().paymentLimitDate()).isEqualTo(LocalDate.of(2026, 10, 31));
     assertThat(back.pix().txid()).isEqualTo("BL15000005206109000000000000007");
-    assertThat(jdbc.queryForObject("SELECT method FROM payments.payments WHERE id = ?", String.class, p.id())).isEqualTo("BOLECODE");
-    assertThat(repository.findByMerchantAndTxid(p.merchantId(), "ITAU", "BL15000005206109000000000000007")).isPresent();
-    assertThat(repository.findByMerchantAndTxid(MerchantId.next(), "ITAU", "BL15000005206109000000000000007")).isEmpty();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT method FROM payments.payments WHERE id = ?", String.class, p.id()))
+        .isEqualTo("BOLECODE");
+    assertThat(
+            repository.findByMerchantAndTxid(
+                p.merchantId(), "ITAU", "BL15000005206109000000000000007"))
+        .isPresent();
+    assertThat(
+            repository.findByMerchantAndTxid(
+                MerchantId.next(), "ITAU", "BL15000005206109000000000000007"))
+        .isEmpty();
   }
 
   @Test
   void aPixPaymentStillReadsBackWithANullBoletoAndItsNestedTxid() {
     Payment p = fresh();
-    tx().executeWithoutResult(s -> repository.save(p, List.of(p.createdEvent())));
+    tx().executeWithoutResult(transaction -> repository.save(p, List.of(p.createdEvent())));
     Payment back = repository.findById(p.id()).orElseThrow();
     assertThat(back.method()).isEqualTo(PaymentMethod.PIX);
     assertThat(back.boleto()).isNull();
     assertThat(back.pix().txid()).isEqualTo(p.id());
-    assertThat(jdbc.queryForObject("SELECT details->'pix'->>'txid' FROM payments.payments WHERE id = ?", String.class, p.id())).isEqualTo(p.id());
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT details->'pix'->>'txid' FROM payments.payments WHERE id = ?",
+                String.class,
+                p.id()))
+        .isEqualTo(p.id());
     assertThat(repository.findByMerchantAndTxid(p.merchantId(), "ITAU", p.id())).isPresent();
   }
 }

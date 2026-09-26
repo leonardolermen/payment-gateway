@@ -1,12 +1,12 @@
 package com.gateway.payments.refund;
 
-import com.gateway.kernel.provider.pix.RefundStatus;
-import com.gateway.payments.PaymentsProperties;
-import com.gateway.payments.provider.ProviderGateway;
-
+import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.kernel.provider.pix.RefundResult;
+import com.gateway.payments.PaymentsProperties;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.persistence.PaymentRepository;
+import com.gateway.payments.provider.ProviderGateway;
+import com.gateway.payments.provider.ProviderGateway.ResolvedProvider;
 import com.gateway.payments.refund.persistence.RefundRepository;
 import java.time.Clock;
 import java.time.Instant;
@@ -25,7 +25,12 @@ public class RefundPollingService {
   private final Clock clock;
 
   public RefundPollingService(
-      RefundRepository refunds, PaymentRepository payments, ProviderGateway providers, RefundService refundService, PaymentsProperties props, Clock clock) {
+      RefundRepository refunds,
+      PaymentRepository payments,
+      ProviderGateway providers,
+      RefundService refundService,
+      PaymentsProperties props,
+      Clock clock) {
     this.refunds = refunds;
     this.payments = payments;
     this.providers = providers;
@@ -36,9 +41,9 @@ public class RefundPollingService {
 
   /**
    * Returns {@code true} once the refund is settled either way. {@code false} means "still
-   * processing": the {@link JobRunner} polls again in 5 minutes, up to {@code refundPollMaxAttempts}
-   * (288, i.e. 24 h); then the job goes DEAD and {@link RefundService#giveUp} marks the refund
-   * UNKNOWN (amount still reserved) and opens a divergence.
+   * processing": the {@link JobRunner} polls again in 5 minutes, up to {@code
+   * refundPollMaxAttempts} (288, i.e. 24 h); then the job goes DEAD and {@link
+   * RefundService#giveUp} marks the refund UNKNOWN (amount still reserved) and opens a divergence.
    *
    * <p>A refund the bank does not know ({@code findRefund} empty) is one whose PUT timed out or got
    * a 503 and never landed: after {@code refundNotFoundGrace} it is FAILED, which frees the amount.
@@ -50,14 +55,28 @@ public class RefundPollingService {
       return true;
     }
     Payment payment = payments.findById(refund.paymentId()).orElseThrow();
-    ProviderGateway.Resolved r = providers.resolve(payment.merchantId(), payment.environment(), payment.provider());
+    ResolvedProvider<PixMethodProvider> resolved =
+        providers.resolvePix(payment.merchantId(), payment.environment(), payment.provider());
     Optional<RefundResult> result =
-        providers.call(payment.id(), "findRefund", r, x -> x.provider().findRefund(x.credentials(), payment.pix().endToEndId(), refundId));
+        providers.call(
+            payment.id(),
+            "findRefund",
+            resolved,
+            target ->
+                target
+                    .provider()
+                    .findRefund(target.credentials(), payment.pix().endToEndId(), refundId));
     if (result.isEmpty()) {
       Instant cutoff = refund.createdAt().plus(props.refundNotFoundGrace());
       if (clock.instant().isAfter(cutoff)) {
         refundService.applyProviderUpdate(
-            new RefundResult(refundId, com.gateway.kernel.provider.pix.RefundStatus.FAILED, refund.amount(), "refund not found at the bank", refund.createdAt(), null));
+            new RefundResult(
+                refundId,
+                com.gateway.kernel.provider.pix.RefundStatus.FAILED,
+                refund.amount(),
+                "refund not found at the bank",
+                refund.createdAt(),
+                null));
         return true;
       }
       return false;
@@ -67,6 +86,8 @@ public class RefundPollingService {
   }
 
   private static boolean terminal(Refund r) {
-    return r.state() == RefundState.COMPLETED || r.state() == RefundState.FAILED || r.state() == RefundState.UNKNOWN;
+    return r.state() == RefundState.COMPLETED
+        || r.state() == RefundState.FAILED
+        || r.state() == RefundState.UNKNOWN;
   }
 }

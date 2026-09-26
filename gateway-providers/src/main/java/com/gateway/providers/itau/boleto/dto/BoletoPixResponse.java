@@ -4,12 +4,18 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
-/** POST /boletos-pix 200 (schema {@code boletoPixResponse}); only the fields the gateway keeps. ignoreUnknown: the bank echoes the whole request plus juros/multa/etc. */
+/**
+ * POST /boletos-pix 200 (schema {@code boletoPixResponse}); only the fields the gateway keeps.
+ * ignoreUnknown: the bank echoes the whole request plus juros/multa/etc.
+ */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record BoletoPixResponse(@JsonProperty("dado_boleto") DadoBoleto dadoBoleto, @JsonProperty("dados_qrcode") DadosQrcode dadosQrcode) {
+public record BoletoPixResponse(
+    @JsonProperty("dado_boleto") DadoBoleto dadoBoleto,
+    @JsonProperty("dados_qrcode") DadosQrcode dadosQrcode) {
 
   @JsonIgnoreProperties(ignoreUnknown = true)
-  public record DadoBoleto(@JsonProperty("dados_individuais_boleto") List<Individual> dadosIndividuaisBoleto) {}
+  public record DadoBoleto(
+      @JsonProperty("dados_individuais_boleto") List<Individual> dadosIndividuaisBoleto) {}
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record Individual(
@@ -25,7 +31,9 @@ public record BoletoPixResponse(@JsonProperty("dado_boleto") DadoBoleto dadoBole
   public record DadosQrcode(String chave, String txid, String emv, String location) {}
 
   public Individual first() {
-    if (dadoBoleto == null || dadoBoleto.dadosIndividuaisBoleto() == null || dadoBoleto.dadosIndividuaisBoleto().isEmpty()) {
+    if (dadoBoleto == null
+        || dadoBoleto.dadosIndividuaisBoleto() == null
+        || dadoBoleto.dadosIndividuaisBoleto().isEmpty()) {
       throw new IllegalStateException("boletos-pix response without dados_individuais_boleto");
     }
     return dadoBoleto.dadosIndividuaisBoleto().getFirst();

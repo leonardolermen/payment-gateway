@@ -6,6 +6,25 @@ aqui. Spring Boot, Java, Maven multi-módulo.
 O padrão de código geral está em `~/.claude/CLAUDE.md` e vale aqui também. Este arquivo tem só o
 que é específico deste repositório.
 
+## Largura de linha: 100, não 120
+
+Esta é a única regra em que este repo contradiz `~/.claude/CLAUDE.md`, e o arquivo global permite a
+contradição desde que esteja escrita — está aqui.
+
+`spotless` com `google-java-format` cuida de quebra de linha e ordem de import
+(`./mvnw spotless:apply` antes de commitar; `spotless:check` mostra o que ele mexeria). Escolhido em
+lugar do palantir, que quebra em 120 mas indenta com quatro espaços: este repo é dois espaços desde o
+primeiro commit, e indentação é o que se lê em toda linha enquanto a coluna limite é o que se encosta
+em algumas. A indentação ganhou e o limite seguiu a ferramenta.
+
+Não está preso a nenhuma fase do build de propósito: o que um formatter não faz é a parte do padrão
+que importa — um nome que diz o que a coisa é, uma linha em branco entre duas ideias. `verify`
+falhando por coluna diria a coisa errada sobre o que este repositório cobra. O CI roda
+`spotless:check` para a deriva ficar visível.
+
+Sobram ~146 linhas acima de 100: string literal que não se quebra e comentário que o formatter não
+reflui. São dele, não suas — não vale reescrever à mão para agradar o número.
+
 ## Comandos
 
 ```bash
@@ -43,8 +62,19 @@ afrouxar o ArchUnit para o código passar é a resposta errada.
 ## Pastas
 
 Feature-first em todo módulo, como manda `~/.claude/CLAUDE.md`: pasta com nome de conceito, papel
-técnico só como sub-pasta folha. `gateway-payments` já é assim (`payment/`, `refund/`, `jobs/`,
-`outbox/`, cada um com seu `persistence/`), e `gateway-app` segue o mesmo formato:
+técnico só como sub-pasta folha. Vale nos quatro módulos de negócio:
+
+```
+gateway-merchants/.../merchants/
+  merchant/     Merchant, MerchantStatus, MerchantService  + persistence/
+  apikey/       ApiKey, ApiKeyEnvironment, ApiKeyService    + persistence/
+  credential/   Provider, ProviderCredential, ProviderCredentialService + persistence/
+  crypto/       Encrypted, EnvelopeCipher, MasterKey        (cifrar é um conceito, não um papel)
+  MerchantsConfiguration, MerchantsProperties               (nível do módulo)
+```
+
+`gateway-payments` segue o mesmo (`payment/`, `refund/`, `jobs/`, `outbox/`, `idempotency/`,
+`inbox/`, `reconciliation/`, `provider/`, cada um com seu `persistence/`), e `gateway-app` também:
 
 ```
 gateway-app/.../app/
