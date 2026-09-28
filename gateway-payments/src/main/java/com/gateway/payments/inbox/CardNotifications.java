@@ -9,6 +9,11 @@ import com.gateway.payments.payment.PaymentStatus;
 import com.gateway.payments.payment.card.CardStatusSync;
 import com.gateway.payments.payment.persistence.PaymentRepository;
 import com.gateway.payments.reconciliation.Divergences;
+import com.gateway.payments.refund.RefundState;
+import com.gateway.payments.refund.persistence.RefundRepository;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -21,21 +26,28 @@ import org.slf4j.LoggerFactory;
  */
 public class CardNotifications {
   private static final Logger log = LoggerFactory.getLogger(CardNotifications.class);
+  private static final Duration OWN_REFUND_WINDOW = Duration.ofHours(24);
 
   private final PaymentRepository payments;
   private final CardStatusSync statusSync;
   private final Divergences divergences;
+  private final RefundRepository refunds;
   private final UnitOfWork unitOfWork;
+  private final Clock clock;
 
   public CardNotifications(
       PaymentRepository payments,
       CardStatusSync statusSync,
       Divergences divergences,
-      UnitOfWork unitOfWork) {
+      RefundRepository refunds,
+      UnitOfWork unitOfWork,
+      Clock clock) {
     this.payments = payments;
     this.statusSync = statusSync;
     this.divergences = divergences;
+    this.refunds = refunds;
     this.unitOfWork = unitOfWork;
+    this.clock = clock;
   }
 
   /** Returns whether the notification was about one of this merchant's payments. */
@@ -78,6 +90,11 @@ public class CardNotifications {
   private void partialRefund(Payment payment, CardNotification notification) {
     statusSync.sync(payment, EventSource.PROVIDER_WEBHOOK);
 
+    if (explainedByOwnRefund(payment)) {
+      recordIgnored(payment.id(), notification);
+      return;
+    }
+
     unitOfWork.run(
         () -> {
           if (divergences.isOpen(payment, "REFUNDED_AT_PROVIDER")) {
@@ -88,6 +105,23 @@ public class CardNotifications {
               "PARTIAL_REFUND_AT_PROVIDER",
               "ChangeType " + notification.changeType() + " for " + notification.paymentId());
         });
+  }
+
+  /**
+   * The gateway's own partial refund also makes the Cielo send ChangeType 25, and the notification
+   * carries no amount to tell the two apart: every partial refund done through the API opened a
+   * PARTIAL_REFUND_AT_PROVIDER for a human to close. A COMPLETED or PROCESSING refund of this
+   * payment in the last 24 h accounts for it; the Cielo notifies within minutes, so 24 h only has to
+   * outlast its retries. The cost is a refund done at the Cielo inside that window going unflagged
+   * — the reconciliation still compares totals.
+   */
+  private boolean explainedByOwnRefund(Payment payment) {
+    Instant since = clock.instant().minus(OWN_REFUND_WINDOW);
+    return refunds.findByPayment(payment.id()).stream()
+        .anyMatch(
+            refund ->
+                (refund.state() == RefundState.COMPLETED || refund.state() == RefundState.PROCESSING)
+                    && refund.createdAt().isAfter(since));
   }
 
   /**

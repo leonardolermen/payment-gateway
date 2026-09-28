@@ -316,8 +316,10 @@ public class PaymentsConfiguration {
       PaymentRepository payments,
       CardStatusSync statusSync,
       Divergences divergences,
-      UnitOfWork unitOfWork) {
-    return new CardNotifications(payments, statusSync, divergences, unitOfWork);
+      RefundRepository refunds,
+      UnitOfWork unitOfWork,
+      Clock clock) {
+    return new CardNotifications(payments, statusSync, divergences, refunds, unitOfWork, clock);
   }
 
   @Bean

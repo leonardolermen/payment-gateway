@@ -408,3 +408,11 @@ voo muda de resultado; num ambiente com linhas antigas, uma repetição dentro d
 daria 422 em vez de replay. Rejeitado: não guardar hash (perde a detecção de chave reusada com corpo
 diferente) e cifrar o corpo (ninguém precisa lê-lo de volta). Custo se errado: trocar a chave HMAC
 transforma todo replay pendente em 422 até o TTL.
+
+## 2026-09-28 — ChangeType 25 explicado pelo próprio reembolso vira `ignored`
+Fecha o follow-up da entrada "A notificação da Cielo": se o pagamento tem reembolso `COMPLETED` ou
+`PROCESSING` criado nas últimas 24 h, o ChangeType 25 grava um evento `ignored` em vez de abrir
+`PARTIAL_REFUND_AT_PROVIDER` — a notificação não traz valor, então o reembolso recente é a melhor
+explicação disponível. Rejeitado: comparar valores (não há valor na notificação nem em
+`CardAuthorization`). Custo se errado: um reembolso feito direto na Cielo dentro dessa janela passa sem
+divergência; a conciliação de totais ainda o vê.

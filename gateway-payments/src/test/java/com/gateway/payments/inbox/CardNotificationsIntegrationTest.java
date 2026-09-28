@@ -5,11 +5,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.ids.MerchantId;
+import com.gateway.kernel.money.Money;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.kernel.provider.card.CardStatus;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentStatus;
 import com.gateway.payments.payment.create.CardChoice;
+import com.gateway.payments.refund.RefundService;
 import com.gateway.payments.support.ServiceIntegrationTestBase;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -24,6 +26,7 @@ class CardNotificationsIntegrationTest extends ServiceIntegrationTestBase {
   static final String APPROVES = "4024007153763171";
 
   @Autowired WebhookInboxService inbox;
+  @Autowired RefundService refunds;
 
   Payment authorized() {
     return paymentService.create(
@@ -106,6 +109,40 @@ class CardNotificationsIntegrationTest extends ServiceIntegrationTestBase {
 
     assertThat(paymentQueries.get(merchant, payment.id()).status())
         .isEqualTo(PaymentStatus.COMPLETED);
+    assertThat(divergences(payment)).containsExactly("PARTIAL_REFUND_AT_PROVIDER");
+  }
+
+  /**
+   * The gateway's own partial refund also produces ChangeType 25; with no amount in the
+   * notification, a recent COMPLETED refund is what explains it: an ignored event, no divergence.
+   */
+  @Test
+  void aPartialRefundDoneByTheGatewayIsRecordedAsIgnored() {
+    Payment payment = newCard(10000, APPROVES);
+    refunds.request(merchant, payment.id(), Money.brl(3000));
+
+    String id = notify(merchant, payment.card().paymentId(), 25);
+
+    assertThat(inboxStatus(id)).isEqualTo("PROCESSED");
+    assertThat(divergences(payment)).isEmpty();
+    assertThat(
+            jdbc.queryForList(
+                "SELECT type FROM payments.payment_events WHERE payment_id = ? ORDER BY sequence",
+                String.class,
+                payment.id()))
+        .endsWith("ignored");
+  }
+
+  /** A FAILED refund moved no money, so it explains nothing: the divergence still opens. */
+  @Test
+  void aFailedOwnRefundDoesNotExplainAPartialRefundNotification() {
+    Payment payment = newCard(10000, APPROVES);
+    cards.nextRefundReturnCode("100");
+    assertThatThrownBy(() -> refunds.request(merchant, payment.id(), Money.brl(3000)))
+        .isInstanceOf(DomainException.class);
+
+    notify(merchant, payment.card().paymentId(), 25);
+
     assertThat(divergences(payment)).containsExactly("PARTIAL_REFUND_AT_PROVIDER");
   }
 
