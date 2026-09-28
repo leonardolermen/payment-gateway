@@ -42,10 +42,10 @@ public class PaymentsController {
     request.validate();
 
     MerchantContext.Current caller = MerchantContext.current();
-    CreatePaymentCommand command =
+    CreatePaymentCommand paymentCommand =
         request.toCommand(caller.merchantId(), providerEnvironment(caller.environment()));
 
-    return withResource(HttpStatus.CREATED, payments.create(command));
+    return withResource(HttpStatus.CREATED, payments.create(paymentCommand));
   }
 
   @GetMapping("/{id}")
