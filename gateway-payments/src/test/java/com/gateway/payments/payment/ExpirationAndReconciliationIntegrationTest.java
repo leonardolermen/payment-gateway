@@ -361,7 +361,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
             "declined but created"));
     assertThatThrownBy(() -> newCharge(1000))
         .isInstanceOf(com.gateway.kernel.errors.DomainException.class);
-    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    Payment p = paymentQueries.list(merchant, 10, null).getFirst();
     bank.markPaid(p.id(), "E2E" + p.id(), Money.brl(1000));
 
     reconciliation.reconcileAll(clock.instant().plus(Duration.ofMinutes(30)));

@@ -8,10 +8,12 @@ import com.gateway.kernel.provider.pix.ChargeStatus;
 import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.kernel.provider.pix.ReceivedPix;
 import com.gateway.payments.PaymentsProperties;
+import com.gateway.payments.payment.BoletoSettlement;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentService;
 import com.gateway.payments.payment.PaymentStatus;
+import com.gateway.payments.payment.PixSettlement;
 import com.gateway.payments.payment.persistence.PaymentRepository;
 import com.gateway.payments.provider.ProviderGateway;
 import com.gateway.payments.provider.ProviderGateway.ResolvedProvider;
@@ -37,6 +39,8 @@ public class BoletoPollingService {
   private final PaymentRepository payments;
   private final ProviderGateway providers;
   private final PaymentService paymentService;
+  private final PixSettlement pixSettlement;
+  private final BoletoSettlement boletoSettlement;
   private final PaymentsProperties properties;
   private final TransactionTemplate transactionTemplate;
   private final Clock clock;
@@ -45,12 +49,16 @@ public class BoletoPollingService {
       PaymentRepository payments,
       ProviderGateway providers,
       PaymentService paymentService,
+      PixSettlement pixSettlement,
+      BoletoSettlement boletoSettlement,
       PaymentsProperties properties,
       TransactionTemplate transactionTemplate,
       Clock clock) {
     this.payments = payments;
     this.providers = providers;
     this.paymentService = paymentService;
+    this.pixSettlement = pixSettlement;
+    this.boletoSettlement = boletoSettlement;
     this.properties = properties;
     this.transactionTemplate = transactionTemplate;
     this.clock = clock;
@@ -82,7 +90,7 @@ public class BoletoPollingService {
     BoletoStatus status = atBank.get();
     if (payment.status() == PaymentStatus.COMPLETED) {
       if (status.paid()) {
-        paymentService.settleBoleto(
+        boletoSettlement.settleBoleto(
             payment.merchantId(),
             payment.id(),
             status,
@@ -142,7 +150,7 @@ public class BoletoPollingService {
           "BOLETO_PAID",
           "boleto " + nn + " paid " + cents + " cents at the bank while " + payment.status());
     } else {
-      paymentService.settleBoleto(payment.merchantId(), payment.id(), atBank.get(), by);
+      boletoSettlement.settleBoleto(payment.merchantId(), payment.id(), atBank.get(), by);
     }
     return true;
   }
@@ -156,7 +164,7 @@ public class BoletoPollingService {
    * settleBoleto still completes via PIX with the endToEndId unknown.
    */
   private void settlePaid(Payment payment, BoletoStatus status, EventSource by) {
-    if (PaymentService.isPixChannel(status.paidChannel())
+    if (BoletoSettlement.isPixChannel(status.paidChannel())
         && payment.pix() != null
         && payment.pix().txid() != null) {
       Optional<ReceivedPix> pix = Optional.empty();
@@ -181,11 +189,11 @@ public class BoletoPollingService {
             e.code());
       }
       if (pix.isPresent()) {
-        paymentService.settle(payment.merchantId(), payment.id(), pix.get(), by);
+        pixSettlement.settle(payment.merchantId(), payment.id(), pix.get(), by);
         return;
       }
     }
-    paymentService.settleBoleto(payment.merchantId(), payment.id(), status, by);
+    boletoSettlement.settleBoleto(payment.merchantId(), payment.id(), status, by);
   }
 
   /**

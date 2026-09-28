@@ -12,6 +12,7 @@ import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentService;
 import com.gateway.payments.payment.PaymentStatus;
+import com.gateway.payments.payment.PixSettlement;
 import com.gateway.payments.payment.boleto.BoletoPollingService;
 import com.gateway.payments.payment.persistence.PaymentRepository;
 import com.gateway.payments.provider.ProviderGateway;
@@ -45,6 +46,7 @@ public class ReconciliationService {
   private final ReconciliationDivergenceRepository divergences;
   private final ProviderGateway providers;
   private final PaymentService paymentService;
+  private final PixSettlement pixSettlement;
   private final BoletoPollingService boletoPolling;
   private final PaymentsProperties properties;
   private final Clock clock;
@@ -54,6 +56,7 @@ public class ReconciliationService {
       ReconciliationDivergenceRepository divergences,
       ProviderGateway providers,
       PaymentService paymentService,
+      PixSettlement pixSettlement,
       BoletoPollingService boletoPolling,
       PaymentsProperties properties,
       Clock clock) {
@@ -61,6 +64,7 @@ public class ReconciliationService {
     this.divergences = divergences;
     this.providers = providers;
     this.paymentService = paymentService;
+    this.pixSettlement = pixSettlement;
     this.boletoPolling = boletoPolling;
     this.properties = properties;
     this.clock = clock;
@@ -164,12 +168,12 @@ public class ReconciliationService {
       if (bankPaid
           && (payment.status() == PaymentStatus.PENDING
               || payment.status() == PaymentStatus.EXPIRED)) {
-        paymentService.settle(merchantId, payment.id(), pix.get(), EventSource.RECONCILIATION);
+        pixSettlement.settle(merchantId, payment.id(), pix.get(), EventSource.RECONCILIATION);
         changed++;
       } else if (bankPaid
           && (payment.status() == PaymentStatus.FAILED
               || payment.status() == PaymentStatus.CANCELED)) {
-        // Same rule as a late webhook (PaymentService.settle), minus the "ignored" event: this runs
+        // Same rule as a late webhook (PixSettlement.settle), minus the "ignored" event: this runs
         // every 15 minutes and must not grow the payment's log each time it looks.
         changed +=
             open(

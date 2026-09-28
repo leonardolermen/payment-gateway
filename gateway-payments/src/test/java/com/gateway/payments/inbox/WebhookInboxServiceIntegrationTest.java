@@ -107,7 +107,7 @@ class WebhookInboxServiceIntegrationTest extends ServiceIntegrationTestBase {
         new ProviderException(
             ProviderException.Code.INVALID, 400, "CobOperacaoInvalida", "invalid"));
     assertThatThrownBy(() -> newCharge(900)).isInstanceOf(DomainException.class);
-    Payment failed = paymentService.list(merchant, 10, null).getFirst();
+    Payment failed = paymentQueries.list(merchant, 10, null).getFirst();
     assertThat(failed.status()).isEqualTo(PaymentStatus.FAILED);
     String e2e = "E" + Ulid.next();
     bank.markPaid(failed.id(), e2e, Money.brl(900));

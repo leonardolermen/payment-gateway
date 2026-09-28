@@ -14,9 +14,13 @@ import com.gateway.payments.jobs.persistence.JobRepository;
 import com.gateway.payments.jobs.persistence.JobRepositoryImpl;
 import com.gateway.payments.outbox.persistence.OutboxRepository;
 import com.gateway.payments.outbox.persistence.OutboxRepositoryImpl;
+import com.gateway.payments.payment.BoletoSettlement;
 import com.gateway.payments.payment.ExpirationService;
+import com.gateway.payments.payment.PaymentCancellation;
 import com.gateway.payments.payment.PaymentEvents;
+import com.gateway.payments.payment.PaymentQueries;
 import com.gateway.payments.payment.PaymentService;
+import com.gateway.payments.payment.PixSettlement;
 import com.gateway.payments.payment.boleto.BoletoPollingService;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepository;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepositoryImpl;
@@ -192,29 +196,49 @@ public class PaymentsConfiguration {
 
   @Bean
   PaymentService paymentService(
-      PaymentRepository payments,
       Divergences divergences,
-      ProviderGateway providers,
-      PaymentEvents events,
       PaymentFlows flows,
       PendingAdoption adoption,
       BolecodeFromQuery bolecodeFromQuery,
-      CreateFailures failures,
-      PaymentsProperties properties,
-      TransactionTemplate paymentsTransactionTemplate,
+      CreateFailures failures) {
+    return new PaymentService(divergences, flows, adoption, bolecodeFromQuery, failures);
+  }
+
+  @Bean
+  PaymentQueries paymentQueries(PaymentRepository payments) {
+    return new PaymentQueries(payments);
+  }
+
+  @Bean
+  PixSettlement pixSettlement(
+      PaymentRepository payments,
+      Divergences divergences,
+      PaymentEvents events,
+      ProviderGateway providers,
+      UnitOfWork unitOfWork) {
+    return new PixSettlement(payments, divergences, events, providers, unitOfWork);
+  }
+
+  @Bean
+  BoletoSettlement boletoSettlement(
+      PaymentRepository payments,
+      Divergences divergences,
+      PaymentEvents events,
+      UnitOfWork unitOfWork,
       Clock clock) {
-    return new PaymentService(
-        payments,
-        divergences,
-        providers,
-        events,
-        flows,
-        adoption,
-        bolecodeFromQuery,
-        failures,
-        properties,
-        paymentsTransactionTemplate,
-        clock);
+    return new BoletoSettlement(payments, divergences, events, unitOfWork, clock);
+  }
+
+  @Bean
+  PaymentCancellation paymentCancellation(
+      PaymentQueries queries,
+      PaymentRepository payments,
+      PaymentEvents events,
+      ProviderGateway providers,
+      UnitOfWork unitOfWork,
+      BoletoSettlement boletoSettlement) {
+    return new PaymentCancellation(
+        queries, payments, events, providers, unitOfWork, boletoSettlement);
   }
 
   @Bean
@@ -254,12 +278,12 @@ public class PaymentsConfiguration {
       WebhookInboxRepository inbox,
       JobRepository jobs,
       ProviderGateway providers,
-      PaymentService paymentService,
+      PixSettlement pixSettlement,
       RefundService refundService,
       TransactionTemplate paymentsTransactionTemplate,
       Clock clock) {
     return new WebhookInboxService(
-        inbox, jobs, providers, paymentService, refundService, paymentsTransactionTemplate, clock);
+        inbox, jobs, providers, pixSettlement, refundService, paymentsTransactionTemplate, clock);
   }
 
   @Bean
@@ -267,11 +291,20 @@ public class PaymentsConfiguration {
       PaymentRepository payments,
       ProviderGateway providers,
       PaymentService paymentService,
+      PixSettlement pixSettlement,
+      BoletoSettlement boletoSettlement,
       PaymentEvents events,
       PaymentsProperties properties,
       TransactionTemplate paymentsTransactionTemplate) {
     return new ExpirationService(
-        payments, providers, paymentService, events, properties, paymentsTransactionTemplate);
+        payments,
+        providers,
+        paymentService,
+        pixSettlement,
+        boletoSettlement,
+        events,
+        properties,
+        paymentsTransactionTemplate);
   }
 
   @Bean
@@ -280,11 +313,19 @@ public class PaymentsConfiguration {
       ReconciliationDivergenceRepository divergences,
       ProviderGateway providers,
       PaymentService paymentService,
+      PixSettlement pixSettlement,
       BoletoPollingService boletoPolling,
       PaymentsProperties properties,
       Clock clock) {
     return new ReconciliationService(
-        payments, divergences, providers, paymentService, boletoPolling, properties, clock);
+        payments,
+        divergences,
+        providers,
+        paymentService,
+        pixSettlement,
+        boletoPolling,
+        properties,
+        clock);
   }
 
   @Bean
@@ -292,11 +333,20 @@ public class PaymentsConfiguration {
       PaymentRepository payments,
       ProviderGateway providers,
       PaymentService paymentService,
+      PixSettlement pixSettlement,
+      BoletoSettlement boletoSettlement,
       PaymentsProperties properties,
       TransactionTemplate paymentsTransactionTemplate,
       Clock clock) {
     return new BoletoPollingService(
-        payments, providers, paymentService, properties, paymentsTransactionTemplate, clock);
+        payments,
+        providers,
+        paymentService,
+        pixSettlement,
+        boletoSettlement,
+        properties,
+        paymentsTransactionTemplate,
+        clock);
   }
 
   @Bean

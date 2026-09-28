@@ -108,7 +108,7 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
         .extracting(e -> ((DomainException) e).code())
         .isEqualTo("PROVIDER_DECLINED");
 
-    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    Payment p = paymentQueries.list(merchant, 10, null).getFirst();
     assertThat(p.status()).isEqualTo(PaymentStatus.FAILED);
     assertThat(payments.events(p.id()))
         .extracting(e -> e.type())
@@ -138,7 +138,7 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
         .extracting(e -> ((DomainException) e).code())
         .isEqualTo("PROVIDER_TIMEOUT");
 
-    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    Payment p = paymentQueries.list(merchant, 10, null).getFirst();
     assertThat(p.status()).isEqualTo(PaymentStatus.FAILED);
   }
 
@@ -164,7 +164,7 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
         .extracting(e -> ((DomainException) e).code())
         .isEqualTo("PROVIDER_UNAVAILABLE");
 
-    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    Payment p = paymentQueries.list(merchant, 10, null).getFirst();
     assertThat(p.status()).isEqualTo(PaymentStatus.FAILED);
     assertThat(bank.callsFor(p.id()))
         .containsExactly(
@@ -176,7 +176,7 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
     bank.failNextCreateWith(
         new ProviderException(ProviderException.Code.DECLINED, 422, null, "no"));
     assertThatThrownBy(() -> newCharge(700)).isInstanceOf(DomainException.class);
-    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    Payment p = paymentQueries.list(merchant, 10, null).getFirst();
     assertThat(bank.callsFor(p.id())).containsExactly("createCharge:" + p.id());
   }
 
@@ -184,7 +184,7 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
   void cancelPendingCallsTheBankAndEmits() {
     Payment p = newCharge(100);
 
-    Payment canceled = paymentService.cancel(merchant, p.id());
+    Payment canceled = paymentCancellation.cancel(merchant, p.id());
 
     assertThat(canceled.status()).isEqualTo(PaymentStatus.CANCELED);
     assertThat(bank.callsFor(p.id())).contains("cancelCharge:" + p.id());
@@ -208,7 +208,7 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
                           com.gateway.payments.payment.EventSource.PROVIDER_WEBHOOK)));
             });
 
-    assertThatThrownBy(() -> paymentService.cancel(merchant, p.id()))
+    assertThatThrownBy(() -> paymentCancellation.cancel(merchant, p.id()))
         .isInstanceOf(DomainException.class)
         .extracting(e -> ((DomainException) e).code())
         .isEqualTo("INVALID_STATE");
@@ -222,12 +222,12 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
         new CreatePixPayment(
             other, ProviderEnvironment.TEST, Money.brl(200), null, null, null, 600));
 
-    assertThat(paymentService.list(merchant, 10, null))
+    assertThat(paymentQueries.list(merchant, 10, null))
         .extracting(Payment::id)
         .containsExactly(mine.id());
-    assertThatThrownBy(() -> paymentService.get(other, mine.id()))
+    assertThatThrownBy(() -> paymentQueries.get(other, mine.id()))
         .isInstanceOf(DomainException.class);
-    assertThat(paymentService.get(merchant, mine.id()).id()).isEqualTo(mine.id());
+    assertThat(paymentQueries.get(merchant, mine.id()).id()).isEqualTo(mine.id());
   }
 
   @Test
@@ -253,14 +253,14 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
 
     String e2e = "E" + com.gateway.kernel.ids.Ulid.next();
     bank.markPaid(p.id(), e2e, Money.brl(1500));
-    PaymentService.Settlement outcome =
-        paymentService.settleFromWebhook(
+    Settlement outcome =
+        pixSettlement.settleFromWebhook(
             merchant,
             p.id(),
             new com.gateway.kernel.provider.pix.ReceivedPix(
                 e2e, Money.brl(1500), clock.instant(), "payer"));
 
-    assertThat(outcome).isEqualTo(PaymentService.Settlement.COMPLETED);
+    assertThat(outcome).isEqualTo(Settlement.COMPLETED);
     assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.COMPLETED);
   }
 }

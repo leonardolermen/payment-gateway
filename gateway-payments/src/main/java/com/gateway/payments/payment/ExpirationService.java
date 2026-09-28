@@ -31,6 +31,8 @@ public class ExpirationService {
   private final PaymentRepository payments;
   private final ProviderGateway providers;
   private final PaymentService paymentService;
+  private final PixSettlement pixSettlement;
+  private final BoletoSettlement boletoSettlement;
   private final PaymentEvents events;
   private final PaymentsProperties properties;
   private final TransactionTemplate transactionTemplate;
@@ -39,12 +41,16 @@ public class ExpirationService {
       PaymentRepository payments,
       ProviderGateway providers,
       PaymentService paymentService,
+      PixSettlement pixSettlement,
+      BoletoSettlement boletoSettlement,
       PaymentEvents events,
       PaymentsProperties properties,
       TransactionTemplate transactionTemplate) {
     this.payments = payments;
     this.providers = providers;
     this.paymentService = paymentService;
+    this.pixSettlement = pixSettlement;
+    this.boletoSettlement = boletoSettlement;
     this.events = events;
     this.properties = properties;
     this.transactionTemplate = transactionTemplate;
@@ -103,7 +109,7 @@ public class ExpirationService {
             paymentService.adoptBolecodeFromStatus(
                 payment.id(), resolved, atBank.get(), EventSource.SYSTEM);
             if (atBank.get().paid()) {
-              paymentService.settleBoleto(
+              boletoSettlement.settleBoleto(
                   payment.merchantId(), payment.id(), atBank.get(), EventSource.RECONCILIATION);
             }
           }
@@ -137,7 +143,7 @@ public class ExpirationService {
           paymentService.adoptPending(payment.id(), atBank.get(), fallback, EventSource.SYSTEM);
           if (atBank.get().status() == ChargeStatus.COMPLETED
               && atBank.get().firstPix().isPresent()) {
-            paymentService.settle(
+            pixSettlement.settle(
                 payment.merchantId(),
                 payment.id(),
                 atBank.get().firstPix().get(),
@@ -186,7 +192,7 @@ public class ExpirationService {
             "bank reports payment {} COMPLETED without pix[]; leaving it PENDING", payment.id());
         return false;
       }
-      paymentService.settle(
+      pixSettlement.settle(
           payment.merchantId(),
           payment.id(),
           atBank.get().firstPix().get(),
@@ -228,9 +234,9 @@ public class ExpirationService {
             resolved,
             target -> target.provider().find(target.credentials(), nn));
     if (atBank.isPresent() && atBank.get().paid()) {
-      return paymentService.settleBoleto(
+      return boletoSettlement.settleBoleto(
               payment.merchantId(), payment.id(), atBank.get(), EventSource.RECONCILIATION)
-          == PaymentService.Settlement.COMPLETED;
+          == Settlement.COMPLETED;
     }
     if (atBank.isPresent() && atBank.get().situation() == BoletoSituation.AWAITING_CREDIT) {
       log.info(
