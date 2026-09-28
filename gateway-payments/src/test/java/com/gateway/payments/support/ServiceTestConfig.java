@@ -25,4 +25,9 @@ public class ServiceTestConfig {
   RecordingBoletoProvider recordingBoletoProvider(MutableClock clock, RecordingPixProvider pix) {
     return new RecordingBoletoProvider(clock, pix);
   }
+
+  @Bean
+  TestSealer testSealer() {
+    return new TestSealer();
+  }
 }

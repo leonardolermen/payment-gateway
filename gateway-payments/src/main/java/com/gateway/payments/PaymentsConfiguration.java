@@ -4,6 +4,10 @@ import com.gateway.kernel.provider.CredentialLookup;
 import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
 import com.gateway.kernel.provider.card.CardMethodProvider;
 import com.gateway.kernel.provider.pix.PixMethodProvider;
+import com.gateway.kernel.security.Sealer;
+import com.gateway.payments.card.SavedCards;
+import com.gateway.payments.card.persistence.SavedCardRepository;
+import com.gateway.payments.card.persistence.SavedCardRepositoryImpl;
 import com.gateway.payments.idempotency.IdempotencyService;
 import com.gateway.payments.idempotency.persistence.IdempotencyRepository;
 import com.gateway.payments.idempotency.persistence.IdempotencyRepositoryImpl;
@@ -86,7 +90,8 @@ import org.springframework.transaction.support.TransactionTemplate;
   WebhookInboxRepositoryImpl.class,
   ProviderRequestRepositoryImpl.class,
   ReconciliationDivergenceRepositoryImpl.class,
-  BoletoNumberRepositoryImpl.class
+  BoletoNumberRepositoryImpl.class,
+  SavedCardRepositoryImpl.class
 })
 @EnableConfigurationProperties(PaymentsProperties.class)
 public class PaymentsConfiguration {
@@ -135,6 +140,12 @@ public class PaymentsConfiguration {
   @Bean
   UnitOfWork unitOfWork(TransactionTemplate paymentsTransactionTemplate) {
     return new TransactionalRunner(paymentsTransactionTemplate);
+  }
+
+  /** Sealer comes from the context: merchants' EnvelopeSealer in the app, TestSealer in tests. */
+  @Bean
+  SavedCards savedCards(SavedCardRepository cards, Sealer sealer, Clock clock) {
+    return new SavedCards(cards, sealer, clock);
   }
 
   @Bean
