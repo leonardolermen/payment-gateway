@@ -13,6 +13,9 @@ import com.gateway.merchants.crypto.MasterKey;
 import com.gateway.merchants.merchant.MerchantService;
 import com.gateway.merchants.merchant.persistence.MerchantRepository;
 import com.gateway.merchants.merchant.persistence.MerchantRepositoryImpl;
+import com.gateway.merchants.notification.InboundNotificationKeyService;
+import com.gateway.merchants.notification.persistence.InboundNotificationKeyRepository;
+import com.gateway.merchants.notification.persistence.InboundNotificationKeyRepositoryImpl;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.context.annotation.Bean;
@@ -36,17 +39,20 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @EntityScan({
   "com.gateway.merchants.merchant.persistence",
   "com.gateway.merchants.apikey.persistence",
-  "com.gateway.merchants.credential.persistence"
+  "com.gateway.merchants.credential.persistence",
+  "com.gateway.merchants.notification.persistence"
 })
 @EnableJpaRepositories({
   "com.gateway.merchants.merchant.persistence",
   "com.gateway.merchants.apikey.persistence",
-  "com.gateway.merchants.credential.persistence"
+  "com.gateway.merchants.credential.persistence",
+  "com.gateway.merchants.notification.persistence"
 })
 @Import({
   MerchantRepositoryImpl.class,
   ApiKeyRepositoryImpl.class,
-  ProviderCredentialRepositoryImpl.class
+  ProviderCredentialRepositoryImpl.class,
+  InboundNotificationKeyRepositoryImpl.class
 })
 public class MerchantsConfiguration {
   @Bean
@@ -80,5 +86,11 @@ public class MerchantsConfiguration {
   public ProviderCredentialService providerCredentialService(
       ProviderCredentialRepository r, EnvelopeCipher c) {
     return new ProviderCredentialService(r, c);
+  }
+
+  @Bean
+  public InboundNotificationKeyService inboundNotificationKeyService(
+      InboundNotificationKeyRepository keys) {
+    return new InboundNotificationKeyService(keys);
   }
 }
