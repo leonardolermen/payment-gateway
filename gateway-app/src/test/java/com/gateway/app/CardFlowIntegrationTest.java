@@ -334,30 +334,30 @@ class CardFlowIntegrationTest {
         .expectStatus()
         .isNotFound();
 
-    // 6. The Cielo notification: 404 without the header or with a wrong one, 200 with it.
+    // 6. The Cielo notification: 404 without the header, with a wrong one or on an unknown token —
+    // the same body in all three, so the answer is no oracle for which tokens exist — 413 over
+    // 16 KiB, 200 with the key.
     String token =
         jdbc.queryForObject(
             "SELECT inbound_webhook_token FROM merchants.merchants WHERE id = ?",
             String.class,
             merchantId);
     String notification = "{\"PaymentId\":\"" + SALE + "\",\"ChangeType\":1}";
+    String missingKey = notFoundBody(token, null, notification);
+    String wrongKey = notFoundBody(token, "wrong", notification);
+    String unknownToken = notFoundBody("no-such-token", NOTIFICATION_KEY, notification);
+    assertThat(missingKey).contains("404");
+    assertThat(withoutInstance(wrongKey)).isEqualTo(withoutInstance(missingKey));
+    assertThat(withoutInstance(unknownToken)).isEqualTo(withoutInstance(missingKey));
     http()
         .post()
         .uri("/v1/providers/cielo/webhooks/" + token)
+        .header("X-Gateway-Notification-Key", NOTIFICATION_KEY)
         .contentType(MediaType.APPLICATION_JSON)
-        .body(notification)
+        .body("{\"PaymentId\":\"" + "x".repeat(16 * 1024) + "\"}")
         .exchange()
         .expectStatus()
-        .isNotFound();
-    http()
-        .post()
-        .uri("/v1/providers/cielo/webhooks/" + token)
-        .header("X-Gateway-Notification-Key", "wrong")
-        .contentType(MediaType.APPLICATION_JSON)
-        .body(notification)
-        .exchange()
-        .expectStatus()
-        .isNotFound();
+        .isEqualTo(413);
     http()
         .post()
         .uri("/v1/providers/cielo/webhooks/" + token)
@@ -399,5 +399,30 @@ class CardFlowIntegrationTest {
             String.class,
             merchantId);
     assertThat(statuses).containsExactly("COMPLETED", "FAILED");
+  }
+
+  private String notFoundBody(String token, String key, String notification) {
+    var request =
+        http()
+            .post()
+            .uri("/v1/providers/cielo/webhooks/" + token)
+            .contentType(MediaType.APPLICATION_JSON);
+    if (key != null) {
+      request = request.header("X-Gateway-Notification-Key", key);
+    }
+
+    return request
+        .body(notification)
+        .exchange()
+        .expectStatus()
+        .isNotFound()
+        .expectBody(String.class)
+        .returnResult()
+        .getResponseBody();
+  }
+
+  /** The problem's instance is the request path, which differs by token and says nothing else. */
+  private static String withoutInstance(String problem) {
+    return problem == null ? null : problem.replaceAll("\"instance\"\\s*:\\s*\"[^\"]*\",?", "");
   }
 }
