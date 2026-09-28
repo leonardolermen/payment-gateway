@@ -30,23 +30,23 @@ class PaymentTest {
 
   @Test
   void txidIsTheIdAndFitsBacen() {
-    Payment p = fresh();
-    assertThat(p.id()).matches("[a-zA-Z0-9]{26,35}");
-    assertThat(p.status()).isEqualTo(PaymentStatus.CREATED);
+    Payment payment = fresh();
+    assertThat(payment.id()).matches("[a-zA-Z0-9]{26,35}");
+    assertThat(payment.status()).isEqualTo(PaymentStatus.CREATED);
     // create() already produces the initial "created" event: version starts at 1, not 0.
-    assertThat(p.version()).isEqualTo(1);
-    assertThat(p.createdEvent().sequence()).isEqualTo(1);
+    assertThat(payment.version()).isEqualTo(1);
+    assertThat(payment.createdEvent().sequence()).isEqualTo(1);
   }
 
   @Test
   void eventsCarryAMonotonicSequenceAndBumpTheVersion() {
-    Payment p = fresh();
+    Payment payment = fresh();
     PaymentEvent e1 =
-        p.markPending(
-            new PixDetails(p.id(), "000201…", "pix.example.com/x", null),
+        payment.markPending(
+            new PixDetails(payment.id(), "000201…", "pix.example.com/x", null),
             Instant.parse("2026-09-24T13:00:00Z"));
     PaymentEvent e2 =
-        p.markCompleted(
+        payment.markCompleted(
             "E12345678202009091221kkkkkkkkkkk",
             Money.brl(15990),
             Instant.parse("2026-09-24T12:30:00Z"),
@@ -54,57 +54,61 @@ class PaymentTest {
     // sequence 1 is the "created" event produced by create(); pending is 2, completed is 3.
     assertThat(e1.sequence()).isEqualTo(2);
     assertThat(e2.sequence()).isEqualTo(3);
-    assertThat(p.version()).isEqualTo(3);
-    assertThat(p.status()).isEqualTo(PaymentStatus.COMPLETED);
-    assertThat(p.pix().endToEndId()).isEqualTo("E12345678202009091221kkkkkkkkkkk");
+    assertThat(payment.version()).isEqualTo(3);
+    assertThat(payment.status()).isEqualTo(PaymentStatus.COMPLETED);
+    assertThat(payment.pix().endToEndId()).isEqualTo("E12345678202009091221kkkkkkkkkkk");
     assertThat(e2.type()).isEqualTo("completed");
   }
 
   @Test
   void refusedTransitionsThrow() {
-    Payment p = fresh();
+    Payment payment = fresh();
     assertThatThrownBy(
-            () -> p.markCompleted("E1", Money.brl(1), Instant.now(), EventSource.PROVIDER_WEBHOOK))
+            () ->
+                payment.markCompleted(
+                    "E1", Money.brl(1), Instant.now(), EventSource.PROVIDER_WEBHOOK))
         .isInstanceOf(IllegalStateException.class);
-    p.markPending(new PixDetails(p.id(), "x", "y", null), Instant.now());
-    assertThatThrownBy(() -> p.markCompleted("E1", Money.brl(1), Instant.now(), EventSource.API))
+    payment.markPending(new PixDetails(payment.id(), "x", "y", null), Instant.now());
+    assertThatThrownBy(
+            () -> payment.markCompleted("E1", Money.brl(1), Instant.now(), EventSource.API))
         .isInstanceOf(IllegalStateException.class);
   }
 
   @Test
   void webhookOnTerminalStateIsRecordedAndIgnored() {
-    Payment p = fresh();
-    p.markPending(new PixDetails(p.id(), "x", "y", null), Instant.now());
-    p.markCanceled(EventSource.API);
-    var ignored = p.recordIgnored("late webhook E1", EventSource.PROVIDER_WEBHOOK);
+    Payment payment = fresh();
+    payment.markPending(new PixDetails(payment.id(), "x", "y", null), Instant.now());
+    payment.markCanceled(EventSource.API);
+    var ignored = payment.recordIgnored("late webhook E1", EventSource.PROVIDER_WEBHOOK);
     assertThat(ignored).isPresent();
     assertThat(ignored.get().type()).isEqualTo("ignored");
-    assertThat(p.status()).isEqualTo(PaymentStatus.CANCELED);
+    assertThat(payment.status()).isEqualTo(PaymentStatus.CANCELED);
   }
 
   @Test
   void unconfirmedWebhookOnPendingIsRecordedWithoutATransition() {
-    Payment p = fresh();
-    assertThatThrownBy(() -> p.recordIgnored("too early", EventSource.PROVIDER_WEBHOOK))
+    Payment payment = fresh();
+    assertThatThrownBy(() -> payment.recordIgnored("too early", EventSource.PROVIDER_WEBHOOK))
         .isInstanceOf(IllegalStateException.class);
-    p.markPending(new PixDetails(p.id(), "x", "y", null), Instant.now());
-    assertThat(p.recordIgnored("unconfirmed webhook E1", EventSource.PROVIDER_WEBHOOK)).isPresent();
-    assertThat(p.status()).isEqualTo(PaymentStatus.PENDING);
+    payment.markPending(new PixDetails(payment.id(), "x", "y", null), Instant.now());
+    assertThat(payment.recordIgnored("unconfirmed webhook E1", EventSource.PROVIDER_WEBHOOK))
+        .isPresent();
+    assertThat(payment.status()).isEqualTo(PaymentStatus.PENDING);
   }
 
   @Test
   void expiredThenPaidByTheBankCompletes() {
-    Payment p = fresh();
-    p.markPending(new PixDetails(p.id(), "x", "y", null), Instant.now());
-    p.markExpired(EventSource.EXPIRATION_JOB);
-    p.markCompleted("E1", Money.brl(15990), Instant.now(), EventSource.RECONCILIATION);
-    assertThat(p.status()).isEqualTo(PaymentStatus.COMPLETED);
+    Payment payment = fresh();
+    payment.markPending(new PixDetails(payment.id(), "x", "y", null), Instant.now());
+    payment.markExpired(EventSource.EXPIRATION_JOB);
+    payment.markCompleted("E1", Money.brl(15990), Instant.now(), EventSource.RECONCILIATION);
+    assertThat(payment.status()).isEqualTo(PaymentStatus.COMPLETED);
   }
 
   @Test
   void eventPayloadsEscapeEmbeddedStrings() {
-    Payment p = fresh();
-    PaymentEvent event = p.markFailed("bank said \"no\" \\ line\nbreak", EventSource.SYSTEM);
+    Payment payment = fresh();
+    PaymentEvent event = payment.markFailed("bank said \"no\" \\ line\nbreak", EventSource.SYSTEM);
     assertThat(event.payload())
         .isEqualTo("{\"reason\":\"bank said \\\"no\\\" \\\\ line\\nbreak\"}");
     assertThat(event.payload()).doesNotContain("\n");
@@ -112,16 +116,16 @@ class PaymentTest {
 
   @Test
   void refundsAreProjectedNotTransitions() {
-    Payment p = fresh();
-    p.markPending(new PixDetails(p.id(), "x", "y", null), Instant.now());
-    p.markCompleted("E1", Money.brl(15990), Instant.now(), EventSource.PROVIDER_WEBHOOK);
-    p.applyRefund(Money.brl(5000));
-    assertThat(p.partiallyRefunded()).isTrue();
-    assertThat(p.fullyRefunded()).isFalse();
-    p.applyRefund(Money.brl(10990));
-    assertThat(p.fullyRefunded()).isTrue();
-    assertThat(p.status()).isEqualTo(PaymentStatus.COMPLETED);
-    assertThatThrownBy(() -> p.applyRefund(Money.brl(1)))
+    Payment payment = fresh();
+    payment.markPending(new PixDetails(payment.id(), "x", "y", null), Instant.now());
+    payment.markCompleted("E1", Money.brl(15990), Instant.now(), EventSource.PROVIDER_WEBHOOK);
+    payment.applyRefund(Money.brl(5000));
+    assertThat(payment.partiallyRefunded()).isTrue();
+    assertThat(payment.fullyRefunded()).isFalse();
+    payment.applyRefund(Money.brl(10990));
+    assertThat(payment.fullyRefunded()).isTrue();
+    assertThat(payment.status()).isEqualTo(PaymentStatus.COMPLETED);
+    assertThatThrownBy(() -> payment.applyRefund(Money.brl(1)))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -150,13 +154,13 @@ class PaymentTest {
 
   @Test
   void aBolecodeStartsWithItsNumberAndNoTxid() {
-    Payment p = bolecode();
-    assertThat(p.method()).isEqualTo(PaymentMethod.BOLECODE);
-    assertThat(p.boleto().nossoNumero()).isEqualTo("00000042");
-    assertThat(p.pix().txid()).isNull();
-    assertThat(p.status()).isEqualTo(PaymentStatus.CREATED);
-    assertThat(p.version()).isEqualTo(1);
-    assertThat(p.createdEvent().payload())
+    Payment payment = bolecode();
+    assertThat(payment.method()).isEqualTo(PaymentMethod.BOLECODE);
+    assertThat(payment.boleto().nossoNumero()).isEqualTo("00000042");
+    assertThat(payment.pix().txid()).isNull();
+    assertThat(payment.status()).isEqualTo(PaymentStatus.CREATED);
+    assertThat(payment.version()).isEqualTo(1);
+    assertThat(payment.createdEvent().payload())
         .contains("\"method\":\"BOLECODE\"")
         .contains("\"nossoNumero\":\"00000042\"");
     assertThat(fresh().method()).isEqualTo(PaymentMethod.PIX);
@@ -165,28 +169,30 @@ class PaymentTest {
 
   @Test
   void pendingBolecodeCarriesBothSidesAndPaidByBoletoSetsPaidVia() {
-    Payment p = bolecode();
+    Payment payment = bolecode();
     PixDetails pix = new PixDetails("BL15000005206109000000000000042", "000201…", null, null);
     BoletoDetails issued =
-        p.boleto().withIssued("uuid-1", "1".repeat(47), "1".repeat(44), LocalDate.of(2026, 10, 30));
+        payment
+            .boleto()
+            .withIssued("uuid-1", "1".repeat(47), "1".repeat(44), LocalDate.of(2026, 10, 30));
     PaymentEvent pending =
-        p.markPendingBolecode(
+        payment.markPendingBolecode(
             pix, issued, BoletoDates.endOfDay(LocalDate.of(2026, 10, 30)), EventSource.API);
     assertThat(pending.type()).isEqualTo("pending");
-    assertThat(p.boleto().paymentLimitDate()).isEqualTo(LocalDate.of(2026, 10, 30));
-    assertThat(p.boleto().linhaDigitavel()).hasSize(47);
-    assertThat(p.pix().txid()).startsWith("BL");
+    assertThat(payment.boleto().paymentLimitDate()).isEqualTo(LocalDate.of(2026, 10, 30));
+    assertThat(payment.boleto().linhaDigitavel()).hasSize(47);
+    assertThat(payment.pix().txid()).startsWith("BL");
 
     PaymentEvent done =
-        p.markCompletedByBoleto(
+        payment.markCompletedByBoleto(
             Money.brl(12990),
             Instant.parse("2026-10-05T12:00:00Z"),
             "01",
             EventSource.PROVIDER_POLL);
-    assertThat(p.status()).isEqualTo(PaymentStatus.COMPLETED);
-    assertThat(p.boleto().paidVia()).isEqualTo(PaidVia.BOLETO);
-    assertThat(p.paidAmount()).isEqualTo(Money.brl(12990));
-    assertThat(p.pix().endToEndId()).isNull();
+    assertThat(payment.status()).isEqualTo(PaymentStatus.COMPLETED);
+    assertThat(payment.boleto().paidVia()).isEqualTo(PaidVia.BOLETO);
+    assertThat(payment.paidAmount()).isEqualTo(Money.brl(12990));
+    assertThat(payment.pix().endToEndId()).isNull();
     assertThat(done.payload())
         .contains("\"paidVia\":\"BOLETO\"")
         .contains("\"paidChannel\":\"01\"");
@@ -194,15 +200,16 @@ class PaymentTest {
 
   @Test
   void pixOnABolecodeSetsPaidViaPixAndBoletoCompletionIsRefusedOnPix() {
-    Payment p = bolecode();
-    p.markPendingBolecode(
+    Payment payment = bolecode();
+    payment.markPendingBolecode(
         new PixDetails("BL1", "emv", null, null),
-        p.boleto(),
+        payment.boleto(),
         Instant.parse("2026-11-01T02:59:59Z"),
         EventSource.API);
     PaymentEvent e =
-        p.markCompleted("E123", Money.brl(12990), Instant.now(), EventSource.PROVIDER_WEBHOOK);
-    assertThat(p.boleto().paidVia()).isEqualTo(PaidVia.PIX);
+        payment.markCompleted(
+            "E123", Money.brl(12990), Instant.now(), EventSource.PROVIDER_WEBHOOK);
+    assertThat(payment.boleto().paidVia()).isEqualTo(PaidVia.PIX);
     assertThat(e.payload()).contains("\"paidVia\":\"PIX\"");
 
     Payment pix = fresh();
@@ -243,54 +250,56 @@ class PaymentTest {
 
   @Test
   void aCardPaymentHasNoPixSideAndNoExpiry() {
-    Payment p = card();
+    Payment payment = card();
 
-    assertThat(p.method()).isEqualTo(PaymentMethod.CARD);
-    assertThat(p.pix()).isNull();
-    assertThat(p.boleto()).isNull();
-    assertThat(p.expiresAt()).isNull();
-    assertThat(p.card().installments()).isEqualTo(3);
-    assertThat(p.createdEvent().payload()).contains("\"method\":\"CARD\"");
+    assertThat(payment.method()).isEqualTo(PaymentMethod.CARD);
+    assertThat(payment.pix()).isNull();
+    assertThat(payment.boleto()).isNull();
+    assertThat(payment.expiresAt()).isNull();
+    assertThat(payment.card().installments()).isEqualTo(3);
+    assertThat(payment.createdEvent().payload()).contains("\"method\":\"CARD\"");
   }
 
   @Test
   void authorizedThenPartiallyCaptured() {
-    Payment p = card();
-    p.markAuthorized(authorized(p.card()), EventSource.API);
-    assertThat(p.status()).isEqualTo(PaymentStatus.AUTHORIZED);
+    Payment payment = card();
+    payment.markAuthorized(authorized(payment.card()), EventSource.API);
+    assertThat(payment.status()).isEqualTo(PaymentStatus.AUTHORIZED);
 
     PaymentEvent captured =
-        p.markCaptured(Money.brl(6000), Instant.parse("2026-09-24T12:30:00Z"), EventSource.API);
+        payment.markCaptured(
+            Money.brl(6000), Instant.parse("2026-09-24T12:30:00Z"), EventSource.API);
 
-    assertThat(p.status()).isEqualTo(PaymentStatus.COMPLETED);
-    assertThat(p.paidAmount()).isEqualTo(Money.brl(6000));
-    assertThat(p.card().capturedAmount()).isEqualTo(6000L);
+    assertThat(payment.status()).isEqualTo(PaymentStatus.COMPLETED);
+    assertThat(payment.paidAmount()).isEqualTo(Money.brl(6000));
+    assertThat(payment.card().capturedAmount()).isEqualTo(6000L);
     assertThat(captured.payload()).contains("\"paidVia\":\"CARD\"").contains("\"paidAmount\":6000");
   }
 
   @Test
   void anAutomaticCaptureGoesStraightToCompleted() {
-    Payment p = card();
+    Payment payment = card();
 
-    p.markCompletedByCard(
-        authorized(p.card()),
+    payment.markCompletedByCard(
+        authorized(payment.card()),
         Money.brl(10000),
         Instant.parse("2026-09-24T12:00:01Z"),
         EventSource.API);
 
-    assertThat(p.status()).isEqualTo(PaymentStatus.COMPLETED);
-    assertThat(p.card().paymentId()).isEqualTo("6f8d1753-86bb-4dc0-9ebb-09a29093e1fb");
+    assertThat(payment.status()).isEqualTo(PaymentStatus.COMPLETED);
+    assertThat(payment.card().paymentId()).isEqualTo("6f8d1753-86bb-4dc0-9ebb-09a29093e1fb");
   }
 
   @Test
   void aDeclineFailsAndKeepsTheDeclineCode() {
-    Payment p = card();
+    Payment payment = card();
 
     PaymentEvent failed =
-        p.markDeclined(authorized(p.card()).withDecline("INSUFFICIENT_FUNDS"), EventSource.API);
+        payment.markDeclined(
+            authorized(payment.card()).withDecline("INSUFFICIENT_FUNDS"), EventSource.API);
 
-    assertThat(p.status()).isEqualTo(PaymentStatus.FAILED);
-    assertThat(p.card().declineCode()).isEqualTo("INSUFFICIENT_FUNDS");
+    assertThat(payment.status()).isEqualTo(PaymentStatus.FAILED);
+    assertThat(payment.card().declineCode()).isEqualTo("INSUFFICIENT_FUNDS");
     assertThat(failed.payload())
         .isEqualTo("{\"reason\":\"CARD_DECLINED\",\"declineCode\":\"INSUFFICIENT_FUNDS\"}");
   }
@@ -298,14 +307,14 @@ class PaymentTest {
   /** Spec §4: the refunds' sum is capped by paid_amount, which a partial capture makes smaller. */
   @Test
   void aCardRefundIsCappedByWhatWasCaptured() {
-    Payment p = card();
-    p.markAuthorized(authorized(p.card()), EventSource.API);
-    p.markCaptured(Money.brl(6000), Instant.parse("2026-09-24T12:30:00Z"), EventSource.API);
+    Payment payment = card();
+    payment.markAuthorized(authorized(payment.card()), EventSource.API);
+    payment.markCaptured(Money.brl(6000), Instant.parse("2026-09-24T12:30:00Z"), EventSource.API);
 
-    p.applyRefund(Money.brl(6000));
+    payment.applyRefund(Money.brl(6000));
 
-    assertThat(p.fullyRefunded()).isTrue();
-    assertThatThrownBy(() -> p.applyRefund(Money.brl(1)))
+    assertThat(payment.fullyRefunded()).isTrue();
+    assertThatThrownBy(() -> payment.applyRefund(Money.brl(1)))
         .isInstanceOf(IllegalArgumentException.class);
   }
 

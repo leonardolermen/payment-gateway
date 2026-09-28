@@ -36,28 +36,31 @@ public enum CardBrand {
       return Optional.of(ELO);
     }
 
-    int two = Integer.parseInt(digits.substring(0, 2));
-    int four = Integer.parseInt(digits.substring(0, 4));
+    int firstTwoDigits = Integer.parseInt(digits.substring(0, 2));
+    int firstFourDigits = Integer.parseInt(digits.substring(0, 4));
 
     if (digits.startsWith("4")) {
       return Optional.of(VISA);
     }
-    if ((two >= 51 && two <= 55) || (four >= 2221 && four <= 2720)) {
+    if ((firstTwoDigits >= 51 && firstTwoDigits <= 55)
+        || (firstFourDigits >= 2221 && firstFourDigits <= 2720)) {
       return Optional.of(MASTER);
     }
-    if (two == 34 || two == 37) {
+    if (firstTwoDigits == 34 || firstTwoDigits == 37) {
       return Optional.of(AMEX);
     }
-    if (four >= 3528 && four <= 3589) {
+    if (firstFourDigits >= 3528 && firstFourDigits <= 3589) {
       return Optional.of(JCB);
     }
-    if (two == 36 || two == 38 || (four >= 3000 && four <= 3059)) {
+    if (firstTwoDigits == 36
+        || firstTwoDigits == 38
+        || (firstFourDigits >= 3000 && firstFourDigits <= 3059)) {
       return Optional.of(DINERS);
     }
-    if (digits.startsWith("6011") || two == 65) {
+    if (digits.startsWith("6011") || firstTwoDigits == 65) {
       return Optional.of(DISCOVER);
     }
-    if (two == 50) {
+    if (firstTwoDigits == 50) {
       return Optional.of(AURA);
     }
 
