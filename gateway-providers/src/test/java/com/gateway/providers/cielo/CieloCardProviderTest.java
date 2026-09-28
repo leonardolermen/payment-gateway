@@ -235,6 +235,51 @@ class CieloCardProviderTest {
     assertThat(refund.returnCode()).isEqualTo("9");
   }
 
+  /**
+   * A partial void leaves the sale PAID (Status 2) and answers ReturnCode 0: reading the status
+   * called this a failure while the money had gone back. The code decides.
+   */
+  @Test
+  void aPartialVoidThatLeavesTheSalePaidIsACompletedRefund() {
+    server.stubFor(
+        put(urlPathEqualTo("/1/sales/" + PAYMENT_ID + "/void"))
+            .willReturn(okJson(CieloFixtures.read("put_void_200_partial.json"))));
+
+    CardRefundResult refund =
+        provider.refund(credentials(), PAYMENT_ID, Optional.of(Money.brl(700)));
+
+    assertThat(refund.status()).isEqualTo(CardStatus.PAID);
+    assertThat(refund.returnCode()).isEqualTo("0");
+    assertThat(refund.completed()).isTrue();
+  }
+
+  @Test
+  void aTotalVoidOnTheSaleDayIsACompletedRefund() {
+    server.stubFor(
+        put(urlPathEqualTo("/1/sales/" + PAYMENT_ID + "/void"))
+            .willReturn(okJson(CieloFixtures.read("put_void_200.json"))));
+
+    CardRefundResult refund =
+        provider.refund(credentials(), PAYMENT_ID, Optional.of(Money.brl(15700)));
+
+    assertThat(refund.status()).isEqualTo(CardStatus.VOIDED);
+    assertThat(refund.completed()).isTrue();
+  }
+
+  /** 100 = partial void before settlement: a 200 whose code says the void was not performed. */
+  @Test
+  void aVoidAnsweredWithAnotherReturnCodeWasNotPerformed() {
+    server.stubFor(
+        put(urlPathEqualTo("/1/sales/" + PAYMENT_ID + "/void"))
+            .willReturn(okJson(CieloFixtures.read("put_void_200_not_performed.json"))));
+
+    CardRefundResult refund =
+        provider.refund(credentials(), PAYMENT_ID, Optional.of(Money.brl(700)));
+
+    assertThat(refund.returnCode()).isEqualTo("100");
+    assertThat(refund.completed()).isFalse();
+  }
+
   @Test
   void findByOrderReadsTheNewestSale() {
     server.stubFor(

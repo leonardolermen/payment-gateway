@@ -46,6 +46,8 @@ public class RecordingCardProvider implements CardMethodProvider {
   private volatile ProviderException failNextFindByOrder;
   private volatile ProviderException failNextCapture;
   private volatile ProviderException failNextRefund;
+  private volatile String nextRefundReturnCode;
+  private final Map<String, Money> refundedByPayment = new ConcurrentHashMap<>();
   private volatile CardStatus nextAuthorizeStatus;
   private volatile CardStatus nextFindByOrderStatus;
   private volatile boolean withholdNextToken;
@@ -88,6 +90,11 @@ public class RecordingCardProvider implements CardMethodProvider {
 
   public void failNextRefundWith(ProviderException e) {
     this.failNextRefund = e;
+  }
+
+  /** The next void answers 200 with this ReturnCode and changes nothing (100, 101 …). */
+  public void nextRefundReturnCode(String returnCode) {
+    this.nextRefundReturnCode = returnCode;
   }
 
   /** What the Cielo shows now: a capture or a void done outside the gateway. */
@@ -220,6 +227,21 @@ public class RecordingCardProvider implements CardMethodProvider {
     }
 
     CardAuthorization sale = sales.get(paymentId);
+    String refused = nextRefundReturnCode;
+    if (refused != null) {
+      nextRefundReturnCode = null;
+      return new CardRefundResult(sale.status(), amount.orElse(null), refused, "not performed");
+    }
+
+    // Like the Cielo: a void that leaves money on the sale keeps it PAID (Status 2) and answers 0;
+    // only the one that empties it moves the status and answers 9.
+    Money refunded =
+        refundedByPayment.merge(paymentId, amount.orElse(sale.capturedAmount()), Money::plus);
+    boolean leavesMoneyOnTheSale = sale.capturedAmount().greaterThan(refunded);
+    if (leavesMoneyOnTheSale) {
+      return new CardRefundResult(sale.status(), amount.orElse(null), "0", "Operation Successful");
+    }
+
     sales.put(paymentId, with(sale, CardStatus.REFUNDED, sale.capturedAmount()));
     return new CardRefundResult(
         CardStatus.REFUNDED, amount.orElse(null), "9", "Operation Successful");

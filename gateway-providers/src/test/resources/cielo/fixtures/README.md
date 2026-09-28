@@ -20,6 +20,8 @@ undone.
 | put_capture_200.json | verbatim — reference/capturar-apos-autorizacao, 200 "Result" |
 | put_void_200.json | verbatim — reference/cancelamento-paymentid, 200 "Result" |
 | put_void_200_refunded.json | derived from put_void_200: Status 11 (reference/payment-status, "Refunded") |
+| put_void_200_partial.json | derived from put_void_200: Status 2 (a partial void leaves the sale PAID), ReturnCode "0" ("códigos de retorno de cancelamento": "Cancelamento aprovado com sucesso") |
+| put_void_200_not_performed.json | derived from put_void_200: Status 2, ReturnCode "100" (same table: partial void before settlement, not performed); the message is ours, not the Cielo's |
 | get_sale_200_credit.json | verbatim — reference/consulta-paymentid-api, 200 "Transação de crédito" |
 | get_sale_200_authorized.json | derived from get_sale_200_credit: Capture false, Status 1, no captured fields |
 | get_sales_by_order_200.json | verbatim — reference/consulta-merchantorderid-api, 200 "Result" (note `ReceveidDate`, the Cielo's spelling) |

@@ -2,6 +2,7 @@ package com.gateway.kernel.provider.card;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.gateway.kernel.money.Money;
 import java.util.EnumSet;
 import org.junit.jupiter.api.Test;
 
@@ -22,15 +23,21 @@ class CardStatusTest {
     }
   }
 
+  /**
+   * The void's ReturnCode decides, not the sale status: a partial void leaves the sale PAID (2) and
+   * answers 0; a total one answers 9; 100 is "partial before settlement", not performed.
+   */
   @Test
-  void aRefundIsCompletedWhenTheSaleIsVoidedOrRefunded() {
-    for (CardStatus status : CardStatus.values()) {
-      boolean expected = status == CardStatus.VOIDED || status == CardStatus.REFUNDED;
-      assertThat(
-              new CardRefundResult(status, com.gateway.kernel.money.Money.brl(100), "9", "ok")
-                  .completed())
-          .as("%s", status)
-          .isEqualTo(expected);
-    }
+  void aRefundIsCompletedByTheVoidReturnCodeNotByTheSaleStatus() {
+    assertThat(refund(CardStatus.PAID, "0").completed()).isTrue();
+    assertThat(refund(CardStatus.VOIDED, "9").completed()).isTrue();
+    assertThat(refund(CardStatus.REFUNDED, "9").completed()).isTrue();
+    assertThat(refund(CardStatus.PAID, "100").completed()).isFalse();
+    assertThat(refund(CardStatus.REFUNDED, "100").completed()).isFalse();
+    assertThat(refund(CardStatus.PAID, null).completed()).isFalse();
+  }
+
+  private static CardRefundResult refund(CardStatus status, String returnCode) {
+    return new CardRefundResult(status, Money.brl(100), returnCode, "message");
   }
 }

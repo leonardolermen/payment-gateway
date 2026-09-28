@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.money.Money;
 import com.gateway.kernel.provider.ProviderException;
+import com.gateway.kernel.provider.card.CardStatus;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.card.CardCapture;
 import com.gateway.payments.payment.create.CardChoice;
@@ -78,6 +79,42 @@ class CardRefundsIntegrationTest extends ServiceIntegrationTestBase {
         .isInstanceOf(DomainException.class)
         .extracting(thrown -> ((DomainException) thrown).code())
         .isEqualTo("INVALID_STATE");
+  }
+
+  /**
+   * After a partial void the Cielo keeps the sale PAID and answers ReturnCode 0; deciding by the
+   * sale status failed this refund while the money had gone back.
+   */
+  @Test
+  void aPartialRefundCompletesAlthoughTheSaleStaysPaid() {
+    Payment payment = newCard(10000, APPROVES);
+
+    Refund refund = refunds.request(merchant, payment.id(), Money.brl(3000));
+
+    assertThat(cards.sale(payment.card().paymentId()).status()).isEqualTo(CardStatus.PAID);
+    assertThat(refund.state()).isEqualTo(RefundState.COMPLETED);
+    assertThat(paymentQueries.get(merchant, payment.id()).refundedAmount())
+        .isEqualTo(Money.brl(3000));
+  }
+
+  /** A 200 whose ReturnCode is not 0/9 was not performed: FAILED, with the code as the reason. */
+  @Test
+  void aVoidWithAnotherReturnCodeFailsTheRefundNamingTheCode() {
+    Payment payment = newCard(10000, APPROVES);
+    cards.nextRefundReturnCode("100");
+
+    assertThatThrownBy(() -> refunds.request(merchant, payment.id(), Money.brl(3000)))
+        .isInstanceOf(DomainException.class)
+        .extracting(thrown -> ((DomainException) thrown).code())
+        .isEqualTo("PROVIDER_DECLINED");
+
+    assertThat(refunds.list(merchant, payment.id()))
+        .singleElement()
+        .satisfies(
+            refund -> {
+              assertThat(refund.state()).isEqualTo(RefundState.FAILED);
+              assertThat(refund.failureReason()).contains("100");
+            });
   }
 
   @Test

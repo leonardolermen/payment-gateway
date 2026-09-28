@@ -94,8 +94,12 @@ public class CardRefunds {
               ProviderException.Code.DECLINED,
               200,
               result.returnCode(),
-              "void answered status " + result.status());
-      throw markFailed(merchantId, refund, refused);
+              "void answered return code " + result.returnCode());
+      // The code is the reason support needs (100 = partial before settlement); it is the Cielo's
+      // table key, not its wording, so it carries none of the payer data ProviderErrors keeps out.
+      String reason =
+          ProviderErrors.message("PROVIDER_DECLINED") + " Return code " + result.returnCode() + ".";
+      throw markFailed(merchantId, refund, refused, reason);
     }
 
     return complete(merchantId, refund);
@@ -143,7 +147,8 @@ public class CardRefunds {
   private DomainException afterFailure(
       MerchantId merchantId, Payment payment, Refund refund, ProviderException failure) {
     if (!MAY_HAVE_LANDED.contains(failure.code())) {
-      return markFailed(merchantId, refund, failure);
+      return markFailed(
+          merchantId, refund, failure, ProviderErrors.message("PROVIDER_DECLINED"));
     }
 
     unitOfWork.run(
@@ -166,13 +171,13 @@ public class CardRefunds {
   }
 
   private DomainException markFailed(
-      MerchantId merchantId, Refund refund, ProviderException cause) {
+      MerchantId merchantId, Refund refund, ProviderException cause, String reason) {
     String code = "PROVIDER_DECLINED";
     unitOfWork.run(
         () -> {
           Payment payment = payments.findByIdForUpdate(refund.paymentId()).orElseThrow();
           Refund loaded = refunds.findById(refund.id()).orElseThrow();
-          loaded.markFailed(ProviderErrors.message(code));
+          loaded.markFailed(reason);
           events.emitRefund(merchantId, "refund.failed", refunds.save(loaded), payment);
         });
     return ProviderErrors.toDomain(code, cause, log, "refundCard", refund.id());

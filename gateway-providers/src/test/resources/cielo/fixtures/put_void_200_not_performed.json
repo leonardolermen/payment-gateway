@@ -1,0 +1,15 @@
+{
+  "Status": 2,
+  "Tid": "0719094510712",
+  "ProofOfSale": "4510712",
+  "AuthorizationCode": "693066",
+  "ReturnCode": "100",
+  "ReturnMessage": "Cancelamento parcial nao permitido antes da liquidacao",
+  "Links": [
+    {
+      "Method": "GET",
+      "Rel": "self",
+      "Href": "https://apiquerysandbox.cieloecommerce.cielo.com.br/1/sales/{PaymentId}"
+    }
+  ]
+}
