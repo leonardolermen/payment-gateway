@@ -172,7 +172,7 @@ public class BolecodePaymentFlow implements PaymentFlow {
    * payment stays CREATED and the caller gets PROVIDER_TIMEOUT.
    *
    * <p>Unlike Pix, it is NOT failed on the spot: the bank's 202 means "operação em andamento", so
-   * an empty query a second later proves nothing. {@code ExpirationService.sweepStuckCreated} asks
+   * an empty query a second later proves nothing. {@code StuckCreatedSweep.sweepStuckCreated} asks
    * again after {@code stuckCreatedAfter} and decides then.
    */
   private Payment recover(

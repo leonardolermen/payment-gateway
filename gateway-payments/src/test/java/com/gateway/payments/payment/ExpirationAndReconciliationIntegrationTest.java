@@ -23,7 +23,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestBase {
 
-  @Autowired ExpirationService expiration;
+  @Autowired PaymentExpiration expiration;
+  @Autowired StuckCreatedSweep sweep;
   @Autowired ReconciliationService reconciliation;
   @Autowired JobRunner runner;
   @Autowired PaymentRepository payments;
@@ -306,7 +307,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
     bank.issue(null, new PixIssueRequest(p.id(), Money.brl(1000), 3600, null, null, null));
     clock.advance(Duration.ofMinutes(11));
 
-    expiration.sweepStuckCreated(clock.instant());
+    sweep.sweepStuckCreated(clock.instant());
 
     Payment after = reload(p);
     assertThat(after.status()).isEqualTo(PaymentStatus.PENDING);
@@ -323,7 +324,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
     bank.markPaid(p.id(), "E2E" + p.id(), Money.brl(1000));
     clock.advance(Duration.ofMinutes(11));
 
-    expiration.sweepStuckCreated(clock.instant());
+    sweep.sweepStuckCreated(clock.instant());
 
     assertThat(reload(p).status()).isEqualTo(PaymentStatus.COMPLETED);
     assertThat(outboxTypes(p.id())).containsExactly("payment.pending", "payment.completed");
@@ -334,7 +335,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
     Payment p = stuckCreated();
     clock.advance(Duration.ofMinutes(11));
 
-    expiration.sweepStuckCreated(clock.instant());
+    sweep.sweepStuckCreated(clock.instant());
 
     assertThat(reload(p).status()).isEqualTo(PaymentStatus.FAILED);
     assertThat(payments.events(p.id()).getLast().source()).isEqualTo(EventSource.SYSTEM);
@@ -346,7 +347,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
     Payment p = stuckCreated();
     clock.advance(Duration.ofMinutes(2));
 
-    expiration.sweepStuckCreated(clock.instant());
+    sweep.sweepStuckCreated(clock.instant());
 
     assertThat(reload(p).status()).isEqualTo(PaymentStatus.CREATED);
   }

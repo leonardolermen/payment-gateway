@@ -29,7 +29,7 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
   @Autowired PaymentRepository payments;
   @Autowired JobRepository jobs;
   @Autowired JobRunner jobRunner;
-  @Autowired com.gateway.payments.payment.ExpirationService expiration;
+  @Autowired com.gateway.payments.payment.StuckCreatedSweep sweep;
 
   /**
    * runDue claims one batch; the shared context leaves earlier tests' jobs due at the same instant,
@@ -327,7 +327,7 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
     var registered = boletos.status(nn(p));
     boletos.remove(nn(p)); // the bank's 202: not visible yet when the sweeper asks
     clock.advance(Duration.ofMinutes(11));
-    expiration.sweepStuckCreated(clock.instant());
+    sweep.sweepStuckCreated(clock.instant());
     assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.FAILED);
 
     boletos.restore(nn(p), registered);

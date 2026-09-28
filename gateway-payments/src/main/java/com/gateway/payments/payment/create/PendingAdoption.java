@@ -29,7 +29,7 @@ import org.slf4j.LoggerFactory;
  * sweeper and a slow create can race to adopt the same charge, and the loser must not fail on
  * PENDING -> PENDING.
  *
- * <p>Public, not private to a flow: the sweeper ({@code ExpirationService}) and the boleto poll
+ * <p>Public, not private to a flow: the sweeper ({@code StuckCreatedSweep}) and the boleto poll
  * ({@code BoletoPollingService}) adopt too.
  */
 public class PendingAdoption {

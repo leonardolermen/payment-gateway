@@ -15,12 +15,13 @@ import com.gateway.payments.jobs.persistence.JobRepositoryImpl;
 import com.gateway.payments.outbox.persistence.OutboxRepository;
 import com.gateway.payments.outbox.persistence.OutboxRepositoryImpl;
 import com.gateway.payments.payment.BoletoSettlement;
-import com.gateway.payments.payment.ExpirationService;
 import com.gateway.payments.payment.PaymentCancellation;
 import com.gateway.payments.payment.PaymentEvents;
+import com.gateway.payments.payment.PaymentExpiration;
 import com.gateway.payments.payment.PaymentQueries;
 import com.gateway.payments.payment.PaymentService;
 import com.gateway.payments.payment.PixSettlement;
+import com.gateway.payments.payment.StuckCreatedSweep;
 import com.gateway.payments.payment.boleto.BoletoPollingService;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepository;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepositoryImpl;
@@ -287,24 +288,28 @@ public class PaymentsConfiguration {
   }
 
   @Bean
-  ExpirationService expirationService(
+  PaymentExpiration paymentExpiration(
+      PaymentRepository payments,
+      ProviderGateway providers,
+      PixSettlement pixSettlement,
+      BoletoSettlement boletoSettlement,
+      PaymentEvents events,
+      PaymentsProperties properties,
+      UnitOfWork unitOfWork) {
+    return new PaymentExpiration(
+        payments, providers, pixSettlement, boletoSettlement, events, properties, unitOfWork);
+  }
+
+  @Bean
+  StuckCreatedSweep stuckCreatedSweep(
       PaymentRepository payments,
       ProviderGateway providers,
       PaymentService paymentService,
       PixSettlement pixSettlement,
       BoletoSettlement boletoSettlement,
-      PaymentEvents events,
-      PaymentsProperties properties,
-      TransactionTemplate paymentsTransactionTemplate) {
-    return new ExpirationService(
-        payments,
-        providers,
-        paymentService,
-        pixSettlement,
-        boletoSettlement,
-        events,
-        properties,
-        paymentsTransactionTemplate);
+      PaymentsProperties properties) {
+    return new StuckCreatedSweep(
+        payments, providers, paymentService, pixSettlement, boletoSettlement, properties);
   }
 
   @Bean
@@ -353,7 +358,8 @@ public class PaymentsConfiguration {
   JobRunner jobRunner(
       JobRepository jobs,
       WebhookInboxService inbox,
-      ExpirationService expiration,
+      PaymentExpiration expiration,
+      StuckCreatedSweep sweep,
       RefundPollingService polling,
       BoletoPollingService boletoPolling,
       RefundService refunds,
@@ -365,6 +371,7 @@ public class PaymentsConfiguration {
         jobs,
         inbox,
         expiration,
+        sweep,
         polling,
         boletoPolling,
         refunds,

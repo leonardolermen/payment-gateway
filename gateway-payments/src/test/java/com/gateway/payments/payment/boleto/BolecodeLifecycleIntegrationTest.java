@@ -8,9 +8,10 @@ import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.kernel.provider.boleto.BoletoSituation;
 import com.gateway.payments.inbox.WebhookInboxService;
-import com.gateway.payments.payment.ExpirationService;
 import com.gateway.payments.payment.Payment;
+import com.gateway.payments.payment.PaymentExpiration;
 import com.gateway.payments.payment.PaymentStatus;
+import com.gateway.payments.payment.StuckCreatedSweep;
 import com.gateway.payments.payment.create.CreateBolecodePayment;
 import com.gateway.payments.payment.persistence.PaymentRepository;
 import com.gateway.payments.reconciliation.ReconciliationService;
@@ -25,7 +26,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 class BolecodeLifecycleIntegrationTest extends ServiceIntegrationTestBase {
   @Autowired PaymentRepository payments;
-  @Autowired ExpirationService expiration;
+  @Autowired PaymentExpiration expiration;
+  @Autowired StuckCreatedSweep sweep;
   @Autowired ReconciliationService reconciliation;
   @Autowired WebhookInboxService webhookInbox;
   @Autowired RefundService refunds;
@@ -246,7 +248,7 @@ class BolecodeLifecycleIntegrationTest extends ServiceIntegrationTestBase {
     Payment p = paymentQueries.list(merchant, 10, null).getFirst();
     assertThat(p.status()).isEqualTo(PaymentStatus.CREATED);
     clock.advance(Duration.ofMinutes(11));
-    assertThat(expiration.sweepStuckCreated(clock.instant())).isGreaterThanOrEqualTo(1);
+    assertThat(sweep.sweepStuckCreated(clock.instant())).isGreaterThanOrEqualTo(1);
     assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.FAILED);
     assertThat(outboxTypes(p.id())).containsExactly("payment.failed");
   }
@@ -264,7 +266,7 @@ class BolecodeLifecycleIntegrationTest extends ServiceIntegrationTestBase {
     assertThat(p.status()).isEqualTo(PaymentStatus.CREATED);
     boletos.markPaid("00000001", Money.brl(12990), clock.instant());
     clock.advance(Duration.ofMinutes(11));
-    expiration.sweepStuckCreated(clock.instant());
+    sweep.sweepStuckCreated(clock.instant());
     Payment done = payments.findById(p.id()).orElseThrow();
     assertThat(done.status()).isEqualTo(PaymentStatus.COMPLETED);
     assertThat(done.boleto().linhaDigitavel()).hasSize(47);
@@ -386,7 +388,7 @@ class BolecodeLifecycleIntegrationTest extends ServiceIntegrationTestBase {
     var registered = boletos.status(nn(p));
     boletos.remove(nn(p));
     clock.advance(Duration.ofMinutes(11));
-    expiration.sweepStuckCreated(clock.instant());
+    sweep.sweepStuckCreated(clock.instant());
     assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.FAILED);
     boletos.restore(nn(p), registered);
     boletos.markPaid(nn(p), Money.brl(12990), clock.instant(), "Guichê de caixa");
@@ -473,11 +475,11 @@ class BolecodeLifecycleIntegrationTest extends ServiceIntegrationTestBase {
         merchant,
         nn(p),
         new ProviderException(ProviderException.Code.UNAVAILABLE, 503, null, "down"));
-    assertThatCode(() -> expiration.sweepStuckCreated(clock.instant())).doesNotThrowAnyException();
+    assertThatCode(() -> sweep.sweepStuckCreated(clock.instant())).doesNotThrowAnyException();
     assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.CREATED);
     assertThat(outboxTypes(p.id())).isEmpty();
     // The next sweep, with the bank back, decides.
-    expiration.sweepStuckCreated(clock.instant());
+    sweep.sweepStuckCreated(clock.instant());
     assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.FAILED);
   }
 }

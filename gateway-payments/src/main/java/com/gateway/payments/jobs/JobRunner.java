@@ -5,7 +5,8 @@ import com.gateway.payments.PaymentsProperties;
 import com.gateway.payments.inbox.WebhookInboxService;
 import com.gateway.payments.jobs.persistence.JobRepository;
 import com.gateway.payments.payment.EventSource;
-import com.gateway.payments.payment.ExpirationService;
+import com.gateway.payments.payment.PaymentExpiration;
+import com.gateway.payments.payment.StuckCreatedSweep;
 import com.gateway.payments.payment.boleto.BoletoPollingService;
 import com.gateway.payments.reconciliation.ReconciliationService;
 import com.gateway.payments.refund.RefundPollingService;
@@ -34,7 +35,8 @@ public class JobRunner {
 
   private final JobRepository jobs;
   private final WebhookInboxService inbox;
-  private final ExpirationService expiration;
+  private final PaymentExpiration expiration;
+  private final StuckCreatedSweep sweep;
   private final RefundPollingService polling;
   private final BoletoPollingService boletoPolling;
   private final RefundService refunds;
@@ -46,7 +48,8 @@ public class JobRunner {
   public JobRunner(
       JobRepository jobs,
       WebhookInboxService inbox,
-      ExpirationService expiration,
+      PaymentExpiration expiration,
+      StuckCreatedSweep sweep,
       RefundPollingService polling,
       BoletoPollingService boletoPolling,
       RefundService refunds,
@@ -57,6 +60,7 @@ public class JobRunner {
     this.jobs = jobs;
     this.inbox = inbox;
     this.expiration = expiration;
+    this.sweep = sweep;
     this.polling = polling;
     this.boletoPolling = boletoPolling;
     this.refunds = refunds;
@@ -141,7 +145,7 @@ public class JobRunner {
       }
       case POLL_REFUND -> polling.poll(job.refId());
       case RECONCILE -> {
-        expiration.sweepStuckCreated(now);
+        sweep.sweepStuckCreated(now);
         reconciliation.reconcileAll(now);
         yield true;
       }
