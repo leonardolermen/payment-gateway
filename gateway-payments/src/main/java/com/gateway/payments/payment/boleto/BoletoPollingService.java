@@ -64,7 +64,7 @@ public class BoletoPollingService {
     this.clock = clock;
   }
 
-  public boolean check(String paymentId, EventSource by) {
+  public boolean check(String paymentId, EventSource source) {
     Payment payment = payments.findById(paymentId).orElse(null);
     if (payment == null || payment.method() != PaymentMethod.BOLECODE || payment.boleto() == null) {
       return true;
@@ -74,18 +74,18 @@ public class BoletoPollingService {
     }
     ResolvedProvider<BoletoMethodProvider> resolved =
         providers.resolveBoleto(payment.merchantId(), payment.environment(), payment.provider());
-    String nn = payment.boleto().nossoNumero();
+    String nossoNumero = payment.boleto().nossoNumero();
     Optional<BoletoStatus> atBank =
         providers.call(
             payment.id(),
             "findBoleto",
             resolved,
-            target -> target.provider().find(target.credentials(), nn));
+            target -> target.provider().find(target.credentials(), nossoNumero));
     if (payment.status() == PaymentStatus.CANCELED || payment.status() == PaymentStatus.FAILED) {
-      return gaveUp(payment, nn, atBank, by);
+      return gaveUp(payment, nossoNumero, atBank, source);
     }
     if (atBank.isEmpty()) {
-      return notFound(payment, nn, by);
+      return notFound(payment, nossoNumero, source);
     }
     BoletoStatus status = atBank.get();
     if (payment.status() == PaymentStatus.COMPLETED) {
@@ -94,16 +94,16 @@ public class BoletoPollingService {
             payment.merchantId(),
             payment.id(),
             status,
-            by); // duplicate or DOUBLE_PAYMENT, decided there
+            source); // duplicate or DOUBLE_PAYMENT, decided there
       } else {
-        record(payment.id(), "poll after completion: bank says " + status.situation(), by);
+        record(payment.id(), "poll after completion: bank says " + status.situation(), source);
       }
       return true;
     }
     return switch (status.situation()) {
       case OPEN, AWAITING_CREDIT -> pastWindow(payment);
       case PAID, SETTLED, CREDITED -> {
-        settlePaid(payment, status, by);
+        settlePaid(payment, status, source);
         yield true;
       }
       case PAYMENT_REJECTED -> {
@@ -112,7 +112,7 @@ public class BoletoPollingService {
         paymentService.openDivergence(
             payment,
             "BOLETO_REJECTED",
-            "bank rejected a payment of boleto " + nn + "; still open for the payer");
+            "bank rejected a payment of boleto " + nossoNumero + "; still open for the payer");
         yield pastWindow(payment);
       }
       case CANCELED -> {
@@ -121,7 +121,10 @@ public class BoletoPollingService {
         paymentService.openDivergence(
             payment,
             "CANCELED_AT_BANK",
-            "boleto " + nn + " baixado at the bank while the gateway has " + payment.status());
+            "boleto "
+                + nossoNumero
+                + " baixado at the bank while the gateway has "
+                + payment.status());
         yield true;
       }
     };
@@ -136,11 +139,11 @@ public class BoletoPollingService {
    * silent: a NOT_FOUND_AT_BANK on every declined Bolecode would bury the real ones.
    */
   private boolean gaveUp(
-      Payment payment, String nn, Optional<BoletoStatus> atBank, EventSource by) {
+      Payment payment, String nossoNumero, Optional<BoletoStatus> atBank, EventSource source) {
     if (atBank.isEmpty() || !atBank.get().paid()) {
       return pastWindow(payment);
     }
-    if (by == EventSource.RECONCILIATION) {
+    if (source == EventSource.RECONCILIATION) {
       // Reconciliation runs every 15 minutes over the lookback: going through settleBoleto would
       // add
       // an "ignored" event per run to the payment's log. The divergence alone is deduplicated.
@@ -148,9 +151,14 @@ public class BoletoPollingService {
       paymentService.openDivergence(
           payment,
           "BOLETO_PAID",
-          "boleto " + nn + " paid " + cents + " cents at the bank while " + payment.status());
+          "boleto "
+              + nossoNumero
+              + " paid "
+              + cents
+              + " cents at the bank while "
+              + payment.status());
     } else {
-      boletoSettlement.settleBoleto(payment.merchantId(), payment.id(), atBank.get(), by);
+      boletoSettlement.settleBoleto(payment.merchantId(), payment.id(), atBank.get(), source);
     }
     return true;
   }
@@ -163,7 +171,7 @@ public class BoletoPollingService {
    * completion (refunds and the later webhook's duplicate check work as usual); without it,
    * settleBoleto still completes via PIX with the endToEndId unknown.
    */
-  private void settlePaid(Payment payment, BoletoStatus status, EventSource by) {
+  private void settlePaid(Payment payment, BoletoStatus status, EventSource source) {
     if (BoletoSettlement.isPixChannel(status.paidChannel())
         && payment.pix() != null
         && payment.pix().txid() != null) {
@@ -189,11 +197,11 @@ public class BoletoPollingService {
             e.code());
       }
       if (pix.isPresent()) {
-        pixSettlement.settle(payment.merchantId(), payment.id(), pix.get(), by);
+        pixSettlement.settle(payment.merchantId(), payment.id(), pix.get(), source);
         return;
       }
     }
-    boletoSettlement.settleBoleto(payment.merchantId(), payment.id(), status, by);
+    boletoSettlement.settleBoleto(payment.merchantId(), payment.id(), status, source);
   }
 
   /**
@@ -202,29 +210,29 @@ public class BoletoPollingService {
    * events carrying the mark, so it survives restarts and a second worker; counting only
    * consecutive ones would need a reset event on every non-empty answer for no gain.
    */
-  private boolean notFound(Payment payment, String nn, EventSource by) {
+  private boolean notFound(Payment payment, String nossoNumero, EventSource source) {
     long previous =
         payments.events(payment.id()).stream()
             .filter(
                 event -> "ignored".equals(event.type()) && event.payload().contains(NOT_FOUND_MARK))
             .count();
-    record(payment.id(), NOT_FOUND_MARK + ": " + nn, by);
+    record(payment.id(), NOT_FOUND_MARK + ": " + nossoNumero, source);
     if (previous + 1 >= 2) {
       paymentService.openDivergence(
           payment,
           "NOT_FOUND_AT_BANK",
-          "boleto " + nn + " unknown to the bank on " + (previous + 1) + " polls");
+          "boleto " + nossoNumero + " unknown to the bank on " + (previous + 1) + " polls");
     } else {
-      log.info("boleto {} of payment {} not at the bank yet", nn, payment.id());
+      log.info("boleto {} of payment {} not at the bank yet", nossoNumero, payment.id());
     }
     return pastWindow(payment);
   }
 
-  private void record(String paymentId, String what, EventSource by) {
+  private void record(String paymentId, String what, EventSource source) {
     transactionTemplate.executeWithoutResult(
         transaction -> {
           Payment loaded = payments.findById(paymentId).orElseThrow();
-          payments.save(loaded, List.of(loaded.recordIgnored(what, by).orElseThrow()));
+          payments.save(loaded, List.of(loaded.recordIgnored(what, source).orElseThrow()));
         });
   }
 

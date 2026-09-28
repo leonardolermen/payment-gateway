@@ -99,8 +99,8 @@ public class PaymentCancellation {
    */
   private void cancelBoletoAtBank(
       Payment payment, ResolvedProvider<BoletoMethodProvider> resolved) {
-    String nn = payment.boleto().nossoNumero();
-    Optional<BoletoStatus> before = findBoletoForCancel(payment, resolved, nn);
+    String nossoNumero = payment.boleto().nossoNumero();
+    Optional<BoletoStatus> before = findBoletoForCancel(payment, resolved, nossoNumero);
     if (before.isPresent() && before.get().paid()) {
       throw alreadyPaid(payment, before.get());
     }
@@ -109,10 +109,10 @@ public class PaymentCancellation {
           payment.id(),
           "cancelBoleto",
           resolved,
-          target -> target.provider().cancel(target.credentials(), nn));
+          target -> target.provider().cancel(target.credentials(), nossoNumero));
     } catch (ProviderException e) {
       if (e.code() == ProviderException.Code.CONFLICT) {
-        Optional<BoletoStatus> after = findBoletoForCancel(payment, resolved, nn);
+        Optional<BoletoStatus> after = findBoletoForCancel(payment, resolved, nossoNumero);
         if (after.isPresent() && after.get().paid()) {
           throw alreadyPaid(payment, after.get());
         }
@@ -131,13 +131,13 @@ public class PaymentCancellation {
    * a raw ProviderException (a 500), and the payment stays PENDING because nothing was decided.
    */
   private Optional<BoletoStatus> findBoletoForCancel(
-      Payment payment, ResolvedProvider<BoletoMethodProvider> resolved, String nn) {
+      Payment payment, ResolvedProvider<BoletoMethodProvider> resolved, String nossoNumero) {
     try {
       return providers.call(
           payment.id(),
           "findBoleto",
           resolved,
-          target -> target.provider().find(target.credentials(), nn));
+          target -> target.provider().find(target.credentials(), nossoNumero));
     } catch (ProviderException e) {
       throw ProviderErrors.toDomain("PROVIDER_UNAVAILABLE", e, log, "findBoleto", payment.id());
     }

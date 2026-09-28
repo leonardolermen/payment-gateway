@@ -142,13 +142,13 @@ public class PaymentExpiration {
    * business day.
    */
   private boolean expireBolecode(Payment payment, ResolvedProvider<BoletoMethodProvider> resolved) {
-    String nn = payment.boleto().nossoNumero();
+    String nossoNumero = payment.boleto().nossoNumero();
     Optional<BoletoStatus> atBank =
         providers.call(
             payment.id(),
             "findBoleto",
             resolved,
-            target -> target.provider().find(target.credentials(), nn));
+            target -> target.provider().find(target.credentials(), nossoNumero));
     if (atBank.isPresent() && atBank.get().paid()) {
       return boletoSettlement.settleBoleto(
               payment.merchantId(), payment.id(), atBank.get(), EventSource.RECONCILIATION)
@@ -157,7 +157,7 @@ public class PaymentExpiration {
     if (atBank.isPresent() && atBank.get().situation() == BoletoSituation.AWAITING_CREDIT) {
       log.info(
           "boleto {} of payment {} awaiting credit at the bank; not expiring yet",
-          nn,
+          nossoNumero,
           payment.id());
       return false;
     }

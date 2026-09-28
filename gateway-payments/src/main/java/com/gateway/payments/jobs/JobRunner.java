@@ -82,13 +82,16 @@ public class JobRunner {
    * call the bank; the code (UNAVAILABLE, AUTH, ...) is what they triage last_error by.
    */
   private static String describe(RuntimeException e) {
-    if (e instanceof ProviderException pe) {
-      return "ProviderException " + pe.code() + ": " + pe.getMessage();
+    if (e instanceof ProviderException providerException) {
+      return "ProviderException "
+          + providerException.code()
+          + ": "
+          + providerException.getMessage();
     }
     return e.getClass().getSimpleName() + ": " + e.getMessage();
   }
 
-  private static String truncate(String s) {
-    return s == null || s.length() <= 500 ? s : s.substring(0, 500);
+  private static String truncate(String message) {
+    return message == null || message.length() <= 500 ? message : message.substring(0, 500);
   }
 }

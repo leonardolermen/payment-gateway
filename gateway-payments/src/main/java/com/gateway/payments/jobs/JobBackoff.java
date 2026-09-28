@@ -24,8 +24,10 @@ public class JobBackoff {
    * min.
    */
   public static Duration backoff(int attempts) {
-    if (attempts >= 11) return MAX_BACKOFF; // 2^11 min > 24 h, and avoids shifting into overflow
-    Duration d = Duration.ofMinutes(1L << attempts);
-    return d.compareTo(MAX_BACKOFF) > 0 ? MAX_BACKOFF : d;
+    if (attempts >= 11) {
+      return MAX_BACKOFF; // 2^11 min > 24 h, and avoids shifting into overflow
+    }
+    Duration wait = Duration.ofMinutes(1L << attempts);
+    return wait.compareTo(MAX_BACKOFF) > 0 ? MAX_BACKOFF : wait;
   }
 }

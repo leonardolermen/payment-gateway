@@ -62,7 +62,7 @@ public class BoletoSettlement {
             throw new IllegalStateException(
                 "settleBoleto on a " + payment.method() + " payment " + paymentId);
           }
-          String nn = payment.boleto().nossoNumero();
+          String nossoNumero = payment.boleto().nossoNumero();
           long paidCents = status.paidAmount() == null ? -1 : status.paidAmount().cents();
           if (payment.status() == PaymentStatus.PENDING
               || payment.status() == PaymentStatus.EXPIRED) {
@@ -73,7 +73,7 @@ public class BoletoSettlement {
                       payment
                           .recordIgnored(
                               "boleto "
-                                  + nn
+                                  + nossoNumero
                                   + " paid "
                                   + paidCents
                                   + " cents, charge is "
@@ -84,7 +84,7 @@ public class BoletoSettlement {
                   payment,
                   "AMOUNT_MISMATCH",
                   "boleto "
-                      + nn
+                      + nossoNumero
                       + " paid "
                       + paidCents
                       + " cents at the bank, charge is "
@@ -114,7 +114,7 @@ public class BoletoSettlement {
                   payment,
                   List.of(
                       payment
-                          .recordIgnored("boleto " + nn + " already settled", by)
+                          .recordIgnored("boleto " + nossoNumero + " already settled", by)
                           .orElseThrow()));
               return Settlement.IGNORED;
             }
@@ -127,7 +127,7 @@ public class BoletoSettlement {
             if (channel == null || channel.isBlank()) {
               log.warn(
                   "boleto {} of payment {} paid at the bank without a payment channel; assumed its own pix",
-                  nn,
+                  nossoNumero,
                   paymentId);
               payments.save(
                   payment,
@@ -135,7 +135,7 @@ public class BoletoSettlement {
                       payment
                           .recordIgnored(
                               "boleto "
-                                  + nn
+                                  + nossoNumero
                                   + " paid at the bank, no channel, on a payment completed via PIX",
                               by)
                           .orElseThrow()));
@@ -147,7 +147,8 @@ public class BoletoSettlement {
                   List.of(
                       payment
                           .recordIgnored(
-                              "boleto " + nn + " settled by its own pix (" + channel + ")", by)
+                              "boleto " + nossoNumero + " settled by its own pix (" + channel + ")",
+                              by)
                           .orElseThrow()));
               return Settlement.IGNORED;
             }
@@ -157,7 +158,7 @@ public class BoletoSettlement {
                     payment
                         .recordIgnored(
                             "boleto "
-                                + nn
+                                + nossoNumero
                                 + " paid at the bank via "
                                 + channel
                                 + " on a payment completed via PIX",
@@ -169,7 +170,7 @@ public class BoletoSettlement {
                 "paid via PIX (e2eid "
                     + (payment.pix() == null ? null : payment.pix().endToEndId())
                     + ") and boleto "
-                    + nn
+                    + nossoNumero
                     + " paid "
                     + paidCents
                     + " cents via "
@@ -184,13 +185,14 @@ public class BoletoSettlement {
                 List.of(
                     payment
                         .recordIgnored(
-                            "boleto " + nn + " paid at the bank while " + payment.status(), by)
+                            "boleto " + nossoNumero + " paid at the bank while " + payment.status(),
+                            by)
                         .orElseThrow()));
             divergences.open(
                 payment,
                 "BOLETO_PAID",
                 "boleto "
-                    + nn
+                    + nossoNumero
                     + " paid "
                     + paidCents
                     + " cents at the bank while "

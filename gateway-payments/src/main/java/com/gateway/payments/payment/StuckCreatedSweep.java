@@ -64,13 +64,13 @@ public class StuckCreatedSweep {
           ResolvedProvider<BoletoMethodProvider> resolved =
               providers.resolveBoleto(
                   payment.merchantId(), payment.environment(), payment.provider());
-          String nn = payment.boleto().nossoNumero();
+          String nossoNumero = payment.boleto().nossoNumero();
           Optional<BoletoStatus> atBank =
               providers.call(
                   payment.id(),
                   "findBoleto",
                   resolved,
-                  target -> target.provider().find(target.credentials(), nn));
+                  target -> target.provider().find(target.credentials(), nossoNumero));
           if (atBank.isEmpty()) {
             paymentService.markFailed(payment.id(), "PROVIDER_TIMEOUT", EventSource.SYSTEM);
           } else {
