@@ -47,6 +47,8 @@ public class RecordingCardProvider implements CardMethodProvider {
   private volatile ProviderException failNextCapture;
   private volatile ProviderException failNextRefund;
   private volatile String nextRefundReturnCode;
+  private volatile boolean nextCaptureLags;
+  private volatile Runnable duringNextCapture;
   private final Map<String, Money> refundedByPayment = new ConcurrentHashMap<>();
   private volatile CardStatus nextAuthorizeStatus;
   private volatile CardStatus nextFindByOrderStatus;
@@ -90,6 +92,19 @@ public class RecordingCardProvider implements CardMethodProvider {
 
   public void failNextRefundWith(ProviderException e) {
     this.failNextRefund = e;
+  }
+
+  /**
+   * The next capture lands, but the answer is what a lagging query host shows: PAID without
+   * CapturedAmount.
+   */
+  public void nextCaptureAnswersWithoutAmount() {
+    this.nextCaptureLags = true;
+  }
+
+  /** Runs while the next capture is at the Cielo: a cancel or a notification racing it. */
+  public void duringNextCapture(Runnable race) {
+    this.duringNextCapture = race;
   }
 
   /** The next void answers 200 with this ReturnCode and changes nothing (100, 101 …). */
@@ -210,8 +225,20 @@ public class RecordingCardProvider implements CardMethodProvider {
           ProviderException.Code.INVALID, 400, "308", "308 Transaction not available to capture");
     }
 
+    Runnable race = duringNextCapture;
+    if (race != null) {
+      duringNextCapture = null;
+      race.run();
+    }
+
     CardAuthorization captured = with(sale, CardStatus.PAID, amount.orElse(sale.amount()));
     sales.put(paymentId, captured);
+
+    if (nextCaptureLags) {
+      nextCaptureLags = false;
+      return with(sale, CardStatus.PAID, null);
+    }
+
     return captured;
   }
 

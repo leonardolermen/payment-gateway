@@ -56,6 +56,33 @@ class CardCaptureIntegrationTest extends ServiceIntegrationTestBase {
   }
 
   /**
+   * The query host lags the PUT: the answer carries no CapturedAmount. The requested 50 is what the
+   * Cielo captured; the authorized 100 would let refunds above 50 through.
+   */
+  @Test
+  void aPartialCaptureWhoseAnswerLacksTheAmountKeepsTheRequestedOne() {
+    Payment payment = authorized(100);
+    cards.nextCaptureAnswersWithoutAmount();
+
+    Payment captured = capture.capture(merchant, payment.id(), Money.brl(50));
+
+    assertThat(captured.status()).isEqualTo(PaymentStatus.COMPLETED);
+    assertThat(captured.paidAmount()).isEqualTo(Money.brl(50));
+  }
+
+  /** A cancel that won the race: the capture's completion is INVALID_STATE, not a 500. */
+  @Test
+  void aCaptureLandingOnACanceledPaymentIsInvalidState() {
+    Payment payment = authorized(10000);
+    cards.duringNextCapture(
+        () ->
+            jdbc.update(
+                "UPDATE payments.payments SET status = 'CANCELED' WHERE id = ?", payment.id()));
+
+    assertCode(() -> capture.capture(merchant, payment.id(), null), "INVALID_STATE");
+  }
+
+  /**
    * "Após uma captura, não é possível realizar capturas adicionais" (capturar-apos-autorizacao).
    */
   @Test

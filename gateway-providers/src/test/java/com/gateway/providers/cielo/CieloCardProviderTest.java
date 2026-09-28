@@ -171,6 +171,23 @@ class CieloCardProviderTest {
     assertThat(captured.capturedAt()).isPresent();
   }
 
+  /** The query host lags the PUT and still shows Status 1 with no CapturedAmount. */
+  @Test
+  void aCaptureFallsBackToThePutWhenTheRequeryIsStillAuthorized() {
+    server.stubFor(
+        put(urlPathEqualTo("/1/sales/" + PAYMENT_ID + "/capture"))
+            .willReturn(okJson(CieloFixtures.read("put_capture_200.json"))));
+    server.stubFor(
+        get(urlEqualTo("/1/sales/" + PAYMENT_ID))
+            .willReturn(okJson(CieloFixtures.read("get_sale_200_authorized.json"))));
+
+    CardAuthorization captured =
+        provider.capture(credentials(), PAYMENT_ID, Optional.of(Money.brl(50)));
+
+    assertThat(captured.status()).isEqualTo(CardStatus.PAID);
+    assertThat(captured.capturedAmount()).isEqualTo(Money.brl(50));
+  }
+
   /** The fallback only covers a PUT that succeeded: a failed PUT is still an exception. */
   @Test
   void aCaptureWhosePutFailsIsStillAnException() {

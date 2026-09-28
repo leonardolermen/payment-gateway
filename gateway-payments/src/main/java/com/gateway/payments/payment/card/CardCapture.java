@@ -74,10 +74,10 @@ public class CardCapture {
               resolved,
               target -> target.provider().capture(target.credentials(), cieloPaymentId, amount));
     } catch (ProviderException failure) {
-      captured = readBack(current, resolved, failure);
+      captured = readBack(current, resolved, failure, amount);
     }
 
-    return complete(merchantId, paymentId, captured);
+    return complete(merchantId, paymentId, captured, amount);
   }
 
   private static void requireAuthorizedCard(Payment current) {
@@ -113,7 +113,10 @@ public class CardCapture {
    * reported as ALREADY_CAPTURED); anything else leaves the payment AUTHORIZED.
    */
   private CardAuthorization readBack(
-      Payment current, ResolvedProvider<CardMethodProvider> resolved, ProviderException failure) {
+      Payment current,
+      ResolvedProvider<CardMethodProvider> resolved,
+      ProviderException failure,
+      Optional<Money> requested) {
     boolean notCapturable =
         failure.code() == ProviderException.Code.INVALID
             && NOT_AVAILABLE_TO_CAPTURE.equals(failure.providerType());
@@ -143,24 +146,45 @@ public class CardCapture {
     }
 
     if (notCapturable) {
-      complete(current.merchantId(), current.id(), atCielo.get());
+      complete(current.merchantId(), current.id(), atCielo.get(), requested);
       throw new DomainException("ALREADY_CAPTURED", "this payment was already captured");
     }
 
     return atCielo.get();
   }
 
-  /** Idempotent: a payment already COMPLETED (a racing notification) is returned as it is. */
-  private Payment complete(MerchantId merchantId, String paymentId, CardAuthorization captured) {
+  /**
+   * Idempotent: a payment already COMPLETED (a racing notification) is returned as it is. One that
+   * a concurrent cancel moved to CANCELED is INVALID_STATE, not the IllegalStateException of the
+   * forbidden transition, which surfaced as a 500.
+   *
+   * <p>The amount is the one requested whenever there was one: the Cielo captures exactly that, and
+   * the query host lags the PUT — a re-query answering without CapturedAmount made a partial
+   * capture of 50 on 100 store paidAmount 100, and every refund above 50 would then be accepted
+   * here and refused at the Cielo.
+   */
+  private Payment complete(
+      MerchantId merchantId,
+      String paymentId,
+      CardAuthorization captured,
+      Optional<Money> requested) {
     return unitOfWork.inTransaction(
         () -> {
           Payment payment = payments.findByMerchantAndId(merchantId, paymentId).orElseThrow();
           if (payment.status() == PaymentStatus.COMPLETED) {
             return payment;
           }
+          if (payment.status() != PaymentStatus.AUTHORIZED) {
+            throw new DomainException(
+                "INVALID_STATE",
+                "the capture reached the bank, but this payment is now " + payment.status());
+          }
 
           Money capturedAmount =
-              captured.capturedAmount() == null ? payment.amount() : captured.capturedAmount();
+              requested.orElse(
+                  captured.capturedAmount() == null
+                      ? payment.amount()
+                      : captured.capturedAmount());
           Payment saved =
               payments.save(
                   payment,

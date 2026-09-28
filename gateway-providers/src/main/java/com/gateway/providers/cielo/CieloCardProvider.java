@@ -144,7 +144,9 @@ public class CieloCardProvider implements CardMethodProvider {
       requeried = Optional.empty();
     }
 
-    if (requeried.isPresent()) {
+    // A re-query that still shows Status 1 is the query host lagging the PUT, not the capture
+    // failing: the PUT answered 200, so the answer built from it is the truer one.
+    if (requeried.isPresent() && requeried.get().status() == CardStatus.PAID) {
       return requeried.get();
     }
 
