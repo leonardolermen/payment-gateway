@@ -1,0 +1,58 @@
+{
+  "MerchantOrderId": "2017051001",
+  "Customer": {
+    "Name": "Aline de Souza",
+    "Identity": "12345678909",
+    "IdentityType": "CPF",
+    "Email": "aline@email.com",
+    "Birthdate": "1990-01-01"
+  },
+  "Payment": {
+    "ServiceTaxAmount": 0,
+    "Installments": 1,
+    "Interest": 0,
+    "Capture": true,
+    "Authenticate": false,
+    "Recurrent": false,
+    "IssuerTransactionId": "580027442382078",
+    "CreditCard": {
+      "CardNumber": "409168******7641",
+      "Holder": "Aline de Souza",
+      "ExpirationDate": "12/2035",
+      "SaveCard": false,
+      "Brand": "Visa",
+      "PaymentAccountReference": "4ZI0GII5L9RV8O1MU7DQ9WNOC17IE"
+    },
+    "Tid": "1124060407175",
+    "ProofOfSale": "182738",
+    "AuthorizationCode": "663864",
+    "SoftDescriptor": "LojaTeste",
+    "Provider": "Simulado",
+    "IsQrCode": false,
+    "SentOrderId": "20251124180407BDDA31",
+    "Amount": 10000,
+    "ReceivedDate": "2025-11-24 18:04:07",
+    "CapturedAmount": 10000,
+    "CapturedDate": "2025-11-24 18:04:07",
+    "Status": 2,
+    "IsSplitted": false,
+    "ReturnMessage": "Operation Successful",
+    "ReturnCode": "6",
+    "PaymentId": "6f8d1753-86bb-4dc0-9ebb-09a29093e1fb",
+    "Type": "CreditCard",
+    "Currency": "BRL",
+    "Country": "BRA",
+    "Links": [
+      {
+        "Method": "GET",
+        "Rel": "self",
+        "Href": "https://apiquerysandbox.cieloecommerce.cielo.com.br/1/sales/6f8d1753-86bb-4dc0-9ebb-09a29093e1fb"
+      },
+      {
+        "Method": "PUT",
+        "Rel": "void",
+        "Href": "https://apisandbox.cieloecommerce.cielo.com.br/1/sales/6f8d1753-86bb-4dc0-9ebb-09a29093e1fb/void"
+      }
+    ]
+  }
+}
