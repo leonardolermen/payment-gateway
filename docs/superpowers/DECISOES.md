@@ -293,3 +293,18 @@ lógica. Rejeitado: aplicar o limite de linhas como catraca mecânica (quebrar e
 o número é sinal de responsabilidade demais, não a responsabilidade em si. Custo se errado: `Payment`
 ou `RefundService` crescem sem que ninguém reabra a questão; a próxima classe acima do limite tem de
 citar esta entrada ou ser dividida.
+
+## 2026-09-28 — Fase 2: um handler por tipo de job, e a contagem corrigida
+A divisão deixou `JobRunner` com 11 dependências porque ele guardava um colaborador por tipo de job e
+decidia o tipo em dois métodos: um `switch` em `run` e dois `if` em `retry`, além de outros dois no laço
+de claim (o give-up do refund DEAD e o reset do RECONCILE). Agora `JobHandler` é a strategy: um handler
+por `JobType` (`ProcessWebhookJob`, `ExpirePaymentJob`, `PollRefundJob`, `ReconcileJob`, `PollBoletoJob`),
+com `afterFailure` e `notYet` no lugar de um booleano `failed`, e um `finish` default que só o reset do
+RECONCILE e o give-up do refund sobrescrevem. `JobHandlers` exige exatamente um handler por tipo na
+construção, como `PaymentFlows`; o backoff genérico mora uma vez em `JobBackoff`. `JobRunner` ficou com
+claim, lease e save (5 dependências). Rejeitado: manter o `switch` no `JobRunner` decidindo o tipo em dois
+métodos — cada tipo novo exigiria lembrar de todos os lugares. Custo se errado: um `JobType` novo sem
+handler agora derruba o startup em vez de falhar no primeiro job; e um tipo que precise reagir ao próprio
+resultado depende do hook `finish`, que é fácil de esquecer.
+Correção da entrada anterior: `PaymentsConfiguration` tem 412 linhas depois de todos os commits da fase
+(não 383) — continua só wiring, um `@Bean` por classe, e continua grande de propósito.
