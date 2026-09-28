@@ -6,4 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 interface ReconciliationDivergenceJpaRepository
     extends JpaRepository<ReconciliationDivergenceEntity, String> {
   List<ReconciliationDivergenceEntity> findByStatus(String status);
+
+  boolean existsByPaymentIdAndProviderStatusAndStatus(
+      String paymentId, String providerStatus, String status);
 }

@@ -165,6 +165,31 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   }
 
   @Override
+  public List<Payment> findNewestByMethodAndStatusIn(
+      com.gateway.kernel.payment.PaymentMethod method,
+      Set<PaymentStatus> statuses,
+      Instant createdAfter,
+      int limit) {
+    Set<String> names = statuses.stream().map(Enum::name).collect(Collectors.toSet());
+    return jpa
+        .findByMethodAndStatusInAndCreatedAtAfterNewestFirst(
+            method.name(), names, createdAfter, Limit.of(limit))
+        .stream()
+        .map(PaymentRepositoryImpl::toDomain)
+        .toList();
+  }
+
+  @Override
+  public List<Payment> findByStatusCreatedBeforeWithoutOpenDivergence(
+      PaymentStatus status, Instant createdBefore, String kind, int limit) {
+    return jpa
+        .findByStatusCreatedBeforeWithoutOpenDivergence(status.name(), createdBefore, kind, limit)
+        .stream()
+        .map(PaymentRepositoryImpl::toDomain)
+        .toList();
+  }
+
+  @Override
   public List<Payment> findByStatusIn(
       Set<PaymentStatus> statuses, Instant createdAfter, int limit) {
     Set<String> names = statuses.stream().map(Enum::name).collect(Collectors.toSet());

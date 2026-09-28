@@ -59,6 +59,11 @@ public class ReconciliationDivergenceRepositoryImpl implements ReconciliationDiv
   }
 
   @Override
+  public boolean hasOpen(String paymentId, String providerStatus) {
+    return jpa.existsByPaymentIdAndProviderStatusAndStatus(paymentId, providerStatus, "OPEN");
+  }
+
+  @Override
   public List<ReconciliationDivergence> open() {
     return jpa.findByStatus("OPEN").stream()
         .map(ReconciliationDivergenceRepositoryImpl::toDomain)

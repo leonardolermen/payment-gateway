@@ -5,6 +5,7 @@ import com.gateway.kernel.provider.card.CardNotification;
 import com.gateway.payments.UnitOfWork;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
+import com.gateway.payments.payment.PaymentStatus;
 import com.gateway.payments.payment.card.CardStatusSync;
 import com.gateway.payments.payment.persistence.PaymentRepository;
 import com.gateway.payments.reconciliation.Divergences;
@@ -48,7 +49,8 @@ public class CardNotifications {
 
     Payment payment = found.get();
     switch (notification.kind()) {
-      case STATUS_CHANGED, PARTIAL_REFUND -> statusSync.sync(payment, EventSource.PROVIDER_WEBHOOK);
+      case STATUS_CHANGED -> statusSync.sync(payment, EventSource.PROVIDER_WEBHOOK);
+      case PARTIAL_REFUND -> partialRefund(payment, notification);
       case VOID_DENIED ->
           unitOfWork.run(
               () ->
@@ -59,24 +61,58 @@ public class CardNotifications {
               () ->
                   divergences.open(
                       payment, "FRAUD_ALERT", "ChangeType 8 for " + notification.paymentId()));
-      case IGNORED -> recordIgnored(payment.id(), notification);
+      case IGNORED -> {
+        return recordIgnored(payment.id(), notification);
+      }
     }
 
     return true;
   }
 
-  private void recordIgnored(String paymentId, CardNotification notification) {
+  /**
+   * A partial refund leaves the sale PAID at the Cielo and CardAuthorization carries no voided
+   * amount, so the re-read alone sees nothing: the notification is the only evidence, and a human
+   * compares it with the gateway's refunds. A full refund already opened REFUNDED_AT_PROVIDER in
+   * the sync, which says more; a second divergence for the same fact would be noise.
+   */
+  private void partialRefund(Payment payment, CardNotification notification) {
+    statusSync.sync(payment, EventSource.PROVIDER_WEBHOOK);
+
     unitOfWork.run(
         () -> {
-          Payment payment = payments.findById(paymentId).orElseThrow();
-          payments.save(
+          if (divergences.isOpen(payment, "REFUNDED_AT_PROVIDER")) {
+            return;
+          }
+          divergences.open(
               payment,
-              List.of(
-                  payment
-                      .recordIgnored(
-                          "card notification ChangeType " + notification.changeType(),
-                          EventSource.PROVIDER_WEBHOOK)
-                      .orElseThrow()));
+              "PARTIAL_REFUND_AT_PROVIDER",
+              "ChangeType " + notification.changeType() + " for " + notification.paymentId());
+        });
+  }
+
+  /**
+   * recordIgnored refuses a CREATED payment, and an exception here would make the inbox retry until
+   * the flow or the sweeper moved it, for a notification that changes nothing anyway. Returns false
+   * there, so the entry ends IGNORED rather than PROCESSED.
+   */
+  private boolean recordIgnored(String paymentId, CardNotification notification) {
+    return unitOfWork.inTransaction(
+        () -> {
+          Payment payment = payments.findById(paymentId).orElseThrow();
+          if (payment.status() == PaymentStatus.CREATED) {
+            log.info(
+                "ChangeType {} for CREATED payment {} ignored",
+                notification.changeType(),
+                paymentId);
+            return false;
+          }
+
+          payment
+              .recordIgnored(
+                  "card notification ChangeType " + notification.changeType(),
+                  EventSource.PROVIDER_WEBHOOK)
+              .ifPresent(event -> payments.save(payment, List.of(event)));
+          return true;
         });
   }
 }

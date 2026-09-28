@@ -1,8 +1,11 @@
 package com.gateway.payments.inbox;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.ids.MerchantId;
+import com.gateway.kernel.provider.ProviderException;
 import com.gateway.kernel.provider.card.CardStatus;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentStatus;
@@ -89,6 +92,58 @@ class CardNotificationsIntegrationTest extends ServiceIntegrationTestBase {
     assertThat(paymentQueries.get(merchant, payment.id()).status())
         .isEqualTo(PaymentStatus.COMPLETED);
     assertThat(divergences(payment)).containsExactly("REFUNDED_AT_PROVIDER");
+  }
+
+  /**
+   * Fix round 1: a partial refund leaves the sale PAID, so the re-read shows nothing; the
+   * notification itself is the evidence.
+   */
+  @Test
+  void aPartialRefundDoneOutsideTheGatewayOpensADivergence() {
+    Payment payment = newCard(10000, APPROVES);
+
+    notify(merchant, payment.card().paymentId(), 25);
+
+    assertThat(paymentQueries.get(merchant, payment.id()).status())
+        .isEqualTo(PaymentStatus.COMPLETED);
+    assertThat(divergences(payment)).containsExactly("PARTIAL_REFUND_AT_PROVIDER");
+  }
+
+  /** Fix round 1: recordIgnored refuses a CREATED payment; the entry must not retry forever. */
+  @Test
+  void anIgnoredChangeTypeOnACreatedPaymentLeavesItUntouched() {
+    cards.landNextAuthorizeThenFailWith(
+        new ProviderException(ProviderException.Code.TIMEOUT, "Cielo POST timed out", null));
+    cards.failNextFindByOrderWith(
+        new ProviderException(ProviderException.Code.UNAVAILABLE, "Cielo GET failed", null));
+    assertThatThrownBy(() -> newCard(10000, APPROVES)).isInstanceOf(DomainException.class);
+    String paymentId =
+        jdbc.queryForObject(
+            "SELECT id FROM payments.payments WHERE merchant_id = ?",
+            String.class,
+            merchant.value());
+    String cieloPaymentId = "0f8a7c3e-1d2b-4c5a-9e6f-7a8b9c0d1e2f";
+    jdbc.update(
+        "UPDATE payments.payments SET details = jsonb_set(details, '{card,paymentId}', to_jsonb(?::text))"
+            + " WHERE id = ?",
+        cieloPaymentId,
+        paymentId);
+    List<String> eventsBefore =
+        jdbc.queryForList(
+            "SELECT type FROM payments.payment_events WHERE payment_id = ?",
+            String.class,
+            paymentId);
+
+    String id = notify(merchant, cieloPaymentId, 2);
+
+    assertThat(inboxStatus(id)).isEqualTo("IGNORED");
+    assertThat(paymentQueries.get(merchant, paymentId).status()).isEqualTo(PaymentStatus.CREATED);
+    assertThat(
+            jdbc.queryForList(
+                "SELECT type FROM payments.payment_events WHERE payment_id = ?",
+                String.class,
+                paymentId))
+        .isEqualTo(eventsBefore);
   }
 
   @Test

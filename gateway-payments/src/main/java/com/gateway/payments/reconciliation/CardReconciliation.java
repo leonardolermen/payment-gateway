@@ -26,6 +26,7 @@ import org.slf4j.LoggerFactory;
  */
 public class CardReconciliation {
   private static final Logger log = LoggerFactory.getLogger(CardReconciliation.class);
+  private static final String CAPTURE_OVERDUE = "CAPTURE_OVERDUE";
 
   private final PaymentRepository payments;
   private final CardStatusSync statusSync;
@@ -47,18 +48,23 @@ public class CardReconciliation {
   public int reconcile(Instant now) {
     Map<String, Payment> candidates = new LinkedHashMap<>();
     for (Payment payment :
-        payments.findByMethodAndStatusIn(
+        payments.findNewestByMethodAndStatusIn(
             PaymentMethod.CARD,
             EnumSet.of(PaymentStatus.AUTHORIZED, PaymentStatus.COMPLETED),
             now.minus(properties.cardReconciliationLookback()),
             properties.cardReconciliationCap())) {
       candidates.put(payment.id(), payment);
     }
-    // AUTHORIZED is card-only, so the status query needs no method filter.
+    // AUTHORIZED is card-only, so the status query needs no method filter. One already flagged is
+    // left out: it would be re-read every 15 minutes for nothing, and enough of them would fill
+    // the cap and hide the next overdue one. The human settling the divergence closes it.
     Instant overdueBefore = now.minus(properties.cardCaptureDeadline());
     for (Payment payment :
-        payments.findByStatusCreatedBefore(
-            PaymentStatus.AUTHORIZED, overdueBefore, properties.cardReconciliationCap())) {
+        payments.findByStatusCreatedBeforeWithoutOpenDivergence(
+            PaymentStatus.AUTHORIZED,
+            overdueBefore,
+            CAPTURE_OVERDUE,
+            properties.cardReconciliationCap())) {
       candidates.put(payment.id(), payment);
     }
 
@@ -87,9 +93,7 @@ public class CardReconciliation {
         after.status() == PaymentStatus.AUTHORIZED && after.createdAt().isBefore(overdueBefore);
     if (overdue
         && divergences.open(
-            after,
-            "CAPTURE_OVERDUE",
-            "authorized since " + after.createdAt() + ", never captured")) {
+            after, CAPTURE_OVERDUE, "authorized since " + after.createdAt() + ", never captured")) {
       return 1;
     }
 

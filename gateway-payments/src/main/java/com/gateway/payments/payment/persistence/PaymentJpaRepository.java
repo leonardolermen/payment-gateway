@@ -63,6 +63,30 @@ interface PaymentJpaRepository extends JpaRepository<PaymentEntity, String> {
   Optional<PaymentEntity> findByProviderAndTxid(
       @Param("provider") String provider, @Param("txid") String txid);
 
+  @Query(
+      "SELECT p FROM PaymentEntity p WHERE p.method = :method AND p.status IN :statuses AND p.createdAt > :after ORDER BY p.createdAt DESC")
+  java.util.List<PaymentEntity> findByMethodAndStatusInAndCreatedAtAfterNewestFirst(
+      @Param("method") String method,
+      @Param("statuses") Collection<String> statuses,
+      @Param("after") Instant after,
+      Limit limit);
+
+  /**
+   * Native: the divergence table has no mapping on this side, and NOT EXISTS keeps it one query.
+   */
+  @Query(
+      value =
+          "SELECT * FROM payments.payments p WHERE p.status = :status AND p.created_at < :before"
+              + " AND NOT EXISTS (SELECT 1 FROM payments.reconciliation_divergences d"
+              + " WHERE d.payment_id = p.id AND d.provider_status = :kind AND d.status = 'OPEN')"
+              + " ORDER BY p.created_at ASC LIMIT :limit",
+      nativeQuery = true)
+  java.util.List<PaymentEntity> findByStatusCreatedBeforeWithoutOpenDivergence(
+      @Param("status") String status,
+      @Param("before") Instant before,
+      @Param("kind") String kind,
+      @Param("limit") int limit);
+
   /** Native: the Cielo's PaymentId lives inside jsonb (V204 indexes this expression). */
   @Query(
       value =
