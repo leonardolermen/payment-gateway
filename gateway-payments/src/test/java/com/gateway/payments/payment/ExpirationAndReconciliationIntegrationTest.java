@@ -7,6 +7,7 @@ import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.provider.pix.ChargeStatus;
 import com.gateway.kernel.provider.pix.PixIssueRequest;
 import com.gateway.payments.jobs.Job;
+import com.gateway.payments.jobs.JobBackoff;
 import com.gateway.payments.jobs.JobRunner;
 import com.gateway.payments.jobs.JobType;
 import com.gateway.payments.jobs.persistence.JobRepository;
@@ -378,8 +379,8 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
 
   @Test
   void backoffDoublesAndCapsAtOneDay() {
-    assertThat(JobRunner.backoff(0)).isEqualTo(Duration.ofMinutes(1));
-    assertThat(JobRunner.backoff(3)).isEqualTo(Duration.ofMinutes(8));
-    assertThat(JobRunner.backoff(30)).isEqualTo(Duration.ofHours(24));
+    assertThat(JobBackoff.backoff(0)).isEqualTo(Duration.ofMinutes(1));
+    assertThat(JobBackoff.backoff(3)).isEqualTo(Duration.ofMinutes(8));
+    assertThat(JobBackoff.backoff(30)).isEqualTo(Duration.ofHours(24));
   }
 }

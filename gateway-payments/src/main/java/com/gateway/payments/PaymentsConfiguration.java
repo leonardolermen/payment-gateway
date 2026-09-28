@@ -9,7 +9,15 @@ import com.gateway.payments.idempotency.persistence.IdempotencyRepositoryImpl;
 import com.gateway.payments.inbox.WebhookInboxService;
 import com.gateway.payments.inbox.persistence.WebhookInboxRepository;
 import com.gateway.payments.inbox.persistence.WebhookInboxRepositoryImpl;
+import com.gateway.payments.jobs.ExpirePaymentJob;
+import com.gateway.payments.jobs.JobBackoff;
+import com.gateway.payments.jobs.JobHandler;
+import com.gateway.payments.jobs.JobHandlers;
 import com.gateway.payments.jobs.JobRunner;
+import com.gateway.payments.jobs.PollBoletoJob;
+import com.gateway.payments.jobs.PollRefundJob;
+import com.gateway.payments.jobs.ProcessWebhookJob;
+import com.gateway.payments.jobs.ReconcileJob;
 import com.gateway.payments.jobs.persistence.JobRepository;
 import com.gateway.payments.jobs.persistence.JobRepositoryImpl;
 import com.gateway.payments.outbox.persistence.OutboxRepository;
@@ -355,29 +363,50 @@ public class PaymentsConfiguration {
   }
 
   @Bean
+  JobBackoff jobBackoff(PaymentsProperties properties) {
+    return new JobBackoff(properties);
+  }
+
+  @Bean
+  ProcessWebhookJob processWebhookJob(WebhookInboxService inbox, JobBackoff backoff) {
+    return new ProcessWebhookJob(inbox, backoff);
+  }
+
+  @Bean
+  ExpirePaymentJob expirePaymentJob(PaymentExpiration expiration, JobBackoff backoff) {
+    return new ExpirePaymentJob(expiration, backoff);
+  }
+
+  @Bean
+  PollRefundJob pollRefundJob(
+      RefundPollingService polling, RefundService refunds, PaymentsProperties properties) {
+    return new PollRefundJob(polling, refunds, properties);
+  }
+
+  @Bean
+  ReconcileJob reconcileJob(
+      StuckCreatedSweep sweep, ReconciliationService reconciliation, JobBackoff backoff) {
+    return new ReconcileJob(sweep, reconciliation, backoff);
+  }
+
+  @Bean
+  PollBoletoJob pollBoletoJob(BoletoPollingService boletoPolling, PaymentsProperties properties) {
+    return new PollBoletoJob(boletoPolling, properties);
+  }
+
+  /** A list, so a job type added without its handler fails the startup instead of its first run. */
+  @Bean
+  JobHandlers jobHandlers(List<JobHandler> handlers) {
+    return new JobHandlers(handlers);
+  }
+
+  @Bean
   JobRunner jobRunner(
       JobRepository jobs,
-      WebhookInboxService inbox,
-      PaymentExpiration expiration,
-      StuckCreatedSweep sweep,
-      RefundPollingService polling,
-      BoletoPollingService boletoPolling,
-      RefundService refunds,
-      ReconciliationService reconciliation,
+      JobHandlers handlers,
       PaymentsProperties properties,
       TransactionTemplate paymentsTransactionTemplate,
       Clock clock) {
-    return new JobRunner(
-        jobs,
-        inbox,
-        expiration,
-        sweep,
-        polling,
-        boletoPolling,
-        refunds,
-        reconciliation,
-        properties,
-        paymentsTransactionTemplate,
-        clock);
+    return new JobRunner(jobs, handlers, properties, paymentsTransactionTemplate, clock);
   }
 }

@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
  * it.
  *
  * <p>Deliberately NOT here: {@code StuckCreatedSweep.sweepStuckCreated}, which the RECONCILE job
- * already runs every 15 minutes (see {@code JobRunner.run}); scheduling it twice would only race
+ * already runs every 15 minutes (see {@code ReconcileJob}); scheduling it twice would only race
  * against itself.
  */
 @Component

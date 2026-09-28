@@ -41,7 +41,7 @@ public class RefundPollingService {
 
   /**
    * Returns {@code true} once the refund is settled either way. {@code false} means "still
-   * processing": the {@link JobRunner} polls again in 5 minutes, up to {@code
+   * processing": the {@code PollRefundJob} polls again in 5 minutes, up to {@code
    * refundPollMaxAttempts} (288, i.e. 24 h); then the job goes DEAD and {@link
    * RefundService#giveUp} marks the refund UNKNOWN (amount still reserved) and opens a divergence.
    *
