@@ -63,6 +63,17 @@ interface PaymentJpaRepository extends JpaRepository<PaymentEntity, String> {
   Optional<PaymentEntity> findByProviderAndTxid(
       @Param("provider") String provider, @Param("txid") String txid);
 
+  /** Native: the Cielo's PaymentId lives inside jsonb (V204 indexes this expression). */
+  @Query(
+      value =
+          "SELECT * FROM payments.payments WHERE merchant_id = :merchantId AND provider = :provider"
+              + " AND details->'card'->>'paymentId' = :paymentId",
+      nativeQuery = true)
+  Optional<PaymentEntity> findByMerchantAndCardPaymentId(
+      @Param("merchantId") String merchantId,
+      @Param("provider") String provider,
+      @Param("paymentId") String paymentId);
+
   /**
    * The optimistic-lock write itself: {@code WHERE version = :expectedVersion}, {@code expected}
    * being the version the aggregate was loaded at (see {@code PaymentEntity}'s comment on why that

@@ -28,7 +28,16 @@ public final class PaymentTransitions {
           // PROVIDER_POLL also here: the boleto poll runs until the limit date plus a grace, i.e.
           // after the expiry job.
           new Transition(
-              EXPIRED, COMPLETED, EnumSet.of(PROVIDER_WEBHOOK, RECONCILIATION, PROVIDER_POLL)));
+              EXPIRED, COMPLETED, EnumSet.of(PROVIDER_WEBHOOK, RECONCILIATION, PROVIDER_POLL)),
+          // Card (spec 2026-09-28 §4). CREATED -> COMPLETED is the automatic capture; SYSTEM is the
+          // stuck-CREATED sweeper adopting a sale the acquirer confirms by MerchantOrderId. A card
+          // never passes through PENDING nor EXPIRED: an authorization does not expire at the
+          // Cielo,
+          // and cancelling it on our own would free a limit the merchant may still want (§11).
+          new Transition(CREATED, COMPLETED, EnumSet.of(API, SYSTEM)),
+          new Transition(CREATED, AUTHORIZED, EnumSet.of(API, SYSTEM)),
+          new Transition(AUTHORIZED, COMPLETED, EnumSet.of(API, PROVIDER_WEBHOOK, RECONCILIATION)),
+          new Transition(AUTHORIZED, CANCELED, EnumSet.of(API, PROVIDER_WEBHOOK, RECONCILIATION)));
 
   private PaymentTransitions() {}
 

@@ -7,6 +7,7 @@ import com.gateway.kernel.money.Money;
 import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.payments.payment.boleto.*;
+import com.gateway.payments.payment.card.CardDetails;
 import com.gateway.payments.payment.pix.PixDetails;
 import java.time.*;
 import org.junit.jupiter.api.Test;
@@ -211,5 +212,111 @@ class PaymentTest {
                 pix.markCompletedByBoleto(
                     Money.brl(1), Instant.now(), null, EventSource.PROVIDER_POLL))
         .isInstanceOf(IllegalStateException.class);
+  }
+
+  Payment card() {
+    return Payment.createCard(
+        MerchantId.next(),
+        ProviderEnvironment.TEST,
+        "CIELO",
+        Money.brl(10000),
+        "order-42",
+        "Order 42",
+        null,
+        CardDetails.requested(3, "VISA", "3171", null),
+        clock);
+  }
+
+  static CardDetails authorized(CardDetails requested) {
+    return new CardDetails(
+        "6f8d1753-86bb-4dc0-9ebb-09a29093e1fb",
+        "1124060407175",
+        "663864",
+        "182738",
+        requested.brand(),
+        requested.last4(),
+        requested.installments(),
+        null,
+        null,
+        null);
+  }
+
+  @Test
+  void aCardPaymentHasNoPixSideAndNoExpiry() {
+    Payment p = card();
+
+    assertThat(p.method()).isEqualTo(PaymentMethod.CARD);
+    assertThat(p.pix()).isNull();
+    assertThat(p.boleto()).isNull();
+    assertThat(p.expiresAt()).isNull();
+    assertThat(p.card().installments()).isEqualTo(3);
+    assertThat(p.createdEvent().payload()).contains("\"method\":\"CARD\"");
+  }
+
+  @Test
+  void authorizedThenPartiallyCaptured() {
+    Payment p = card();
+    p.markAuthorized(authorized(p.card()), EventSource.API);
+    assertThat(p.status()).isEqualTo(PaymentStatus.AUTHORIZED);
+
+    PaymentEvent captured =
+        p.markCaptured(Money.brl(6000), Instant.parse("2026-09-24T12:30:00Z"), EventSource.API);
+
+    assertThat(p.status()).isEqualTo(PaymentStatus.COMPLETED);
+    assertThat(p.paidAmount()).isEqualTo(Money.brl(6000));
+    assertThat(p.card().capturedAmount()).isEqualTo(6000L);
+    assertThat(captured.payload()).contains("\"paidVia\":\"CARD\"").contains("\"paidAmount\":6000");
+  }
+
+  @Test
+  void anAutomaticCaptureGoesStraightToCompleted() {
+    Payment p = card();
+
+    p.markCompletedByCard(
+        authorized(p.card()),
+        Money.brl(10000),
+        Instant.parse("2026-09-24T12:00:01Z"),
+        EventSource.API);
+
+    assertThat(p.status()).isEqualTo(PaymentStatus.COMPLETED);
+    assertThat(p.card().paymentId()).isEqualTo("6f8d1753-86bb-4dc0-9ebb-09a29093e1fb");
+  }
+
+  @Test
+  void aDeclineFailsAndKeepsTheDeclineCode() {
+    Payment p = card();
+
+    PaymentEvent failed =
+        p.markDeclined(authorized(p.card()).withDecline("INSUFFICIENT_FUNDS"), EventSource.API);
+
+    assertThat(p.status()).isEqualTo(PaymentStatus.FAILED);
+    assertThat(p.card().declineCode()).isEqualTo("INSUFFICIENT_FUNDS");
+    assertThat(failed.payload())
+        .isEqualTo("{\"reason\":\"CARD_DECLINED\",\"declineCode\":\"INSUFFICIENT_FUNDS\"}");
+  }
+
+  /** Spec §4: the refunds' sum is capped by paid_amount, which a partial capture makes smaller. */
+  @Test
+  void aCardRefundIsCappedByWhatWasCaptured() {
+    Payment p = card();
+    p.markAuthorized(authorized(p.card()), EventSource.API);
+    p.markCaptured(Money.brl(6000), Instant.parse("2026-09-24T12:30:00Z"), EventSource.API);
+
+    p.applyRefund(Money.brl(6000));
+
+    assertThat(p.fullyRefunded()).isTrue();
+    assertThatThrownBy(() -> p.applyRefund(Money.brl(1)))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void cardTransitionsRefuseAPixPayment() {
+    Payment pix = fresh();
+
+    assertThatThrownBy(
+            () ->
+                pix.markAuthorized(CardDetails.requested(1, "VISA", "3171", null), EventSource.API))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("markAuthorized on a PIX payment");
   }
 }

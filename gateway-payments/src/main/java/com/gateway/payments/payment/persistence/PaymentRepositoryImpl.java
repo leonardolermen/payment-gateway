@@ -47,7 +47,7 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   public Payment save(Payment payment, List<PaymentEvent> newEvents) {
     long newVersion = payment.version();
     long expectedVersion = newVersion - newEvents.size();
-    String details = PaymentDetailsJson.write(payment.pix(), payment.boleto());
+    String details = PaymentDetailsJson.write(payment.pix(), payment.boleto(), payment.card());
 
     if (expectedVersion == 0) {
       PaymentEntity entity = new PaymentEntity();
@@ -115,6 +115,13 @@ public class PaymentRepositoryImpl implements PaymentRepository {
       MerchantId merchantId, String provider, String txid) {
     return jpa.findByProviderAndTxid(provider, txid)
         .filter(entity -> entity.merchantId.equals(merchantId.value()))
+        .map(PaymentRepositoryImpl::toDomain);
+  }
+
+  @Override
+  public Optional<Payment> findByMerchantAndCardPaymentId(
+      MerchantId merchantId, String provider, String cardPaymentId) {
+    return jpa.findByMerchantAndCardPaymentId(merchantId.value(), provider, cardPaymentId)
         .map(PaymentRepositoryImpl::toDomain);
   }
 
@@ -232,6 +239,7 @@ public class PaymentRepositoryImpl implements PaymentRepository {
         entity.customerDocumentHash,
         PaymentDetailsJson.readPix(entity.details),
         PaymentDetailsJson.readBoleto(entity.details),
+        PaymentDetailsJson.readCard(entity.details),
         entity.expiresAt,
         entity.paidAt,
         entity.paidAmount == null ? null : new Money(entity.paidAmount, entity.currency),

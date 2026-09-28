@@ -87,6 +87,47 @@ class PaymentTransitionsTest {
    * Polling the boleto query is a provider-side fact, like a webhook: it may complete PENDING and a
    * late-paid EXPIRED, never anything else.
    */
+  /** Spec 2026-09-28 §4, the card rows. A card never passes through PENDING nor EXPIRED. */
+  @org.junit.jupiter.api.Test
+  void theCardRows() {
+    assertThat(
+            PaymentTransitions.allowed(
+                PaymentStatus.CREATED, PaymentStatus.COMPLETED, EventSource.API))
+        .isTrue();
+    assertThat(
+            PaymentTransitions.allowed(
+                PaymentStatus.CREATED, PaymentStatus.AUTHORIZED, EventSource.API))
+        .isTrue();
+    assertThat(
+            PaymentTransitions.allowed(
+                PaymentStatus.CREATED, PaymentStatus.AUTHORIZED, EventSource.SYSTEM))
+        .isTrue();
+    for (EventSource by :
+        new EventSource[] {
+          EventSource.API, EventSource.PROVIDER_WEBHOOK, EventSource.RECONCILIATION
+        }) {
+      assertThat(PaymentTransitions.allowed(PaymentStatus.AUTHORIZED, PaymentStatus.COMPLETED, by))
+          .as("%s", by)
+          .isTrue();
+      assertThat(PaymentTransitions.allowed(PaymentStatus.AUTHORIZED, PaymentStatus.CANCELED, by))
+          .as("%s", by)
+          .isTrue();
+    }
+    assertThat(
+            PaymentTransitions.allowed(
+                PaymentStatus.AUTHORIZED, PaymentStatus.EXPIRED, EventSource.EXPIRATION_JOB))
+        .isFalse();
+    assertThat(
+            PaymentTransitions.allowed(
+                PaymentStatus.AUTHORIZED, PaymentStatus.FAILED, EventSource.API))
+        .isFalse();
+    assertThat(
+            PaymentTransitions.allowed(
+                PaymentStatus.CREATED, PaymentStatus.COMPLETED, EventSource.PROVIDER_WEBHOOK))
+        .isFalse();
+    assertThat(PaymentStatus.AUTHORIZED.terminal()).isFalse();
+  }
+
   @org.junit.jupiter.api.Test
   void providerPollCompletesLikeAWebhook() {
     assertThat(

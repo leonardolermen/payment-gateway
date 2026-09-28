@@ -32,6 +32,14 @@ public interface PaymentRepository {
    */
   Optional<Payment> findByMerchantAndTxid(MerchantId merchantId, String provider, String txid);
 
+  /**
+   * By the acquirer's PaymentId, scoped to the merchant whose notification URL was called: the
+   * notification names only the PaymentId, and another merchant's sale must not be reachable
+   * through it.
+   */
+  Optional<Payment> findByMerchantAndCardPaymentId(
+      MerchantId merchantId, String provider, String cardPaymentId);
+
   /** Newest first, capped at {@code limit}. */
   List<Payment> listByMerchantAndReference(MerchantId merchantId, String reference, int limit);
 

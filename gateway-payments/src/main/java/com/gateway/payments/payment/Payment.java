@@ -7,13 +7,14 @@ import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.payments.payment.boleto.BoletoDetails;
 import com.gateway.payments.payment.boleto.PaidVia;
+import com.gateway.payments.payment.card.CardDetails;
 import com.gateway.payments.payment.pix.PixDetails;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
 
 /**
- * A Pix charge or a Bolecode (a registered boleto with a Pix QR on it). Mutable,
+ * A Pix charge, a Bolecode (a registered boleto with a Pix QR on it) or a card payment. Mutable,
  * event-sourced-in-spirit aggregate: every state change produces a {@link PaymentEvent} whose
  * {@code sequence} is the new {@code version} (optimistic lock).
  *
@@ -41,6 +42,7 @@ public final class Payment {
   private PaymentStatus status;
   private PixDetails pix;
   private BoletoDetails boleto;
+  private CardDetails card;
   private Instant expiresAt;
   private Instant paidAt;
   private Money paidAmount;
@@ -166,6 +168,55 @@ public final class Payment {
     return payment;
   }
 
+  /**
+   * A card payment starts with what the merchant asked for (installments) and the card's face
+   * (brand, last four), and no acquirer reference: the PaymentId exists only once the Cielo
+   * answers. It never expires on its own (spec §11), so {@code expiresAt} stays null, and it has no
+   * Pix side.
+   */
+  public static Payment createCard(
+      MerchantId merchantId,
+      ProviderEnvironment environment,
+      String provider,
+      Money amount,
+      String reference,
+      String description,
+      String customerDocumentHash,
+      CardDetails card,
+      Clock clock) {
+    String id = Ulid.next();
+    Payment payment =
+        new Payment(
+            id,
+            PaymentMethod.CARD,
+            merchantId,
+            environment,
+            provider,
+            amount,
+            reference,
+            description,
+            customerDocumentHash,
+            clock.instant(),
+            clock);
+    payment.pix = null;
+    payment.card = card;
+    payment.version = 1;
+    payment.createdEvent =
+        new PaymentEvent(
+            Ulid.next(),
+            id,
+            payment.version,
+            "created",
+            EventSource.API,
+            "{\"amount\":"
+                + amount.cents()
+                + ",\"method\":\"CARD\",\"installments\":"
+                + card.installments()
+                + "}",
+            payment.createdAt);
+    return payment;
+  }
+
   private PaymentEvent transition(PaymentStatus to, EventSource by, String type, String payload) {
     if (!PaymentTransitions.allowed(status, to, by)) {
       throw new IllegalStateException(
@@ -265,6 +316,70 @@ public final class Payment {
     return event;
   }
 
+  /** CREATED -> AUTHORIZED: the acquirer holds the amount on the card, waiting for a capture. */
+  public PaymentEvent markAuthorized(CardDetails details, EventSource by) {
+    requireCard("markAuthorized");
+    PaymentEvent event =
+        transition(
+            PaymentStatus.AUTHORIZED,
+            by,
+            "authorized",
+            "{\"paymentId\":" + json(details.paymentId()) + "}");
+    this.card = details;
+    return event;
+  }
+
+  /**
+   * The card was captured: from CREATED (automatic capture) or AUTHORIZED (a later capture, or the
+   * acquirer showing it captured elsewhere). {@code paid_amount} is what was captured, which a
+   * partial capture makes smaller than the amount.
+   */
+  public PaymentEvent markCompletedByCard(
+      CardDetails details, Money capturedAmount, Instant capturedAt, EventSource by) {
+    requireCard("markCompletedByCard");
+    PaymentEvent event =
+        transition(
+            PaymentStatus.COMPLETED,
+            by,
+            "completed",
+            "{\"paidVia\":\"CARD\",\"paidAmount\":"
+                + capturedAmount.cents()
+                + ",\"paymentId\":"
+                + json(details.paymentId())
+                + "}");
+    this.card = details.withCaptured(capturedAmount.cents());
+    this.paidAmount = capturedAmount;
+    this.paidAt = capturedAt;
+    return event;
+  }
+
+  /** AUTHORIZED -> COMPLETED with the details already known from the authorization. */
+  public PaymentEvent markCaptured(Money capturedAmount, Instant capturedAt, EventSource by) {
+    return markCompletedByCard(card, capturedAmount, capturedAt, by);
+  }
+
+  /**
+   * CREATED -> FAILED because the issuer said no. A result, not an error (spec §11): the event
+   * records our decline code; the issuer's own text never reaches the payment.
+   */
+  public PaymentEvent markDeclined(CardDetails details, EventSource by) {
+    requireCard("markDeclined");
+    PaymentEvent event =
+        transition(
+            PaymentStatus.FAILED,
+            by,
+            "failed",
+            "{\"reason\":\"CARD_DECLINED\",\"declineCode\":" + json(details.declineCode()) + "}");
+    this.card = details;
+    return event;
+  }
+
+  private void requireCard(String operation) {
+    if (method != PaymentMethod.CARD) {
+      throw new IllegalStateException(operation + " on a " + method + " payment");
+    }
+  }
+
   public PaymentEvent markExpired(EventSource by) {
     return transition(PaymentStatus.EXPIRED, by, "expired", "{}");
   }
@@ -344,11 +459,20 @@ public final class Payment {
       throw new IllegalStateException("cannot refund a payment in status " + status);
     }
     Money total = refundedAmount.plus(amount);
-    if (total.cents() > this.amount.cents()) {
+    if (total.cents() > refundable().cents()) {
       throw new IllegalArgumentException(
-          "refund total " + total.cents() + " exceeds paid amount " + this.amount.cents());
+          "refund total " + total.cents() + " exceeds paid amount " + refundable().cents());
     }
     this.refundedAmount = total;
+  }
+
+  /**
+   * What can go back: the paid amount once there is one. A partial card capture makes it smaller
+   * than the amount (spec §4: "soma ≤ paid_amount"); for Pix the settlement refuses any other
+   * amount, so the two are equal there.
+   */
+  public Money refundable() {
+    return paidAmount == null ? amount : paidAmount;
   }
 
   public Money refundedAmount() {
@@ -356,7 +480,7 @@ public final class Payment {
   }
 
   public boolean fullyRefunded() {
-    return refundedAmount.cents() == amount.cents();
+    return refundedAmount.cents() == refundable().cents();
   }
 
   public boolean partiallyRefunded() {
@@ -409,6 +533,10 @@ public final class Payment {
 
   public BoletoDetails boleto() {
     return boleto;
+  }
+
+  public CardDetails card() {
+    return card;
   }
 
   public Instant expiresAt() {
@@ -508,6 +636,52 @@ public final class Payment {
       Instant createdAt,
       Instant updatedAt,
       Clock clock) {
+    return rehydrate(
+        id,
+        merchantId,
+        environment,
+        provider,
+        method,
+        status,
+        amount,
+        reference,
+        description,
+        customerDocumentHash,
+        pix,
+        boleto,
+        null,
+        expiresAt,
+        paidAt,
+        paidAmount,
+        refundedAmount,
+        version,
+        createdAt,
+        updatedAt,
+        clock);
+  }
+
+  public static Payment rehydrate(
+      String id,
+      MerchantId merchantId,
+      ProviderEnvironment environment,
+      String provider,
+      PaymentMethod method,
+      PaymentStatus status,
+      Money amount,
+      String reference,
+      String description,
+      String customerDocumentHash,
+      PixDetails pix,
+      BoletoDetails boleto,
+      CardDetails card,
+      Instant expiresAt,
+      Instant paidAt,
+      Money paidAmount,
+      Money refundedAmount,
+      long version,
+      Instant createdAt,
+      Instant updatedAt,
+      Clock clock) {
     Payment payment =
         new Payment(
             id,
@@ -524,6 +698,7 @@ public final class Payment {
     payment.status = status;
     payment.pix = pix;
     payment.boleto = boleto;
+    payment.card = card;
     payment.expiresAt = expiresAt;
     payment.paidAt = paidAt;
     payment.paidAmount = paidAmount;
