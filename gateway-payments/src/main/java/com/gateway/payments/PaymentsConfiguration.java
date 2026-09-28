@@ -39,6 +39,8 @@ import com.gateway.payments.payment.boleto.BoletoPollingService;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepository;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepositoryImpl;
 import com.gateway.payments.payment.card.CardAdoption;
+import com.gateway.payments.payment.card.CardCapture;
+import com.gateway.payments.payment.card.CardVoid;
 import com.gateway.payments.payment.create.BolecodeFromQuery;
 import com.gateway.payments.payment.create.BolecodePaymentFlow;
 import com.gateway.payments.payment.create.CardAuthorizationRecovery;
@@ -58,6 +60,7 @@ import com.gateway.payments.reconciliation.Divergences;
 import com.gateway.payments.reconciliation.ReconciliationService;
 import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceRepository;
 import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceRepositoryImpl;
+import com.gateway.payments.refund.CardRefunds;
 import com.gateway.payments.refund.RefundPollingService;
 import com.gateway.payments.refund.RefundService;
 import com.gateway.payments.refund.persistence.RefundRepository;
@@ -286,15 +289,48 @@ public class PaymentsConfiguration {
   }
 
   @Bean
+  CardCapture cardCapture(
+      PaymentQueries queries,
+      PaymentRepository payments,
+      PaymentEvents events,
+      ProviderGateway providers,
+      UnitOfWork unitOfWork) {
+    return new CardCapture(queries, payments, events, providers, unitOfWork);
+  }
+
+  @Bean
+  CardVoid cardVoid(
+      PaymentRepository payments,
+      PaymentEvents events,
+      ProviderGateway providers,
+      UnitOfWork unitOfWork) {
+    return new CardVoid(payments, events, providers, unitOfWork);
+  }
+
+  @Bean
+  CardRefunds cardRefunds(
+      RefundRepository refunds,
+      PaymentRepository payments,
+      ProviderGateway providers,
+      PaymentEvents events,
+      Divergences divergences,
+      TransactionTemplate paymentsTransactionTemplate,
+      Clock clock) {
+    return new CardRefunds(
+        refunds, payments, providers, events, divergences, paymentsTransactionTemplate, clock);
+  }
+
+  @Bean
   PaymentCancellation paymentCancellation(
       PaymentQueries queries,
       PaymentRepository payments,
       PaymentEvents events,
       ProviderGateway providers,
       UnitOfWork unitOfWork,
-      BoletoSettlement boletoSettlement) {
+      BoletoSettlement boletoSettlement,
+      CardVoid cardVoid) {
     return new PaymentCancellation(
-        queries, payments, events, providers, unitOfWork, boletoSettlement);
+        queries, payments, events, providers, unitOfWork, boletoSettlement, cardVoid);
   }
 
   @Bean
@@ -306,7 +342,8 @@ public class PaymentsConfiguration {
       PaymentEvents events,
       PaymentService paymentService,
       TransactionTemplate paymentsTransactionTemplate,
-      Clock clock) {
+      Clock clock,
+      CardRefunds cardRefunds) {
     return new RefundService(
         refunds,
         payments,
@@ -315,7 +352,8 @@ public class PaymentsConfiguration {
         events,
         paymentService,
         paymentsTransactionTemplate,
-        clock);
+        clock,
+        cardRefunds);
   }
 
   @Bean

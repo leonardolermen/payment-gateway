@@ -59,6 +59,7 @@ public class RefundService {
   private final PaymentService paymentService;
   private final TransactionTemplate transactionTemplate;
   private final Clock clock;
+  private final CardRefunds cardRefunds;
 
   public RefundService(
       RefundRepository refunds,
@@ -68,7 +69,8 @@ public class RefundService {
       PaymentEvents events,
       PaymentService paymentService,
       TransactionTemplate transactionTemplate,
-      Clock clock) {
+      Clock clock,
+      CardRefunds cardRefunds) {
     this.refunds = refunds;
     this.payments = payments;
     this.jobs = jobs;
@@ -77,6 +79,7 @@ public class RefundService {
     this.paymentService = paymentService;
     this.transactionTemplate = transactionTemplate;
     this.clock = clock;
+    this.cardRefunds = cardRefunds;
   }
 
   /** {@code amountOrNull == null} refunds whatever is not yet refunded or in flight. */
@@ -87,6 +90,11 @@ public class RefundService {
             .orElseThrow(() -> new NotFoundException("payment", paymentId));
     if (amountOrNull != null && amountOrNull.isZero()) {
       throw new DomainException("INVALID_AMOUNT", "a refund must be greater than zero");
+    }
+    // A card refund is the acquirer's synchronous void, with no endToEndId, no polling job and no
+    // 90-day Pix window: its own class (spec 2026-09-28 §4). Dispatched here, once.
+    if (payment.method() == PaymentMethod.CARD) {
+      return cardRefunds.request(merchantId, payment, amountOrNull);
     }
     ResolvedProvider<PixMethodProvider> resolved =
         providers.resolvePix(merchantId, payment.environment(), payment.provider());
