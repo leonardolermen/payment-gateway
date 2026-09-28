@@ -126,9 +126,9 @@ public class CieloSalesClient {
   }
 
   /**
-   * An unreadable ReceveidDate sorts last instead of throwing: this list feeds the in-doubt recovery
-   * and the sweep, and one malformed date from the Cielo would otherwise fail every lookup of that
-   * order — the sale stuck in doubt over a field used only for ordering.
+   * An unreadable ReceveidDate sorts last instead of throwing: this list feeds the in-doubt
+   * recovery and the sweep, and one malformed date from the Cielo would otherwise fail every lookup
+   * of that order — the sale stuck in doubt over a field used only for ordering.
    */
   private static Instant received(String date) {
     try {
