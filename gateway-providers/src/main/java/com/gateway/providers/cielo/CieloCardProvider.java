@@ -25,13 +25,18 @@ import com.gateway.providers.cielo.sale.CieloStatuses;
 import com.gateway.providers.cielo.sale.SaleRequestFactory;
 import com.gateway.providers.cielo.sale.SaleResponses;
 import com.gateway.providers.cielo.sale.dto.SaleUpdateResponse;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 
 /** The only class that knows the Cielo's vocabulary and the gateway's card contract at once. */
 public class CieloCardProvider implements CardMethodProvider {
+  private static final Logger LOG = LoggerFactory.getLogger(CieloCardProvider.class);
+
   /** docs/webhook, "Tabela de ChangeType"; everything else is not this phase's (plan D14). */
   private static final Map<Integer, CardNotificationKind> CHANGE_TYPES =
       Map.of(
@@ -95,14 +100,20 @@ public class CieloCardProvider implements CardMethodProvider {
     return find(credentials, paymentIds.getFirst());
   }
 
-  /** A void of an authorization is total by definition: no amount, and the answer must be 10. */
+  /**
+   * A void of an authorization is total by definition: no amount. VOIDED (10) and REFUNDED (11 or
+   * 15 — a void sent after the sale's day, spec §12.1) both mean the money went back; anything else
+   * (still AUTHORIZED/PAID) means the void did not take and is a CONFLICT. httpStatus and
+   * providerType follow {@link CieloErrors}' convention: the real HTTP status (the PUT itself
+   * answered 200) and the Cielo's own ReturnCode, not a made-up pair.
+   */
   @Override
   public void cancel(ProviderCredentials credentials, String bankReference) {
     SaleUpdateResponse voided =
         sales(credentials).voidSale(credentialsOf(credentials), bankReference, Optional.empty());
     CardStatus status = CieloStatuses.of(voided.status());
 
-    if (status != CardStatus.VOIDED) {
+    if (status != CardStatus.VOIDED && status != CardStatus.REFUNDED) {
       throw new ProviderException(
           ProviderException.Code.CONFLICT,
           200,
@@ -113,21 +124,56 @@ public class CieloCardProvider implements CardMethodProvider {
 
   /**
    * The capture answer carries no captured amount or date (reference/capturar-apos-autorizacao),
-   * which is what the payment stores: one GET after it, on the query host (plan D17).
+   * which is what the payment stores: one GET after it, on the query host (plan D17). But the PUT
+   * already moved the money — if the re-query then fails (timeout, 5xx, query-host lag) or comes
+   * back empty, the caller must not be told the capture is unknown: it rebuilds the authorization
+   * from the capture answer itself (status via CieloStatuses, tid/proofOfSale/authorizationCode
+   * from the PUT, capturedAmount from what was requested — null when a full capture leaves the
+   * total unknown here) and logs a WARN naming the payment id so reconciliation re-reads the sale.
    */
   @Override
   public CardAuthorization capture(
       ProviderCredentials credentials, String bankReference, Optional<Money> amount) {
-    sales(credentials).capture(credentialsOf(credentials), bankReference, amount);
+    SaleUpdateResponse captured =
+        sales(credentials).capture(credentialsOf(credentials), bankReference, amount);
 
-    return find(credentials, bankReference)
-        .orElseThrow(
-            () ->
-                new ProviderException(
-                    ProviderException.Code.UNKNOWN,
-                    0,
-                    null,
-                    "sale " + bankReference + " not found right after its capture"));
+    Optional<CardAuthorization> requeried;
+    try {
+      requeried = find(credentials, bankReference);
+    } catch (ProviderException e) {
+      requeried = Optional.empty();
+    }
+
+    if (requeried.isPresent()) {
+      return requeried.get();
+    }
+
+    LOG.warn(
+        "Cielo capture of {} was acknowledged (status {}) but the re-query did not confirm it;"
+            + " reconciliation must re-read the sale",
+        bankReference,
+        captured.status());
+    return fallbackAfterCapture(bankReference, captured, amount);
+  }
+
+  private static CardAuthorization fallbackAfterCapture(
+      String bankReference, SaleUpdateResponse captured, Optional<Money> amount) {
+    return new CardAuthorization(
+        bankReference,
+        CieloStatuses.of(captured.status()),
+        captured.returnCode(),
+        captured.returnMessage(),
+        null,
+        captured.tid(),
+        captured.authorizationCode(),
+        captured.proofOfSale(),
+        null,
+        amount.orElse(null),
+        null,
+        null,
+        Optional.empty(),
+        null,
+        Optional.of(Instant.now()));
   }
 
   @Override

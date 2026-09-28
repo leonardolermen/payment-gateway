@@ -134,11 +134,75 @@ class CieloCardProviderTest {
     assertThat(captured.capturedAt()).isPresent();
   }
 
+  /**
+   * The PUT already moved the money; a re-query that blows up must not turn an acknowledged capture
+   * into an exception the caller cannot distinguish from "it did not happen".
+   */
+  @Test
+  void aCaptureFallsBackToThePutWhenTheRequeryFails() {
+    server.stubFor(
+        put(urlPathEqualTo("/1/sales/" + PAYMENT_ID + "/capture"))
+            .willReturn(okJson(CieloFixtures.read("put_capture_200.json"))));
+    server.stubFor(
+        get(urlEqualTo("/1/sales/" + PAYMENT_ID)).willReturn(aResponse().withStatus(500)));
+
+    CardAuthorization captured =
+        provider.capture(credentials(), PAYMENT_ID, Optional.of(Money.brl(15700)));
+
+    assertThat(captured.status()).isEqualTo(CardStatus.PAID);
+    assertThat(captured.capturedAmount()).isEqualTo(Money.brl(15700));
+    assertThat(captured.capturedAt()).isPresent();
+  }
+
+  /** Same as above, but the re-query comes back 404 (Cielo host lag) instead of throwing. */
+  @Test
+  void aCaptureFallsBackToThePutWhenTheRequeryIsEmpty() {
+    server.stubFor(
+        put(urlPathEqualTo("/1/sales/" + PAYMENT_ID + "/capture"))
+            .willReturn(okJson(CieloFixtures.read("put_capture_200.json"))));
+    server.stubFor(
+        get(urlEqualTo("/1/sales/" + PAYMENT_ID)).willReturn(aResponse().withStatus(404)));
+
+    CardAuthorization captured =
+        provider.capture(credentials(), PAYMENT_ID, Optional.of(Money.brl(15700)));
+
+    assertThat(captured.status()).isEqualTo(CardStatus.PAID);
+    assertThat(captured.capturedAmount()).isEqualTo(Money.brl(15700));
+    assertThat(captured.capturedAt()).isPresent();
+  }
+
+  /** The fallback only covers a PUT that succeeded: a failed PUT is still an exception. */
+  @Test
+  void aCaptureWhosePutFailsIsStillAnException() {
+    server.stubFor(
+        put(urlPathEqualTo("/1/sales/" + PAYMENT_ID + "/capture"))
+            .willReturn(
+                aResponse().withStatus(400).withBody(CieloFixtures.read("error_400_list.json"))));
+
+    assertThatThrownBy(
+            () -> provider.capture(credentials(), PAYMENT_ID, Optional.of(Money.brl(15700))))
+        .isInstanceOf(ProviderException.class)
+        .extracting(thrown -> ((ProviderException) thrown).code())
+        .isEqualTo(ProviderException.Code.INVALID);
+  }
+
   @Test
   void cancelIsATotalVoidThatMustEndVoided() {
     server.stubFor(
         put(urlEqualTo("/1/sales/" + PAYMENT_ID + "/void"))
             .willReturn(okJson(CieloFixtures.read("put_void_200.json"))));
+
+    provider.cancel(credentials(), PAYMENT_ID);
+  }
+
+  /**
+   * Plan D2/spec §12.1: a void sent after the sale's day answers REFUNDED, not VOIDED — still ok.
+   */
+  @Test
+  void cancelAcceptsALateVoidThatAnswersRefunded() {
+    server.stubFor(
+        put(urlEqualTo("/1/sales/" + PAYMENT_ID + "/void"))
+            .willReturn(okJson(CieloFixtures.read("put_void_200_refunded.json"))));
 
     provider.cancel(credentials(), PAYMENT_ID);
   }
