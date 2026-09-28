@@ -18,6 +18,7 @@ import javax.crypto.spec.GCMParameterSpec;
 public class TestSealer implements Sealer {
   private final SecretKey key;
   private final SecureRandom random = new SecureRandom();
+  private volatile RuntimeException failNextSeal;
 
   public TestSealer() {
     try {
@@ -29,8 +30,19 @@ public class TestSealer implements Sealer {
     }
   }
 
+  /** The key service is down, or the envelope cipher refuses: the next seal throws {@code e}. */
+  public void failNextSealWith(RuntimeException e) {
+    this.failNextSeal = e;
+  }
+
   @Override
   public byte[] seal(byte[] plaintext, String context) {
+    RuntimeException fail = failNextSeal;
+    if (fail != null) {
+      failNextSeal = null;
+      throw fail;
+    }
+
     byte[] nonce = new byte[12];
     random.nextBytes(nonce);
     byte[] ciphertext = gcm(Cipher.ENCRYPT_MODE, nonce, context, plaintext);
