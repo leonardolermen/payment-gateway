@@ -38,7 +38,7 @@ public class PollRefundJob implements JobHandler {
    * devolucao.
    */
   @Override
-  public Job reschedule(Job job, Instant now, String error, boolean failed) {
+  public Job afterFailure(Job job, Instant now, String error) {
     return job.reschedule(
         now.plus(RefundService.POLL_EVERY), error, properties.refundPollMaxAttempts());
   }

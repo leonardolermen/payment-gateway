@@ -12,8 +12,18 @@ public interface JobHandler {
   /** true = done, false = the job asks to run again. */
   boolean run(String refId, Instant now);
 
-  /** How this job comes back after a failure ({@code failed}) or a "not yet". */
-  Job reschedule(Job job, Instant now, String error, boolean failed);
+  /** The last_error a "not yet" leaves on the row; it is not a failure, only a reason to wait. */
+  String NOT_YET = "not settled yet";
+
+  /** How this job comes back after {@link #run} threw. */
+  Job afterFailure(Job job, Instant now, String error);
+
+  /**
+   * How this job comes back after {@link #run} answered false. Most types wait as for a failure.
+   */
+  default Job notYet(Job job, Instant now) {
+    return afterFailure(job, now, NOT_YET);
+  }
 
   /**
    * The row about to be saved, after {@code next} was decided either way. Most types save it as it

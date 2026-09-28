@@ -31,11 +31,17 @@ public class PollBoletoJob implements JobHandler {
    * (bank unreachable) backs off like any job but never waits longer than the poll period itself.
    */
   @Override
-  public Job reschedule(Job job, Instant now, String error, boolean failed) {
+  public Job afterFailure(Job job, Instant now, String error) {
     Duration wait =
-        failed && JobBackoff.backoff(job.attempts()).compareTo(properties.boletoPollEvery()) < 0
+        JobBackoff.backoff(job.attempts()).compareTo(properties.boletoPollEvery()) < 0
             ? JobBackoff.backoff(job.attempts())
             : properties.boletoPollEvery();
     return job.reschedule(now.plus(wait), error, properties.boletoPollMaxAttempts());
+  }
+
+  @Override
+  public Job notYet(Job job, Instant now) {
+    return job.reschedule(
+        now.plus(properties.boletoPollEvery()), NOT_YET, properties.boletoPollMaxAttempts());
   }
 }

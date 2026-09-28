@@ -60,7 +60,7 @@ public class JobRunner {
       Job next;
       try {
         boolean done = handler.run(job.refId(), now);
-        next = done ? job.done() : handler.reschedule(job, now, "not settled yet", false);
+        next = done ? job.done() : handler.notYet(job, now);
       } catch (RuntimeException e) {
         log.warn(
             "job {} {} for {} failed (attempt {})",
@@ -69,7 +69,7 @@ public class JobRunner {
             job.refId(),
             job.attempts() + 1,
             e);
-        next = handler.reschedule(job, now, truncate(describe(e)), true);
+        next = handler.afterFailure(job, now, truncate(describe(e)));
       }
       Job toSave = handler.finish(job, next, now);
       transactionTemplate.executeWithoutResult(transaction -> jobs.save(toSave));

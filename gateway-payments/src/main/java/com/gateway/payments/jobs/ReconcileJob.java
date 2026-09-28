@@ -34,13 +34,14 @@ public class ReconcileJob implements JobHandler {
   }
 
   @Override
-  public Job reschedule(Job job, Instant now, String error, boolean failed) {
+  public Job afterFailure(Job job, Instant now, String error) {
     return backoff.retry(job, now, error);
   }
 
   /**
-   * Here and not in {@link #reschedule}: it applies to a run that finished too, not only to one
-   * that failed. The error the backoff recorded is the one thing kept from {@code next}.
+   * Here and not in {@link #afterFailure} or {@link #notYet}: it applies to a run that finished
+   * too, not only to one that failed. The error the backoff recorded is the one thing kept from
+   * {@code next}.
    */
   @Override
   public Job finish(Job job, Job next, Instant now) {
