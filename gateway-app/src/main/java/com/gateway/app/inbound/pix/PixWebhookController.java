@@ -40,8 +40,8 @@ public class PixWebhookController {
       WebhookTokenGuard guard,
       WebhookInboxService inbox,
       ObjectMapper json,
-      WebhookMtlsProperties props) {
-    this.maxBodyBytes = props.maxBodyBytes();
+      WebhookMtlsProperties properties) {
+    this.maxBodyBytes = properties.maxBodyBytes();
     this.guard = guard;
     this.inbox = inbox;
     this.json = json;
@@ -49,18 +49,18 @@ public class PixWebhookController {
 
   @PostMapping({"/v1/providers/itau/webhooks/{token}", "/v1/providers/itau/webhooks/{token}/pix"})
   public ResponseEntity<Void> receive(
-      @PathVariable String token, HttpServletRequest req, HttpServletResponse res)
+      @PathVariable String token, HttpServletRequest request, HttpServletResponse response)
       throws IOException {
     Merchant merchant = guard.resolve(token);
     // Read through a bounded stream, not @RequestBody byte[]: MtlsPortFilter refuses an oversized
     // Content-Length, but a chunked body declares none, and an unbounded read would buffer it all.
-    byte[] body = req.getInputStream().readNBytes(maxBodyBytes + 1);
+    byte[] body = request.getInputStream().readNBytes(maxBodyBytes + 1);
     if (body.length > maxBodyBytes) {
       Problems.write(
-          res, 413, "PAYLOAD_TOO_LARGE", "webhook body exceeds " + maxBodyBytes + " bytes");
+          response, 413, "PAYLOAD_TOO_LARGE", "webhook body exceeds " + maxBodyBytes + " bytes");
       return null;
     }
-    inbox.accept("ITAU", merchant.id(), headers(req), body);
+    inbox.accept("ITAU", merchant.id(), headers(request), body);
     return ResponseEntity.accepted().build();
   }
 
@@ -68,12 +68,12 @@ public class PixWebhookController {
    * What an operator needs to trace a delivery back to the bank; the full header set would be
    * noise.
    */
-  private String headers(HttpServletRequest req) {
+  private String headers(HttpServletRequest request) {
     Map<String, String> h = new LinkedHashMap<>();
-    put(h, "X-Correlation-Id", req.getHeader("X-Correlation-Id"));
-    put(h, "User-Agent", req.getHeader("User-Agent"));
-    put(h, "Content-Type", req.getContentType());
-    if (req.getAttribute(CLIENT_CERT_ATTRIBUTE) instanceof X509Certificate[] chain
+    put(h, "X-Correlation-Id", request.getHeader("X-Correlation-Id"));
+    put(h, "User-Agent", request.getHeader("User-Agent"));
+    put(h, "Content-Type", request.getContentType());
+    if (request.getAttribute(CLIENT_CERT_ATTRIBUTE) instanceof X509Certificate[] chain
         && chain.length > 0) {
       put(h, "Client-Cert-Subject", chain[0].getSubjectX500Principal().getName());
       put(h, "Client-Cert-Issuer", chain[0].getIssuerX500Principal().getName());

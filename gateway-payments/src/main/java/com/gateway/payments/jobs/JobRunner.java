@@ -39,7 +39,7 @@ public class JobRunner {
   private final BoletoPollingService boletoPolling;
   private final RefundService refunds;
   private final ReconciliationService reconciliation;
-  private final PaymentsProperties props;
+  private final PaymentsProperties properties;
   private final TransactionTemplate transactionTemplate;
   private final Clock clock;
 
@@ -51,7 +51,7 @@ public class JobRunner {
       BoletoPollingService boletoPolling,
       RefundService refunds,
       ReconciliationService reconciliation,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       TransactionTemplate transactionTemplate,
       Clock clock) {
     this.jobs = jobs;
@@ -61,7 +61,7 @@ public class JobRunner {
     this.boletoPolling = boletoPolling;
     this.refunds = refunds;
     this.reconciliation = reconciliation;
-    this.props = props;
+    this.properties = properties;
     this.transactionTemplate = transactionTemplate;
     this.clock = clock;
   }
@@ -78,7 +78,8 @@ public class JobRunner {
   public int runDue(Instant now) {
     List<Job> claimed =
         transactionTemplate.execute(
-            transaction -> jobs.claimDue(now, BATCH, props.jobLease(), props.reconcileLease()));
+            transaction ->
+                jobs.claimDue(now, BATCH, properties.jobLease(), properties.reconcileLease()));
     if (claimed == null) {
       return 0;
     }
@@ -158,16 +159,16 @@ public class JobRunner {
   private Job retry(Job job, Instant now, String error, boolean failed) {
     if (job.type() == JobType.POLL_REFUND) {
       return job.reschedule(
-          now.plus(RefundService.POLL_EVERY), error, props.refundPollMaxAttempts());
+          now.plus(RefundService.POLL_EVERY), error, properties.refundPollMaxAttempts());
     }
     if (job.type() == JobType.POLL_BOLETO) {
       Duration wait =
-          failed && backoff(job.attempts()).compareTo(props.boletoPollEvery()) < 0
+          failed && backoff(job.attempts()).compareTo(properties.boletoPollEvery()) < 0
               ? backoff(job.attempts())
-              : props.boletoPollEvery();
-      return job.reschedule(now.plus(wait), error, props.boletoPollMaxAttempts());
+              : properties.boletoPollEvery();
+      return job.reschedule(now.plus(wait), error, properties.boletoPollMaxAttempts());
     }
-    return job.reschedule(now.plus(backoff(job.attempts())), error, props.jobMaxAttempts());
+    return job.reschedule(now.plus(backoff(job.attempts())), error, properties.jobMaxAttempts());
   }
 
   /**

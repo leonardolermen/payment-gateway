@@ -31,16 +31,16 @@ class BoletoInstructionClient {
     HttpRequest.Builder builder =
         http.request("/boletos/" + BoletoHttp.seg(idBoleto) + "/baixa")
             .method("PATCH", HttpRequest.BodyPublishers.noBody());
-    HttpResponse<String> res = http.send(credentials, builder);
-    int status = res.statusCode();
+    HttpResponse<String> response = http.send(credentials, builder);
+    int status = response.statusCode();
     if (status == 200 || status == 202 || status == 204) {
       return;
     }
-    if (status == 422 && BoletoErrors.mentionsAlreadyPaid(res.body())) {
-      ProviderException declined = BoletoErrors.from(status, res.body());
+    if (status == 422 && BoletoErrors.mentionsAlreadyPaid(response.body())) {
+      ProviderException declined = BoletoErrors.from(status, response.body());
       throw new ProviderException(
           ProviderException.Code.CONFLICT, status, declined.providerType(), declined.getMessage());
     }
-    throw BoletoErrors.from(status, res.body());
+    throw BoletoErrors.from(status, response.body());
   }
 }

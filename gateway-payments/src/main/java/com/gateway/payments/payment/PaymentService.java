@@ -52,7 +52,7 @@ public class PaymentService {
   private final PendingAdoption adoption;
   private final BolecodeFromQuery bolecodeFromQuery;
   private final CreateFailures failures;
-  private final PaymentsProperties props;
+  private final PaymentsProperties properties;
   private final TransactionTemplate transactionTemplate;
   private final Clock clock;
 
@@ -65,7 +65,7 @@ public class PaymentService {
       PendingAdoption adoption,
       BolecodeFromQuery bolecodeFromQuery,
       CreateFailures failures,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       TransactionTemplate transactionTemplate,
       Clock clock) {
     this.payments = payments;
@@ -76,7 +76,7 @@ public class PaymentService {
     this.adoption = adoption;
     this.bolecodeFromQuery = bolecodeFromQuery;
     this.failures = failures;
-    this.props = props;
+    this.properties = properties;
     this.transactionTemplate = transactionTemplate;
     this.clock = clock;
   }

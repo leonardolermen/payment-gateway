@@ -17,8 +17,8 @@ public final class MerchantContext {
 
   private MerchantContext() {}
 
-  static void set(HttpServletRequest req, Current current) {
-    req.setAttribute(ATTRIBUTE, current);
+  static void set(HttpServletRequest request, Current current) {
+    request.setAttribute(ATTRIBUTE, current);
   }
 
   public static Current current() {

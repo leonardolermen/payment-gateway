@@ -25,12 +25,13 @@ public class IdempotencyService {
   }
 
   private final IdempotencyRepository keys;
-  private final PaymentsProperties props;
+  private final PaymentsProperties properties;
   private final Clock clock;
 
-  public IdempotencyService(IdempotencyRepository keys, PaymentsProperties props, Clock clock) {
+  public IdempotencyService(
+      IdempotencyRepository keys, PaymentsProperties properties, Clock clock) {
     this.keys = keys;
-    this.props = props;
+    this.properties = properties;
     this.clock = clock;
   }
 
@@ -63,6 +64,6 @@ public class IdempotencyService {
    * small.
    */
   public int purgeExpired(Instant now) {
-    return keys.deleteOlderThan(now.minus(props.idempotencyTtl()));
+    return keys.deleteOlderThan(now.minus(properties.idempotencyTtl()));
   }
 }

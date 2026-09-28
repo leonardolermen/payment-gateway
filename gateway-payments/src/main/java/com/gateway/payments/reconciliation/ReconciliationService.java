@@ -46,7 +46,7 @@ public class ReconciliationService {
   private final ProviderGateway providers;
   private final PaymentService paymentService;
   private final BoletoPollingService boletoPolling;
-  private final PaymentsProperties props;
+  private final PaymentsProperties properties;
   private final Clock clock;
 
   public ReconciliationService(
@@ -55,14 +55,14 @@ public class ReconciliationService {
       ProviderGateway providers,
       PaymentService paymentService,
       BoletoPollingService boletoPolling,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       Clock clock) {
     this.payments = payments;
     this.divergences = divergences;
     this.providers = providers;
     this.paymentService = paymentService;
     this.boletoPolling = boletoPolling;
-    this.props = props;
+    this.properties = properties;
     this.clock = clock;
   }
 
@@ -75,8 +75,8 @@ public class ReconciliationService {
    * run instead of re-reading the newest rows forever.
    */
   public int reconcileAll(Instant now) {
-    Instant from = now.minus(props.reconciliationLookback());
-    Instant youngCutoff = now.minus(props.reconciliationMinAge());
+    Instant from = now.minus(properties.reconciliationLookback());
+    Instant youngCutoff = now.minus(properties.reconciliationMinAge());
     int changed = 0;
     // Bolecode, barcode side: there is no listing API for boletos, so each one is checked one by
     // one

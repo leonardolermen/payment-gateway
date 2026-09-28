@@ -32,7 +32,7 @@ public class ExpirationService {
   private final ProviderGateway providers;
   private final PaymentService paymentService;
   private final PaymentEvents events;
-  private final PaymentsProperties props;
+  private final PaymentsProperties properties;
   private final TransactionTemplate transactionTemplate;
 
   public ExpirationService(
@@ -40,13 +40,13 @@ public class ExpirationService {
       ProviderGateway providers,
       PaymentService paymentService,
       PaymentEvents events,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       TransactionTemplate transactionTemplate) {
     this.payments = payments;
     this.providers = providers;
     this.paymentService = paymentService;
     this.events = events;
-    this.props = props;
+    this.properties = properties;
     this.transactionTemplate = transactionTemplate;
   }
 
@@ -55,7 +55,8 @@ public class ExpirationService {
    * the net.
    */
   public int expireDue(Instant now) {
-    List<Payment> due = payments.findPendingOlderThan(now.minus(props.expirationGrace()), BATCH);
+    List<Payment> due =
+        payments.findPendingOlderThan(now.minus(properties.expirationGrace()), BATCH);
     int changed = 0;
     for (Payment payment : due) {
       try {
@@ -81,7 +82,7 @@ public class ExpirationService {
     int changed = 0;
     for (Payment payment :
         payments.findByStatusCreatedBefore(
-            PaymentStatus.CREATED, now.minus(props.stuckCreatedAfter()), BATCH)) {
+            PaymentStatus.CREATED, now.minus(properties.stuckCreatedAfter()), BATCH)) {
       try {
         if (payment.method() == PaymentMethod.BOLECODE) {
           // Same idea as Pix, with the query: the number is ours, so the bank can say whether the
@@ -159,7 +160,7 @@ public class ExpirationService {
     Payment payment = payments.findById(paymentId).orElse(null);
     if (payment == null
         || payment.status() != PaymentStatus.PENDING
-        || payment.expiresAt().plus(props.expirationGrace()).isAfter(now)) {
+        || payment.expiresAt().plus(properties.expirationGrace()).isAfter(now)) {
       return false;
     }
     if (payment.method() == PaymentMethod.BOLECODE) {

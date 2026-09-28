@@ -20,32 +20,32 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Component
 @Order(10)
 public class AdminKeyFilter extends OncePerRequestFilter {
-  private final AppProperties props;
+  private final AppProperties properties;
 
-  public AdminKeyFilter(AppProperties props) {
-    this.props = props;
+  public AdminKeyFilter(AppProperties properties) {
+    this.properties = properties;
   }
 
   @Override
-  protected boolean shouldNotFilter(HttpServletRequest req) {
-    return !ProtectedRoutes.isAdmin(RequestPath.of(req).normalized());
+  protected boolean shouldNotFilter(HttpServletRequest request) {
+    return !ProtectedRoutes.isAdmin(RequestPath.of(request).normalized());
   }
 
   @Override
   protected void doFilterInternal(
-      HttpServletRequest req, HttpServletResponse res, FilterChain chain)
+      HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
-    String configured = props.adminKey();
-    String supplied = req.getHeader("X-Admin-Key");
+    String configured = properties.adminKey();
+    String supplied = request.getHeader("X-Admin-Key");
     if (configured == null
         || configured.isBlank()
         || supplied == null
         || !MessageDigest.isEqual(
             configured.getBytes(StandardCharsets.UTF_8),
             supplied.getBytes(StandardCharsets.UTF_8))) {
-      Problems.write(res, 403, "FORBIDDEN", "invalid or missing X-Admin-Key");
+      Problems.write(response, 403, "FORBIDDEN", "invalid or missing X-Admin-Key");
       return;
     }
-    chain.doFilter(req, res);
+    chain.doFilter(request, response);
   }
 }

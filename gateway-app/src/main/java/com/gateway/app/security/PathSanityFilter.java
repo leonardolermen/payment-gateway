@@ -23,16 +23,16 @@ public class PathSanityFilter extends OncePerRequestFilter {
 
   @Override
   protected void doFilterInternal(
-      HttpServletRequest req, HttpServletResponse res, FilterChain chain)
+      HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
-    if (RequestPath.of(req).suspicious()) {
+    if (RequestPath.of(request).suspicious()) {
       Problems.write(
-          res,
+          response,
           400,
           "INVALID_PATH",
           "path must not contain encoded characters, ';' or dot segments");
       return;
     }
-    chain.doFilter(req, res);
+    chain.doFilter(request, response);
   }
 }

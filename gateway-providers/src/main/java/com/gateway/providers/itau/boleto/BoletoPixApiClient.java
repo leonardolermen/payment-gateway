@@ -36,16 +36,16 @@ class BoletoPixApiClient {
             .POST(
                 HttpRequest.BodyPublishers.ofString(
                     mapper.writeValueAsString(body), StandardCharsets.UTF_8));
-    HttpResponse<String> res = http.send(credentials, builder);
-    int status = res.statusCode();
+    HttpResponse<String> response = http.send(credentials, builder);
+    int status = response.statusCode();
     if (status == 200 || status == 201) {
       try {
-        return mapper.readValue(res.body(), BoletoPixResponse.class);
+        return mapper.readValue(response.body(), BoletoPixResponse.class);
       } catch (RuntimeException e) {
         throw new ProviderException(
             ProviderException.Code.UNKNOWN, "unreadable provider response", e);
       }
     }
-    throw BoletoErrors.from(status, res.body());
+    throw BoletoErrors.from(status, response.body());
   }
 }

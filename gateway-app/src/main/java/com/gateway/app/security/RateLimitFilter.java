@@ -27,21 +27,21 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Component
 @Order(30)
 public class RateLimitFilter extends OncePerRequestFilter {
-  private final AppProperties props;
+  private final AppProperties properties;
   private final ConcurrentHashMap<String, Bucket> buckets = new ConcurrentHashMap<>();
 
-  public RateLimitFilter(AppProperties props) {
-    this.props = props;
+  public RateLimitFilter(AppProperties properties) {
+    this.properties = properties;
   }
 
   @Override
-  protected boolean shouldNotFilter(HttpServletRequest req) {
-    return !ProtectedRoutes.requiresApiKey(RequestPath.of(req).normalized());
+  protected boolean shouldNotFilter(HttpServletRequest request) {
+    return !ProtectedRoutes.requiresApiKey(RequestPath.of(request).normalized());
   }
 
   @Override
   protected void doFilterInternal(
-      HttpServletRequest req, HttpServletResponse res, FilterChain chain)
+      HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
     String apiKeyId = MerchantContext.current().apiKeyId();
     Bucket bucket = buckets.computeIfAbsent(apiKeyId, id -> newBucket());
@@ -49,16 +49,19 @@ public class RateLimitFilter extends OncePerRequestFilter {
     if (!probe.isConsumed()) {
       long retryAfterSeconds =
           Math.max(1, (long) Math.ceil(probe.getNanosToWaitForRefill() / 1_000_000_000.0));
-      res.setHeader("Retry-After", String.valueOf(retryAfterSeconds));
+      response.setHeader("Retry-After", String.valueOf(retryAfterSeconds));
       Problems.write(
-          res, 429, "RATE_LIMITED", "too many requests; retry after " + retryAfterSeconds + "s");
+          response,
+          429,
+          "RATE_LIMITED",
+          "too many requests; retry after " + retryAfterSeconds + "s");
       return;
     }
-    chain.doFilter(req, res);
+    chain.doFilter(request, response);
   }
 
   private Bucket newBucket() {
-    int n = props.rateLimit().requestsPerMinute();
+    int n = properties.rateLimit().requestsPerMinute();
     return Bucket.builder()
         .addLimit(Bandwidth.builder().capacity(n).refillGreedy(n, Duration.ofMinutes(1)).build())
         .build();

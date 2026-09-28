@@ -17,11 +17,11 @@ public record RequestPath(String raw, String normalized) {
     HELPER.setUrlDecode(true);
   }
 
-  public static RequestPath of(HttpServletRequest req) {
-    String context = req.getContextPath() == null ? "" : req.getContextPath();
-    String uri = req.getRequestURI();
+  public static RequestPath of(HttpServletRequest request) {
+    String context = request.getContextPath() == null ? "" : request.getContextPath();
+    String uri = request.getRequestURI();
     String raw = uri.startsWith(context) ? uri.substring(context.length()) : uri;
-    return new RequestPath(raw, HELPER.getPathWithinApplication(req));
+    return new RequestPath(raw, HELPER.getPathWithinApplication(request));
   }
 
   /** Anything that makes the routed path differ from what a plain prefix check sees. */

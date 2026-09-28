@@ -19,13 +19,13 @@ public class ApiKeyService {
   private static final int MAX_ACTIVE = 2;
   private final ApiKeyRepository repo;
   private final MerchantRepository merchants;
-  private final MerchantsProperties props;
+  private final MerchantsProperties properties;
 
   public ApiKeyService(
-      ApiKeyRepository repo, MerchantRepository merchants, MerchantsProperties props) {
+      ApiKeyRepository repo, MerchantRepository merchants, MerchantsProperties properties) {
     this.repo = repo;
     this.merchants = merchants;
-    this.props = props;
+    this.properties = properties;
   }
 
   /**
@@ -50,7 +50,7 @@ public class ApiKeyService {
               + environment
               + "; revoke or rotate");
     }
-    ApiKey.Issued issued = ApiKey.issue(merchantId, environment, props.apiKeyPepper());
+    ApiKey.Issued issued = ApiKey.issue(merchantId, environment, properties.apiKeyPepper());
     repo.save(issued.apiKey());
     return issued;
   }
@@ -61,7 +61,7 @@ public class ApiKeyService {
    */
   @Transactional
   public ApiKey.Issued rotate(MerchantId merchantId, ApiKeyEnvironment environment) {
-    Instant deadline = Instant.now().plus(props.apiKeyRotationOverlap());
+    Instant deadline = Instant.now().plus(properties.apiKeyRotationOverlap());
     for (ApiKey k : repo.findActiveByMerchantAndEnvironment(merchantId, environment)) {
       repo.save(
           k.expiringAt(
@@ -70,7 +70,7 @@ public class ApiKeyService {
     // The old ones stay "active" with a deadline, so the cap of 2 counts them: rotating with 2
     // active
     // must work. That is why issuing here bypasses the cap.
-    ApiKey.Issued issued = ApiKey.issue(merchantId, environment, props.apiKeyPepper());
+    ApiKey.Issued issued = ApiKey.issue(merchantId, environment, properties.apiKeyPepper());
     repo.save(issued.apiKey());
     return issued;
   }
@@ -84,7 +84,8 @@ public class ApiKeyService {
     if (ApiKey.environmentOf(plainKey).isEmpty()) {
       return Optional.empty();
     }
-    byte[] hash = ApiKey.hashOf(plainKey, props.apiKeyPepper()).getBytes(StandardCharsets.UTF_8);
+    byte[] hash =
+        ApiKey.hashOf(plainKey, properties.apiKeyPepper()).getBytes(StandardCharsets.UTF_8);
     Instant now = Instant.now();
     return repo.findByPrefix(ApiKey.prefixOf(plainKey)).stream()
         .filter(

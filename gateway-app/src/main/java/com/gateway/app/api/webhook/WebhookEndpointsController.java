@@ -29,8 +29,8 @@ public class WebhookEndpointsController {
 
   @PostMapping
   public ResponseEntity<EndpointWithSecretResponse> register(
-      @RequestBody RegisterEndpointRequest req) {
-    WebhookEndpoint e = service.register(tenant(), req.url(), req.events());
+      @RequestBody RegisterEndpointRequest request) {
+    WebhookEndpoint e = service.register(tenant(), request.url(), request.events());
     return ResponseEntity.status(HttpStatus.CREATED).body(EndpointWithSecretResponse.from(e));
   }
 
@@ -45,11 +45,12 @@ public class WebhookEndpointsController {
   }
 
   @PutMapping("/{id}")
-  public EndpointResponse update(@PathVariable UUID id, @RequestBody RegisterEndpointRequest req) {
+  public EndpointResponse update(
+      @PathVariable UUID id, @RequestBody RegisterEndpointRequest request) {
     mine(id);
     return EndpointResponse.from(
         service
-            .update(id, req.url(), req.events())
+            .update(id, request.url(), request.events())
             .orElseThrow(() -> new NotFoundException("endpoint", id.toString())));
   }
 

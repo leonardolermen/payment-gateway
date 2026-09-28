@@ -38,17 +38,17 @@ class BoletoQueryClient {
             + BoletoHttp.enc(credentials.walletCode())
             + "&nosso_numero="
             + BoletoHttp.enc(nossoNumero);
-    HttpResponse<String> res = http.send(credentials, http.request("/boletos" + query).GET());
-    int status = res.statusCode();
+    HttpResponse<String> response = http.send(credentials, http.request("/boletos" + query).GET());
+    int status = response.statusCode();
     if (status == 404) {
       return Optional.empty();
     }
     if (status != 200) {
-      throw BoletoErrors.from(status, res.body());
+      throw BoletoErrors.from(status, response.body());
     }
     BoletoQueryResponse body;
     try {
-      body = mapper.readValue(res.body(), BoletoQueryResponse.class);
+      body = mapper.readValue(response.body(), BoletoQueryResponse.class);
     } catch (RuntimeException e) {
       throw new ProviderException(
           ProviderException.Code.UNKNOWN, "unreadable provider response", e);

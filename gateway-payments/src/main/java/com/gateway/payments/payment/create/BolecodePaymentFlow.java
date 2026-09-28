@@ -48,7 +48,7 @@ public class BolecodePaymentFlow implements PaymentFlow {
   private final PendingAdoption adoption;
   private final BolecodeFromQuery fromQuery;
   private final CreateFailures failures;
-  private final PaymentsProperties props;
+  private final PaymentsProperties properties;
   private final Clock clock;
 
   public BolecodePaymentFlow(
@@ -57,14 +57,14 @@ public class BolecodePaymentFlow implements PaymentFlow {
       PendingAdoption adoption,
       BolecodeFromQuery fromQuery,
       CreateFailures failures,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       Clock clock) {
     this.providers = providers;
     this.drafts = drafts;
     this.adoption = adoption;
     this.fromQuery = fromQuery;
     this.failures = failures;
-    this.props = props;
+    this.properties = properties;
     this.clock = clock;
   }
 
@@ -141,7 +141,7 @@ public class BolecodePaymentFlow implements PaymentFlow {
     LocalDate today = BoletoDates.today(clock);
     LocalDate dueDate =
         bolecode.dueDate() == null
-            ? today.plusDays(props.boletoDefaultDueInDays())
+            ? today.plusDays(properties.boletoDefaultDueInDays())
             : bolecode.dueDate();
 
     if (dueDate.isBefore(today)) {
@@ -155,13 +155,13 @@ public class BolecodePaymentFlow implements PaymentFlow {
   private int paymentLimitDaysOf(CreateBolecodePayment bolecode) {
     int limitDays =
         bolecode.paymentLimitDays() == null
-            ? props.boletoDefaultPaymentLimitDays()
+            ? properties.boletoDefaultPaymentLimitDays()
             : bolecode.paymentLimitDays();
 
-    if (limitDays < 0 || limitDays > props.boletoMaxPaymentLimitDays()) {
+    if (limitDays < 0 || limitDays > properties.boletoMaxPaymentLimitDays()) {
       throw new DomainException(
           "INVALID_PAYMENT_LIMIT",
-          "payment_limit_days must be between 0 and " + props.boletoMaxPaymentLimitDays());
+          "payment_limit_days must be between 0 and " + properties.boletoMaxPaymentLimitDays());
     }
 
     return limitDays;

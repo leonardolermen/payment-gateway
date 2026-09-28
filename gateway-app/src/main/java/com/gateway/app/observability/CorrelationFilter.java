@@ -28,18 +28,18 @@ public class CorrelationFilter extends OncePerRequestFilter {
 
   @Override
   protected void doFilterInternal(
-      HttpServletRequest req, HttpServletResponse res, FilterChain chain)
+      HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
-    String correlationId = req.getHeader(HEADER);
+    String correlationId = request.getHeader(HEADER);
     // Echoed in a response header and written to every log line: an unbounded or arbitrary value
     // is log injection and header bloat on the caller's say-so.
     if (correlationId == null || !VALID.matcher(correlationId).matches()) {
       correlationId = Ulid.next();
     }
-    res.setHeader(HEADER, correlationId);
+    response.setHeader(HEADER, correlationId);
     MDC.put(MDC_KEY, correlationId);
     try {
-      chain.doFilter(req, res);
+      chain.doFilter(request, response);
     } finally {
       MDC.remove(MDC_KEY);
     }

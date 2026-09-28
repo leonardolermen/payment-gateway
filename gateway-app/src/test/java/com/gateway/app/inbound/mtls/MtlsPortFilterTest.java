@@ -25,17 +25,17 @@ class MtlsPortFilterTest {
     MtlsPortFilter filter =
         new MtlsPortFilter(
             new WebhookMtlsProperties(PORT, "ks", "", "ts", "", null, 1024, allowed));
-    MockHttpServletRequest req =
+    MockHttpServletRequest request =
         new MockHttpServletRequest("POST", "/v1/providers/itau/webhooks/T/pix");
-    req.setLocalPort(PORT);
+    request.setLocalPort(PORT);
     X509Certificate cert = mock(X509Certificate.class);
     when(cert.getSubjectX500Principal()).thenReturn(new X500Principal(presentedSubject));
-    req.setAttribute("jakarta.servlet.request.X509Certificate", new X509Certificate[] {cert});
-    MockHttpServletResponse res = new MockHttpServletResponse();
+    request.setAttribute("jakarta.servlet.request.X509Certificate", new X509Certificate[] {cert});
+    MockHttpServletResponse response = new MockHttpServletResponse();
     MockFilterChain chain = new MockFilterChain();
-    filter.doFilter(req, res, chain);
-    if (chain.getRequest() != null) res.setStatus(202); // reached the controller
-    return res;
+    filter.doFilter(request, response, chain);
+    if (chain.getRequest() != null) response.setStatus(202); // reached the controller
+    return response;
   }
 
   @Test
@@ -46,9 +46,9 @@ class MtlsPortFilterTest {
 
   @Test
   void unlistedSubjectIs403() throws Exception {
-    MockHttpServletResponse res = run(List.of("CN=itau-webhook"), "CN=someone-else");
-    assertThat(res.getStatus()).isEqualTo(403);
-    assertThat(res.getContentAsString()).contains("urn:gateway:FORBIDDEN");
+    MockHttpServletResponse response = run(List.of("CN=itau-webhook"), "CN=someone-else");
+    assertThat(response.getStatus()).isEqualTo(403);
+    assertThat(response.getContentAsString()).contains("urn:gateway:FORBIDDEN");
   }
 
   @Test

@@ -21,7 +21,7 @@ public class RefundPollingService {
   private final PaymentRepository payments;
   private final ProviderGateway providers;
   private final RefundService refundService;
-  private final PaymentsProperties props;
+  private final PaymentsProperties properties;
   private final Clock clock;
 
   public RefundPollingService(
@@ -29,13 +29,13 @@ public class RefundPollingService {
       PaymentRepository payments,
       ProviderGateway providers,
       RefundService refundService,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       Clock clock) {
     this.refunds = refunds;
     this.payments = payments;
     this.providers = providers;
     this.refundService = refundService;
-    this.props = props;
+    this.properties = properties;
     this.clock = clock;
   }
 
@@ -67,7 +67,7 @@ public class RefundPollingService {
                     .provider()
                     .findRefund(target.credentials(), payment.pix().endToEndId(), refundId));
     if (result.isEmpty()) {
-      Instant cutoff = refund.createdAt().plus(props.refundNotFoundGrace());
+      Instant cutoff = refund.createdAt().plus(properties.refundNotFoundGrace());
       if (clock.instant().isAfter(cutoff)) {
         refundService.applyProviderUpdate(
             new RefundResult(

@@ -56,17 +56,17 @@ final class BoletoHttp {
     if (creds.apiKey() != null) {
       b.header("x-itau-apikey", creds.apiKey());
     }
-    HttpRequest req = b.build();
-    HttpResponse<String> res;
+    HttpRequest request = b.build();
+    HttpResponse<String> response;
     try {
-      res = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+      response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
     } catch (HttpTimeoutException e) {
       throw new ProviderException(
-          ProviderException.Code.TIMEOUT, "Itaú " + req.method() + " timed out", e);
+          ProviderException.Code.TIMEOUT, "Itaú " + request.method() + " timed out", e);
     } catch (IOException e) {
       throw new ProviderException(
           ProviderException.Code.UNAVAILABLE,
-          "Itaú " + req.method() + " failed: " + e.getMessage(),
+          "Itaú " + request.method() + " failed: " + e.getMessage(),
           e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
@@ -75,10 +75,10 @@ final class BoletoHttp {
     }
     // A rejected token must not be reused: the next call fetches a fresh one (and a fresh
     // HttpClient).
-    if (res.statusCode() == 401) {
+    if (response.statusCode() == 401) {
       tokens.evict(creds.fingerprint());
     }
-    return res;
+    return response;
   }
 
   private static String correlationId() {

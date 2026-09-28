@@ -133,18 +133,18 @@ class PixApiClient {
     if (credentials.apiKey() != null) {
       builder.header("x-itau-apikey", credentials.apiKey());
     }
-    HttpRequest req = builder.build();
-    HttpResponse<String> res;
+    HttpRequest request = builder.build();
+    HttpResponse<String> response;
 
     try {
-      res = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+      response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
     } catch (HttpTimeoutException e) {
       throw new ProviderException(
-          ProviderException.Code.TIMEOUT, "Itaú " + req.method() + " timed out", e);
+          ProviderException.Code.TIMEOUT, "Itaú " + request.method() + " timed out", e);
     } catch (IOException e) {
       throw new ProviderException(
           ProviderException.Code.UNAVAILABLE,
-          "Itaú " + req.method() + " failed: " + e.getMessage(),
+          "Itaú " + request.method() + " failed: " + e.getMessage(),
           e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
@@ -152,11 +152,11 @@ class PixApiClient {
           ProviderException.Code.UNAVAILABLE, "interrupted calling Itaú", e);
     }
 
-    int status = res.statusCode();
+    int status = response.statusCode();
 
     if (status >= 200 && status < 300) {
       try {
-        return Optional.of(mapper.readValue(res.body(), type));
+        return Optional.of(mapper.readValue(response.body(), type));
       } catch (RuntimeException e) {
         throw new ProviderException(
             ProviderException.Code.UNKNOWN, "unreadable provider response", e);
@@ -165,7 +165,7 @@ class PixApiClient {
 
     // Only the Pix API's own "not found" is an answer. A 404 from a wrong base URL or a proxy page
     // would otherwise read as "charge does not exist" and reconciliation would drop paid charges.
-    if (status == 404 && emptyOn404 && ItauErrors.isPixNotFound(res.body())) {
+    if (status == 404 && emptyOn404 && ItauErrors.isPixNotFound(response.body())) {
       return Optional.empty();
     }
 
@@ -174,7 +174,7 @@ class PixApiClient {
     if (status == 401) {
       tokens.evict(credentials.fingerprint());
     }
-    throw ItauErrors.from(status, res.body());
+    throw ItauErrors.from(status, response.body());
   }
 
   private static String correlationId() {

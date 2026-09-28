@@ -88,12 +88,12 @@ public class ItauBoletoProvider implements BoletoMethodProvider {
   @Override
   public IssuedBoleto issue(ProviderCredentials providerCredentials, BoletoIssueRequest request) {
     ItauCredentials credentials = boletoCreds(providerCredentials);
-    BoletoPixResponse res =
+    BoletoPixResponse response =
         clients(providerCredentials)
             .issue()
             .post(credentials, BoletoPixRequest.forIssue(request, credentials));
-    BoletoPixResponse.Individual individual = res.first();
-    BoletoPixResponse.DadosQrcode qrCode = res.dadosQrcode();
+    BoletoPixResponse.Individual individual = response.first();
+    BoletoPixResponse.DadosQrcode qrCode = response.dadosQrcode();
 
     return new IssuedBoleto(
         individual.idBoletoIndividual(),

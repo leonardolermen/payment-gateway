@@ -24,29 +24,29 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
   }
 
   @Override
-  protected boolean shouldNotFilter(HttpServletRequest req) {
-    return !ProtectedRoutes.requiresApiKey(RequestPath.of(req).normalized());
+  protected boolean shouldNotFilter(HttpServletRequest request) {
+    return !ProtectedRoutes.requiresApiKey(RequestPath.of(request).normalized());
   }
 
   @Override
   protected void doFilterInternal(
-      HttpServletRequest req, HttpServletResponse res, FilterChain chain)
+      HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
-    String auth = req.getHeader("Authorization");
+    String auth = request.getHeader("Authorization");
     if (auth == null || !auth.startsWith("Bearer ")) {
-      Problems.write(res, 401, "UNAUTHENTICATED", "send Authorization: Bearer gk_…");
+      Problems.write(response, 401, "UNAUTHENTICATED", "send Authorization: Bearer gk_…");
       return;
     }
     var current = apiKeys.authenticate(auth.substring(7).trim());
     if (current.isEmpty()) {
       Problems.write(
-          res, 401, "UNAUTHENTICATED", "invalid or revoked api key, or suspended merchant");
+          response, 401, "UNAUTHENTICATED", "invalid or revoked api key, or suspended merchant");
       return;
     }
     MerchantContext.set(
-        req,
+        request,
         new MerchantContext.Current(
             current.get().merchantId(), current.get().environment(), current.get().apiKeyId()));
-    chain.doFilter(req, res);
+    chain.doFilter(request, response);
   }
 }

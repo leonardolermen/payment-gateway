@@ -12,11 +12,12 @@ import java.io.IOException;
 public final class Problems {
   private Problems() {}
 
-  public static void write(HttpServletResponse res, int status, String code, String detail)
+  public static void write(HttpServletResponse response, int status, String code, String detail)
       throws IOException {
-    res.setStatus(status);
-    res.setContentType("application/problem+json");
-    res.getWriter()
+    response.setStatus(status);
+    response.setContentType("application/problem+json");
+    response
+        .getWriter()
         .write(
             String.format(
                 "{\"type\":\"urn:gateway:%s\",\"title\":\"%s\",\"status\":%d,\"detail\":\"%s\"}",

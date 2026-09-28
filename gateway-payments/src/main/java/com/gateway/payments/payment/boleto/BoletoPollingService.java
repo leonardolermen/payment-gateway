@@ -37,7 +37,7 @@ public class BoletoPollingService {
   private final PaymentRepository payments;
   private final ProviderGateway providers;
   private final PaymentService paymentService;
-  private final PaymentsProperties props;
+  private final PaymentsProperties properties;
   private final TransactionTemplate transactionTemplate;
   private final Clock clock;
 
@@ -45,13 +45,13 @@ public class BoletoPollingService {
       PaymentRepository payments,
       ProviderGateway providers,
       PaymentService paymentService,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       TransactionTemplate transactionTemplate,
       Clock clock) {
     this.payments = payments;
     this.providers = providers;
     this.paymentService = paymentService;
-    this.props = props;
+    this.properties = properties;
     this.transactionTemplate = transactionTemplate;
     this.clock = clock;
   }
@@ -227,7 +227,7 @@ public class BoletoPollingService {
   private boolean pastWindow(Payment payment) {
     Instant end =
         BoletoDates.endOfDay(payment.boleto().paymentLimitDate())
-            .plus(props.boletoPollGraceAfterLimit());
+            .plus(properties.boletoPollGraceAfterLimit());
     return clock.instant().isAfter(end);
   }
 }

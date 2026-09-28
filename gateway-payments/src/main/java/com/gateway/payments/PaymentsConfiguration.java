@@ -107,8 +107,8 @@ public class PaymentsConfiguration {
 
   @Bean
   IdempotencyService idempotencyService(
-      IdempotencyRepository keys, PaymentsProperties props, Clock clock) {
-    return new IdempotencyService(keys, props, clock);
+      IdempotencyRepository keys, PaymentsProperties properties, Clock clock) {
+    return new IdempotencyService(keys, properties, clock);
   }
 
   /** The one adapter from Spring's template to the port the create collaborators take. */
@@ -137,10 +137,10 @@ public class PaymentsConfiguration {
       JobRepository jobs,
       PaymentEvents events,
       Divergences divergences,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       UnitOfWork unitOfWork,
       Clock clock) {
-    return new PendingAdoption(payments, jobs, events, divergences, props, unitOfWork, clock);
+    return new PendingAdoption(payments, jobs, events, divergences, properties, unitOfWork, clock);
   }
 
   @Bean
@@ -164,8 +164,8 @@ public class PaymentsConfiguration {
       PaymentDraftFactory drafts,
       PendingAdoption adoption,
       CreateFailures failures,
-      PaymentsProperties props) {
-    return new PixPaymentFlow(providers, drafts, adoption, failures, props);
+      PaymentsProperties properties) {
+    return new PixPaymentFlow(providers, drafts, adoption, failures, properties);
   }
 
   @Bean
@@ -175,9 +175,10 @@ public class PaymentsConfiguration {
       PendingAdoption adoption,
       BolecodeFromQuery fromQuery,
       CreateFailures failures,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       Clock clock) {
-    return new BolecodePaymentFlow(providers, drafts, adoption, fromQuery, failures, props, clock);
+    return new BolecodePaymentFlow(
+        providers, drafts, adoption, fromQuery, failures, properties, clock);
   }
 
   /**
@@ -199,7 +200,7 @@ public class PaymentsConfiguration {
       PendingAdoption adoption,
       BolecodeFromQuery bolecodeFromQuery,
       CreateFailures failures,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       TransactionTemplate paymentsTransactionTemplate,
       Clock clock) {
     return new PaymentService(
@@ -211,7 +212,7 @@ public class PaymentsConfiguration {
         adoption,
         bolecodeFromQuery,
         failures,
-        props,
+        properties,
         paymentsTransactionTemplate,
         clock);
   }
@@ -243,9 +244,9 @@ public class PaymentsConfiguration {
       PaymentRepository payments,
       ProviderGateway providers,
       RefundService refundService,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       Clock clock) {
-    return new RefundPollingService(refunds, payments, providers, refundService, props, clock);
+    return new RefundPollingService(refunds, payments, providers, refundService, properties, clock);
   }
 
   @Bean
@@ -267,10 +268,10 @@ public class PaymentsConfiguration {
       ProviderGateway providers,
       PaymentService paymentService,
       PaymentEvents events,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       TransactionTemplate paymentsTransactionTemplate) {
     return new ExpirationService(
-        payments, providers, paymentService, events, props, paymentsTransactionTemplate);
+        payments, providers, paymentService, events, properties, paymentsTransactionTemplate);
   }
 
   @Bean
@@ -280,10 +281,10 @@ public class PaymentsConfiguration {
       ProviderGateway providers,
       PaymentService paymentService,
       BoletoPollingService boletoPolling,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       Clock clock) {
     return new ReconciliationService(
-        payments, divergences, providers, paymentService, boletoPolling, props, clock);
+        payments, divergences, providers, paymentService, boletoPolling, properties, clock);
   }
 
   @Bean
@@ -291,11 +292,11 @@ public class PaymentsConfiguration {
       PaymentRepository payments,
       ProviderGateway providers,
       PaymentService paymentService,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       TransactionTemplate paymentsTransactionTemplate,
       Clock clock) {
     return new BoletoPollingService(
-        payments, providers, paymentService, props, paymentsTransactionTemplate, clock);
+        payments, providers, paymentService, properties, paymentsTransactionTemplate, clock);
   }
 
   @Bean
@@ -307,7 +308,7 @@ public class PaymentsConfiguration {
       BoletoPollingService boletoPolling,
       RefundService refunds,
       ReconciliationService reconciliation,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       TransactionTemplate paymentsTransactionTemplate,
       Clock clock) {
     return new JobRunner(
@@ -318,7 +319,7 @@ public class PaymentsConfiguration {
         boletoPolling,
         refunds,
         reconciliation,
-        props,
+        properties,
         paymentsTransactionTemplate,
         clock);
   }

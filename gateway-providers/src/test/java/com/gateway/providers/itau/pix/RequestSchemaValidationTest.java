@@ -44,9 +44,10 @@ class RequestSchemaValidationTest {
         (com.fasterxml.jackson.databind.node.ObjectNode) M2.readTree(Files.readString(OPENAPI));
     var pessoa =
         (com.fasterxml.jackson.databind.node.ObjectNode) api.at("/components/schemas/pessoa");
-    var props = (com.fasterxml.jackson.databind.node.ObjectNode) pessoa.get("properties");
-    ((com.fasterxml.jackson.databind.node.ObjectNode) props.get("cpf")).put("pattern", "^\\d{11}$");
-    ((com.fasterxml.jackson.databind.node.ObjectNode) props.get("cnpj"))
+    var properties = (com.fasterxml.jackson.databind.node.ObjectNode) pessoa.get("properties");
+    ((com.fasterxml.jackson.databind.node.ObjectNode) properties.get("cpf"))
+        .put("pattern", "^\\d{11}$");
+    ((com.fasterxml.jackson.databind.node.ObjectNode) properties.get("cnpj"))
         .put("pattern", "^\\d{14}$");
     pessoa.putArray("required").add("nome");
     var oneOf = pessoa.putArray("oneOf");
