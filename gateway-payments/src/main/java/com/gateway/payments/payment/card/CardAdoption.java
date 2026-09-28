@@ -81,7 +81,7 @@ public class CardAdoption {
                   payment.markCompletedByCard(
                       withCard(details, cardId),
                       capturedAmount(payment, authorization),
-                      capturedAt(authorization),
+                      capturedAt(authorization, clock.instant()),
                       by);
               type = "payment.completed";
             }
@@ -163,13 +163,17 @@ public class CardAdoption {
     return cardId.map(details::withCardId).orElse(details);
   }
 
-  private static Money capturedAmount(Payment payment, CardAuthorization authorization) {
+  /**
+   * Shared with CardStatusSync: a PAID sale without CapturedAmount was captured in full, so the two
+   * paths into COMPLETED cannot disagree on the amount.
+   */
+  static Money capturedAmount(Payment payment, CardAuthorization authorization) {
     return authorization.capturedAmount() == null
         ? payment.amount()
         : authorization.capturedAmount();
   }
 
-  private Instant capturedAt(CardAuthorization authorization) {
-    return authorization.capturedAt().orElse(clock.instant());
+  static Instant capturedAt(CardAuthorization authorization, Instant fallback) {
+    return authorization.capturedAt().orElse(fallback);
   }
 }

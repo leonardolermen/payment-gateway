@@ -21,6 +21,7 @@ import com.gateway.payments.provider.ProviderGateway.ResolvedProvider;
 import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceRepository;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -113,16 +114,23 @@ public class ReconciliationService {
       }
     }
     Map<Scope, Instant> scopes = new LinkedHashMap<>();
-    for (Payment payment :
-        payments.findByStatusIn(
-            EnumSet.of(
-                PaymentStatus.PENDING,
-                PaymentStatus.EXPIRED,
-                PaymentStatus.COMPLETED,
-                PaymentStatus.FAILED,
-                PaymentStatus.CANCELED),
-            from,
-            CANDIDATES)) {
+    // Pix and Bolecode only (the Bolecode's Pix side is listed by /cob too); card payments have
+    // their own pass, CardReconciliation. One query per method, so card rows cannot fill the cap.
+    List<Payment> pixSide = new ArrayList<>();
+    for (PaymentMethod method : EnumSet.of(PaymentMethod.PIX, PaymentMethod.BOLECODE)) {
+      pixSide.addAll(
+          payments.findByMethodAndStatusIn(
+              method,
+              EnumSet.of(
+                  PaymentStatus.PENDING,
+                  PaymentStatus.EXPIRED,
+                  PaymentStatus.COMPLETED,
+                  PaymentStatus.FAILED,
+                  PaymentStatus.CANCELED),
+              from,
+              CANDIDATES));
+    }
+    for (Payment payment : pixSide) {
       if (payment.status() == PaymentStatus.PENDING && payment.createdAt().isAfter(youngCutoff)) {
         continue;
       }

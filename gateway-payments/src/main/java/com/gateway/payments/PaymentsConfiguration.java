@@ -11,6 +11,7 @@ import com.gateway.payments.card.persistence.SavedCardRepositoryImpl;
 import com.gateway.payments.idempotency.IdempotencyService;
 import com.gateway.payments.idempotency.persistence.IdempotencyRepository;
 import com.gateway.payments.idempotency.persistence.IdempotencyRepositoryImpl;
+import com.gateway.payments.inbox.CardNotifications;
 import com.gateway.payments.inbox.WebhookInboxService;
 import com.gateway.payments.inbox.persistence.WebhookInboxRepository;
 import com.gateway.payments.inbox.persistence.WebhookInboxRepositoryImpl;
@@ -40,6 +41,7 @@ import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepository;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepositoryImpl;
 import com.gateway.payments.payment.card.CardAdoption;
 import com.gateway.payments.payment.card.CardCapture;
+import com.gateway.payments.payment.card.CardStatusSync;
 import com.gateway.payments.payment.card.CardVoid;
 import com.gateway.payments.payment.create.BolecodeFromQuery;
 import com.gateway.payments.payment.create.BolecodePaymentFlow;
@@ -56,6 +58,7 @@ import com.gateway.payments.payment.persistence.PaymentRepositoryImpl;
 import com.gateway.payments.provider.ProviderGateway;
 import com.gateway.payments.provider.persistence.ProviderRequestRepository;
 import com.gateway.payments.provider.persistence.ProviderRequestRepositoryImpl;
+import com.gateway.payments.reconciliation.CardReconciliation;
 import com.gateway.payments.reconciliation.Divergences;
 import com.gateway.payments.reconciliation.ReconciliationService;
 import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceRepository;
@@ -299,6 +302,34 @@ public class PaymentsConfiguration {
   }
 
   @Bean
+  CardStatusSync cardStatusSync(
+      PaymentRepository payments,
+      PaymentEvents events,
+      ProviderGateway providers,
+      Divergences divergences,
+      UnitOfWork unitOfWork) {
+    return new CardStatusSync(payments, events, providers, divergences, unitOfWork);
+  }
+
+  @Bean
+  CardNotifications cardNotifications(
+      PaymentRepository payments,
+      CardStatusSync statusSync,
+      Divergences divergences,
+      UnitOfWork unitOfWork) {
+    return new CardNotifications(payments, statusSync, divergences, unitOfWork);
+  }
+
+  @Bean
+  CardReconciliation cardReconciliation(
+      PaymentRepository payments,
+      CardStatusSync statusSync,
+      Divergences divergences,
+      PaymentsProperties properties) {
+    return new CardReconciliation(payments, statusSync, divergences, properties);
+  }
+
+  @Bean
   CardVoid cardVoid(
       PaymentRepository payments,
       PaymentEvents events,
@@ -375,9 +406,17 @@ public class PaymentsConfiguration {
       PixSettlement pixSettlement,
       RefundService refundService,
       TransactionTemplate paymentsTransactionTemplate,
-      Clock clock) {
+      Clock clock,
+      CardNotifications cardNotifications) {
     return new WebhookInboxService(
-        inbox, jobs, providers, pixSettlement, refundService, paymentsTransactionTemplate, clock);
+        inbox,
+        jobs,
+        providers,
+        pixSettlement,
+        refundService,
+        paymentsTransactionTemplate,
+        clock,
+        cardNotifications);
   }
 
   @Bean
@@ -477,8 +516,11 @@ public class PaymentsConfiguration {
 
   @Bean
   ReconcileJob reconcileJob(
-      StuckCreatedSweep sweep, ReconciliationService reconciliation, JobBackoff backoff) {
-    return new ReconcileJob(sweep, reconciliation, backoff);
+      StuckCreatedSweep sweep,
+      ReconciliationService reconciliation,
+      CardReconciliation cardReconciliation,
+      JobBackoff backoff) {
+    return new ReconcileJob(sweep, reconciliation, cardReconciliation, backoff);
   }
 
   @Bean
