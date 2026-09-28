@@ -79,6 +79,14 @@ gateway:
         test-query-token-url: https://sandbox.devportal.itau.com.br/api/oauth/jwt
         test-instruction-api-base: https://sandbox.devportal.itau.com.br/itau-ep9-gtw-cash-management-ext-v2/v2
         test-instruction-token-url: https://sandbox.devportal.itau.com.br/api/oauth/jwt
+    cielo:
+      # docs/providers/cielo/NOTES.md, "Hosts": transactional and query, per environment. Overridden by
+      # the app's tests to point at WireMock.
+      live-api-base: https://api.cieloecommerce.cielo.com.br
+      live-query-api-base: https://apiquery.cieloecommerce.cielo.com.br
+      test-api-base: https://apisandbox.cieloecommerce.cielo.com.br
+      test-query-api-base: https://apiquerysandbox.cieloecommerce.cielo.com.br
+      read-timeout: PT30S                      # an authorization may take this long at the issuer; Status 0 covers the rest
   payments:
     default-expires-in-seconds: 3600
     expiration-grace: PT5M
@@ -99,6 +107,9 @@ gateway:
     boleto-default-due-in-days: 3
     boleto-default-payment-limit-days: 30
     boleto-max-payment-limit-days: 3650        # the bank's maximum (issue OpenAPI, data_limite_pagamento)
+    card-capture-deadline: P5D                 # an authorization nobody captured becomes CAPTURE_OVERDUE (the Cielo never expires it)
+    card-reconciliation-lookback: PT48H        # card payments are queried one by one: a window of their own
+    card-reconciliation-cap: 200
 
 management:
   endpoints:
