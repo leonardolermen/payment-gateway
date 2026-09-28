@@ -38,8 +38,10 @@ import com.gateway.payments.payment.StuckCreatedSweep;
 import com.gateway.payments.payment.boleto.BoletoPollingService;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepository;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepositoryImpl;
+import com.gateway.payments.payment.card.CardAdoption;
 import com.gateway.payments.payment.create.BolecodeFromQuery;
 import com.gateway.payments.payment.create.BolecodePaymentFlow;
+import com.gateway.payments.payment.create.CardAuthorizationRecovery;
 import com.gateway.payments.payment.create.CardPaymentFlow;
 import com.gateway.payments.payment.create.CreateFailures;
 import com.gateway.payments.payment.create.PaymentDraftFactory;
@@ -213,8 +215,30 @@ public class PaymentsConfiguration {
   }
 
   @Bean
-  CardPaymentFlow cardPaymentFlow() {
-    return new CardPaymentFlow();
+  CardAdoption cardAdoption(
+      PaymentRepository payments,
+      PaymentEvents events,
+      SavedCards savedCards,
+      UnitOfWork unitOfWork,
+      Clock clock) {
+    return new CardAdoption(payments, events, savedCards, unitOfWork, clock);
+  }
+
+  @Bean
+  CardAuthorizationRecovery cardAuthorizationRecovery(
+      ProviderGateway providers, CardAdoption adoption, CreateFailures failures) {
+    return new CardAuthorizationRecovery(providers, adoption, failures);
+  }
+
+  @Bean
+  CardPaymentFlow cardPaymentFlow(
+      ProviderGateway providers,
+      PaymentDraftFactory drafts,
+      CardAdoption adoption,
+      CardAuthorizationRecovery recovery,
+      SavedCards savedCards,
+      CreateFailures failures) {
+    return new CardPaymentFlow(providers, drafts, adoption, recovery, savedCards, failures);
   }
 
   /**
@@ -338,9 +362,16 @@ public class PaymentsConfiguration {
       PaymentService paymentService,
       PixSettlement pixSettlement,
       BoletoSettlement boletoSettlement,
-      PaymentsProperties properties) {
+      PaymentsProperties properties,
+      CardAuthorizationRecovery cardRecovery) {
     return new StuckCreatedSweep(
-        payments, providers, paymentService, pixSettlement, boletoSettlement, properties);
+        payments,
+        providers,
+        paymentService,
+        pixSettlement,
+        boletoSettlement,
+        properties,
+        cardRecovery);
   }
 
   @Bean

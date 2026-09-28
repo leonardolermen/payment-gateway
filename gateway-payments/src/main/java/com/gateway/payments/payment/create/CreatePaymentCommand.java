@@ -12,7 +12,8 @@ import com.gateway.kernel.provider.ProviderEnvironment;
  * <p>{@code environment} is here and never a request field: it comes from the API key, so a TEST
  * key cannot reach a merchant's LIVE bank credential no matter what the body says.
  */
-public sealed interface CreatePaymentCommand permits CreatePixPayment, CreateBolecodePayment {
+public sealed interface CreatePaymentCommand
+    permits CreatePixPayment, CreateBolecodePayment, CreateCardPayment {
 
   MerchantId merchantId();
 

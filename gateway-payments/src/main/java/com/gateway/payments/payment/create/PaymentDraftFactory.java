@@ -6,6 +6,7 @@ import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.boleto.BoletoDates;
 import com.gateway.payments.payment.boleto.BoletoDetails;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepository;
+import com.gateway.payments.payment.card.CardDetails;
 import com.gateway.payments.payment.persistence.PaymentRepository;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -78,6 +79,30 @@ public class PaymentDraftFactory {
                   CustomerDocumentHash.of(payer.document().digits()),
                   details,
                   BoletoDates.endOfDay(paymentLimitDate),
+                  clock);
+
+          return payments.save(draft, List.of(draft.createdEvent()));
+        });
+  }
+
+  /** No card data reaches the row: only what CardDetails carries (spec §6.2). */
+  public Payment card(
+      CreateCardPayment command,
+      String providerId,
+      CardDetails requested,
+      String customerDocumentHash) {
+    return unitOfWork.inTransaction(
+        () -> {
+          Payment draft =
+              Payment.createCard(
+                  command.merchantId(),
+                  command.environment(),
+                  providerId,
+                  command.amount(),
+                  command.reference(),
+                  command.description(),
+                  customerDocumentHash,
+                  requested,
                   clock);
 
           return payments.save(draft, List.of(draft.createdEvent()));

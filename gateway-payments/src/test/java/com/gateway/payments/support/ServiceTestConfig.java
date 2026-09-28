@@ -27,6 +27,11 @@ public class ServiceTestConfig {
   }
 
   @Bean
+  RecordingCardProvider recordingCardProvider(MutableClock clock) {
+    return new RecordingCardProvider(clock);
+  }
+
+  @Bean
   TestSealer testSealer() {
     return new TestSealer();
   }
