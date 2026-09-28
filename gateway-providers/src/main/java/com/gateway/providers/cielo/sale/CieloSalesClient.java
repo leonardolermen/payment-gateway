@@ -15,15 +15,20 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The Cielo's sales resource for one environment. Writes go to the transactional host, reads to the
  * query host.
  */
 public class CieloSalesClient {
+  private static final Logger LOG = LoggerFactory.getLogger(CieloSalesClient.class);
+
   private final CieloHttp http;
   private final CieloEndpoints endpoints;
 
@@ -120,9 +125,19 @@ public class CieloSalesClient {
     return http.read(response, SaleUpdateResponse.class);
   }
 
+  /**
+   * An unreadable ReceveidDate sorts last instead of throwing: this list feeds the in-doubt recovery
+   * and the sweep, and one malformed date from the Cielo would otherwise fail every lookup of that
+   * order — the sale stuck in doubt over a field used only for ordering.
+   */
   private static Instant received(String date) {
-    Instant parsed = CieloDates.parse(date);
-    return parsed == null ? Instant.EPOCH : parsed;
+    try {
+      Instant parsed = CieloDates.parse(date);
+      return parsed == null ? Instant.EPOCH : parsed;
+    } catch (DateTimeParseException e) {
+      LOG.warn("Cielo ReceveidDate {} is unreadable; sorting that sale last", date);
+      return Instant.EPOCH;
+    }
   }
 
   private static String amountQuery(Optional<Money> amount) {

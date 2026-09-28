@@ -151,6 +151,28 @@ class CieloSalesClientContractTest {
         .isEmpty();
   }
 
+  /** One garbage date must not break recovery of the order: that sale just sorts last. */
+  @Test
+  void aQueryByOrderSortsAnUnreadableDateLast() {
+    server.stubFor(
+        get(urlPathEqualTo("/1/sales"))
+            .withQueryParam("merchantOrderId", equalTo("Loja123456"))
+            .willReturn(
+                okJson(
+                    CieloFixtures.read("get_sales_by_order_200.json")
+                        .replace("2025-05-17T07:48:10.677", "not-a-date"))));
+
+    assertThat(
+            client()
+                .findPaymentIdsByOrder(
+                    CieloSalesClientAuthorizeContractTest.credentials(), "Loja123456"))
+        .containsExactly(
+            "1e7abcb6-39be-4aae-b70b-002889ee15d0",
+            "55f0a6c8-387e-476b-a6e8-ffef82e9a18e",
+            "4b62cc74-bb20-4629-ab2d-002262738481",
+            "6c936046-f8df-4e4a-ba8c-003b28879055");
+  }
+
   @Test
   void aQueryByOrderListsTheNewestFirst() {
     server.stubFor(
