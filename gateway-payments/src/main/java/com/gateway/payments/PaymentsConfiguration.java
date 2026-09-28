@@ -345,10 +345,9 @@ public class PaymentsConfiguration {
       ProviderGateway providers,
       PaymentEvents events,
       Divergences divergences,
-      TransactionTemplate paymentsTransactionTemplate,
+      UnitOfWork unitOfWork,
       Clock clock) {
-    return new CardRefunds(
-        refunds, payments, providers, events, divergences, paymentsTransactionTemplate, clock);
+    return new CardRefunds(refunds, payments, providers, events, divergences, unitOfWork, clock);
   }
 
   @Bean

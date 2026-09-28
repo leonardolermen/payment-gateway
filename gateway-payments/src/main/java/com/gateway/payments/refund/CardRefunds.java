@@ -6,6 +6,7 @@ import com.gateway.kernel.money.Money;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.kernel.provider.card.CardMethodProvider;
 import com.gateway.kernel.provider.card.CardRefundResult;
+import com.gateway.payments.UnitOfWork;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentEvents;
@@ -22,7 +23,6 @@ import java.util.Optional;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * A card refund: the Cielo's void with an amount, which answers in the same call (spec §4). So the
@@ -44,7 +44,7 @@ public class CardRefunds {
   private final ProviderGateway providers;
   private final PaymentEvents events;
   private final Divergences divergences;
-  private final TransactionTemplate transactionTemplate;
+  private final UnitOfWork unitOfWork;
   private final Clock clock;
 
   public CardRefunds(
@@ -53,14 +53,14 @@ public class CardRefunds {
       ProviderGateway providers,
       PaymentEvents events,
       Divergences divergences,
-      TransactionTemplate transactionTemplate,
+      UnitOfWork unitOfWork,
       Clock clock) {
     this.refunds = refunds;
     this.payments = payments;
     this.providers = providers;
     this.events = events;
     this.divergences = divergences;
-    this.transactionTemplate = transactionTemplate;
+    this.unitOfWork = unitOfWork;
     this.clock = clock;
   }
 
@@ -102,8 +102,8 @@ public class CardRefunds {
   }
 
   private Refund reserve(MerchantId merchantId, String paymentId, Money amountOrNull) {
-    return transactionTemplate.execute(
-        transaction -> {
+    return unitOfWork.inTransaction(
+        () -> {
           Payment locked = payments.findByIdForUpdate(paymentId).orElseThrow();
           if (locked.status() != PaymentStatus.COMPLETED) {
             throw new DomainException(
@@ -125,8 +125,8 @@ public class CardRefunds {
   }
 
   private Refund complete(MerchantId merchantId, Refund refund) {
-    return transactionTemplate.execute(
-        transaction -> {
+    return unitOfWork.inTransaction(
+        () -> {
           Payment payment = payments.findByIdForUpdate(refund.paymentId()).orElseThrow();
           Refund loaded = refunds.findById(refund.id()).orElseThrow();
           loaded.markCompleted(clock.instant());
@@ -146,8 +146,8 @@ public class CardRefunds {
       return markFailed(merchantId, refund, failure);
     }
 
-    transactionTemplate.executeWithoutResult(
-        transaction -> {
+    unitOfWork.run(
+        () -> {
           Refund loaded = refunds.findById(refund.id()).orElseThrow();
           loaded.markProcessing();
           Refund saved = refunds.save(loaded);
@@ -168,8 +168,8 @@ public class CardRefunds {
   private DomainException markFailed(
       MerchantId merchantId, Refund refund, ProviderException cause) {
     String code = "PROVIDER_DECLINED";
-    transactionTemplate.executeWithoutResult(
-        transaction -> {
+    unitOfWork.run(
+        () -> {
           Payment payment = payments.findByIdForUpdate(refund.paymentId()).orElseThrow();
           Refund loaded = refunds.findById(refund.id()).orElseThrow();
           loaded.markFailed(ProviderErrors.message(code));
