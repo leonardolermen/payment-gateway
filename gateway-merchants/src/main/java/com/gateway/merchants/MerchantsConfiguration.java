@@ -1,5 +1,6 @@
 package com.gateway.merchants;
 
+import com.gateway.kernel.security.Sealer;
 import com.gateway.merchants.apikey.ApiKeyService;
 import com.gateway.merchants.apikey.persistence.ApiKeyRepository;
 import com.gateway.merchants.apikey.persistence.ApiKeyRepositoryImpl;
@@ -7,6 +8,7 @@ import com.gateway.merchants.credential.ProviderCredentialService;
 import com.gateway.merchants.credential.persistence.ProviderCredentialRepository;
 import com.gateway.merchants.credential.persistence.ProviderCredentialRepositoryImpl;
 import com.gateway.merchants.crypto.EnvelopeCipher;
+import com.gateway.merchants.crypto.EnvelopeSealer;
 import com.gateway.merchants.crypto.MasterKey;
 import com.gateway.merchants.merchant.MerchantService;
 import com.gateway.merchants.merchant.persistence.MerchantRepository;
@@ -55,6 +57,12 @@ public class MerchantsConfiguration {
   @Bean
   public EnvelopeCipher envelopeCipher(MasterKey m) {
     return new EnvelopeCipher(m);
+  }
+
+  /** The kernel port payments stores card tokens through (plan C8). */
+  @Bean
+  public Sealer sealer(EnvelopeCipher cipher) {
+    return new EnvelopeSealer(cipher);
   }
 
   @Bean
