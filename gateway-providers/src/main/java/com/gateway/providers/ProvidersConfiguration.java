@@ -124,10 +124,12 @@ public class ProvidersConfiguration {
 
     private static ItauEndpoints merge(
         ItauEndpoints defaults, String api, String token, Boolean mtls) {
-      return ItauEndpoints.custom(
-          api == null || api.isBlank() ? defaults.apiBase() : URI.create(api),
-          token == null || token.isBlank() ? defaults.tokenUrl() : URI.create(token),
-          mtls == null ? defaults.mutualTls() : mtls);
+      URI apiBase = api == null || api.isBlank() ? defaults.apiBase() : URI.create(api);
+      URI tokenUrl = token == null || token.isBlank() ? defaults.tokenUrl() : URI.create(token);
+      boolean mutualTls = mtls == null ? defaults.mutualTls() : mtls;
+      return mutualTls
+          ? ItauEndpoints.mutualTls(apiBase, tokenUrl)
+          : ItauEndpoints.plain(apiBase, tokenUrl);
     }
   }
 

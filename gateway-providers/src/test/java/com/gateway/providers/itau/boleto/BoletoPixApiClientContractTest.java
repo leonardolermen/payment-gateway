@@ -74,10 +74,8 @@ class BoletoPixApiClientContractTest {
 
   static BoletoPixApiClient client(Duration readTimeout) {
     ItauEndpoints e =
-        ItauEndpoints.custom(
-            URI.create(server.baseUrl() + "/v1"),
-            URI.create(server.baseUrl() + "/api/oauth/jwt"),
-            false);
+        ItauEndpoints.plain(
+            URI.create(server.baseUrl() + "/v1"), URI.create(server.baseUrl() + "/api/oauth/jwt"));
     return new BoletoPixApiClient(
         new ItauTokenClient(Clock.systemUTC(), Duration.ofSeconds(3), Duration.ofSeconds(3)),
         e,

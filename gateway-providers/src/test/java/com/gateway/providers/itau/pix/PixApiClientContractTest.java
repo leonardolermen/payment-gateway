@@ -77,10 +77,8 @@ class PixApiClientContractTest {
   }
 
   static ItauEndpoints endpoints() {
-    return ItauEndpoints.custom(
-        URI.create(server.baseUrl() + "/v2"),
-        URI.create(server.baseUrl() + "/api/oauth/jwt"),
-        false);
+    return ItauEndpoints.plain(
+        URI.create(server.baseUrl() + "/v2"), URI.create(server.baseUrl() + "/api/oauth/jwt"));
   }
 
   static PixApiClient client(Duration readTimeout) {
@@ -422,8 +420,7 @@ class PixApiClientContractTest {
                   .getBytes());
       String base = "https://localhost:" + https.httpsPort();
       ItauEndpoints e =
-          ItauEndpoints.custom(
-              URI.create(base + "/v2"), URI.create(base + "/as/token.oauth2"), true);
+          ItauEndpoints.mutualTls(URI.create(base + "/v2"), URI.create(base + "/as/token.oauth2"));
       PixApiClient c =
           new PixApiClient(
               new ItauTokenClient(Clock.systemUTC(), Duration.ofSeconds(3), Duration.ofSeconds(5)),

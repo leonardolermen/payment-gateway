@@ -47,14 +47,12 @@ class ItauPixProviderTest {
     server = new WireMockServer(WireMockConfiguration.options().dynamicPort());
     server.start();
     ItauEndpoints test =
-        ItauEndpoints.custom(
-            URI.create(server.baseUrl() + "/v2"),
-            URI.create(server.baseUrl() + "/api/oauth/jwt"),
-            false);
+        ItauEndpoints.plain(
+            URI.create(server.baseUrl() + "/v2"), URI.create(server.baseUrl() + "/api/oauth/jwt"));
     // LIVE points nowhere reachable: a TEST credential that leaked to it would fail loudly.
     ItauEndpoints live =
-        ItauEndpoints.custom(
-            URI.create("https://live.invalid/v2"), URI.create("https://live.invalid/token"), true);
+        ItauEndpoints.mutualTls(
+            URI.create("https://live.invalid/v2"), URI.create("https://live.invalid/token"));
     provider =
         new ItauPixProvider(
             new ItauTokenClient(Clock.systemUTC(), Duration.ofSeconds(3), Duration.ofSeconds(5)),

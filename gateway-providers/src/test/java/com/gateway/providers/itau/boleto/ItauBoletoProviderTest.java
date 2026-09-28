@@ -68,9 +68,9 @@ class ItauBoletoProviderTest {
     URI token = URI.create(base + "/api/oauth/jwt");
     ItauBoletoEndpoints test =
         new ItauBoletoEndpoints(
-            ItauEndpoints.custom(URI.create(base + "/issue/v1"), token, false),
-            ItauEndpoints.custom(URI.create(base + "/query/v2"), token, false),
-            ItauEndpoints.custom(URI.create(base + "/instruction/v2"), token, false));
+            ItauEndpoints.plain(URI.create(base + "/issue/v1"), token),
+            ItauEndpoints.plain(URI.create(base + "/query/v2"), token),
+            ItauEndpoints.plain(URI.create(base + "/instruction/v2"), token));
     return new ItauBoletoProvider(
         new ItauTokenClient(Clock.systemUTC(), Duration.ofSeconds(3), Duration.ofSeconds(3)),
         null,

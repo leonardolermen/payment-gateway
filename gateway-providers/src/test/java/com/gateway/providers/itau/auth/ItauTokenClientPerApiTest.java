@@ -46,15 +46,13 @@ class ItauTokenClientPerApiTest {
     ItauTokenClient client =
         new ItauTokenClient(Clock.systemUTC(), Duration.ofSeconds(3), Duration.ofSeconds(3));
     ItauEndpoints pixLike =
-        ItauEndpoints.custom(
+        ItauEndpoints.plain(
             URI.create(server.baseUrl() + "/v2"),
-            URI.create(server.baseUrl() + "/as/token.oauth2"),
-            false);
+            URI.create(server.baseUrl() + "/as/token.oauth2"));
     ItauEndpoints cash =
-        ItauEndpoints.custom(
+        ItauEndpoints.plain(
             URI.create(server.baseUrl() + "/cash_management/v2"),
-            URI.create(server.baseUrl() + "/api/oauth/token"),
-            false);
+            URI.create(server.baseUrl() + "/api/oauth/token"));
 
     assertThat(client.tokenFor(creds, pixLike, null).value()).isEqualTo("tok-pix");
     assertThat(client.tokenFor(creds, cash, null).value()).isEqualTo("tok-cash");
