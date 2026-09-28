@@ -2,11 +2,12 @@ package com.gateway.payments.idempotency;
 
 import com.gateway.kernel.ids.MerchantId;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import java.security.GeneralSecurityException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.HexFormat;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 /**
  * An in-flight-or-done record for one {@code (merchant, key)} pair, so a retried request with the
@@ -41,15 +42,22 @@ public record IdempotencyKey(
   }
 
   /**
-   * SHA-256 hex of the canonical request body — used to detect a same-key-different-body conflict.
+   * HMAC-SHA256 hex of the canonical request body under a server key — used to detect a
+   * same-key-different-body conflict. Keyed, not a bare SHA-256: a card request body carries PAN and
+   * CVV, and an unkeyed digest of a body whose other fields are guessable is brute-forceable back to
+   * the PAN from the idempotency table (PCI DSS 3.5.1 wants a keyed hash for that).
    */
-  public static String hashOf(String canonicalBody) {
+  public static String hashOf(String canonicalBody, byte[] hmacKey) {
+    if (hmacKey == null || hmacKey.length == 0) {
+      throw new IllegalArgumentException("the idempotency HMAC key is missing");
+    }
+
     try {
-      MessageDigest digest = MessageDigest.getInstance("SHA-256");
-      byte[] hash = digest.digest(canonicalBody.getBytes(StandardCharsets.UTF_8));
-      return HexFormat.of().formatHex(hash);
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("SHA-256 not available", e);
+      Mac mac = Mac.getInstance("HmacSHA256");
+      mac.init(new SecretKeySpec(hmacKey, "HmacSHA256"));
+      return HexFormat.of().formatHex(mac.doFinal(canonicalBody.getBytes(StandardCharsets.UTF_8)));
+    } catch (GeneralSecurityException e) {
+      throw new IllegalStateException("HmacSHA256 not available", e);
     }
   }
 }

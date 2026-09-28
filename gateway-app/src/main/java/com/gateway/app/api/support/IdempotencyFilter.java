@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -50,9 +51,18 @@ public class IdempotencyFilter extends OncePerRequestFilter {
   private static final Pattern PAYMENT_ACTION = Pattern.compile("^/v1/payments/[^/]+/(cancel|refunds|capture)$");
 
   private final IdempotencyService idempotency;
+  private final byte[] hmacKey;
 
-  public IdempotencyFilter(IdempotencyService idempotency) {
+  /**
+   * The HMAC key falls back to the API-key pepper so a deployment without the new variable keeps
+   * working; setting its own key lets either secret rotate without the other (DECISOES 2026-09-28).
+   */
+  public IdempotencyFilter(
+      IdempotencyService idempotency,
+      @Value("${gateway.idempotency.hmac-key:}") String hmacKey,
+      @Value("${gateway.api-key-pepper:}") String pepper) {
     this.idempotency = idempotency;
+    this.hmacKey = (hmacKey.isBlank() ? pepper : hmacKey).getBytes(StandardCharsets.UTF_8);
   }
 
   @Override
@@ -84,7 +94,8 @@ public class IdempotencyFilter extends OncePerRequestFilter {
     MerchantContext.Current who = MerchantContext.current();
     String scopedKey = who.environment().name() + ":" + key;
     String hash = IdempotencyKey.hashOf(
-        who.environment().name() + " " + request.getMethod() + " " + path + "\n" + new String(body, StandardCharsets.UTF_8));
+        who.environment().name() + " " + request.getMethod() + " " + path + "\n" + new String(body, StandardCharsets.UTF_8),
+        hmacKey);
     Outcome outcome = idempotency.begin(who.merchantId(), scopedKey, hash);
     switch (outcome) {
       case Outcome.Replayed(IdempotencyService.Replay r) -> replay(response, r);

@@ -397,3 +397,14 @@ ou retentativa podem duplicar); suprimir `PARTIAL_REFUND_AT_PROVIDER` para os pr
 parciais do gateway; valor estornado em `CardAuthorization`; `CieloDates` com parsing estrito, ao
 contrário do parsing tolerante do Itaú; `RequestId` = id de correlação só quando ele é um GUID (ULID cai
 para um UUID aleatório, porque a Cielo exige 36 caracteres no formato GUID e o `RequestId` é opcional).
+
+## 2026-09-28 — O hash do corpo idempotente vira HMAC com chave do servidor
+O corpo de `POST /v1/payments` com cartão carrega PAN e CVV, e `idempotency_keys.request_hash` guardava
+um SHA-256 puro dele: com os outros campos adivinháveis, o PAN (espaço pequeno, com Luhn) sai por força
+bruta do próprio banco (PCI DSS 3.5.1 pede hash com chave). Passa a ser HMAC-SHA256 sob
+`gateway.idempotency.hmac-key` (`GATEWAY_IDEMPOTENCY_HMAC_KEY`); vazio, usa o `api-key-pepper` já
+obrigatório, para nenhuma instalação quebrar. Não há hash guardado em produção, então nenhum replay em
+voo muda de resultado; num ambiente com linhas antigas, uma repetição dentro das 24 h com a mesma chave
+daria 422 em vez de replay. Rejeitado: não guardar hash (perde a detecção de chave reusada com corpo
+diferente) e cifrar o corpo (ninguém precisa lê-lo de volta). Custo se errado: trocar a chave HMAC
+transforma todo replay pendente em 422 até o TTL.

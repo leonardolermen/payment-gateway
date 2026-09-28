@@ -39,6 +39,8 @@ gateway:
   admin-key: ${GATEWAY_ADMIN_KEY:}
   master-key: ${GATEWAY_MASTER_KEY:}
   api-key-pepper: ${GATEWAY_API_KEY_PEPPER:}
+  idempotency:
+    hmac-key: ${GATEWAY_IDEMPOTENCY_HMAC_KEY:}      # empty = the api-key pepper; request bodies carry PAN + CVV
   rate-limit:
     requests-per-minute: 600
   webhooks:
