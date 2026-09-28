@@ -2,8 +2,7 @@ package com.gateway.providers.itau.auth;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.gateway.kernel.security.Secret;
-import java.security.MessageDigest;
-import java.util.HexFormat;
+import com.gateway.kernel.security.Sha256;
 import java.util.regex.Pattern;
 import tools.jackson.databind.ObjectMapper;
 
@@ -146,7 +145,7 @@ public record ItauCredentials(
   }
 
   public static ItauCredentials parse(byte[] json) {
-    String fingerprint = sha256Hex(json);
+    String fingerprint = Sha256.hex(json);
     Raw raw = new ObjectMapper().readValue(json, Raw.class);
     if (raw.clientId == null || raw.clientId.isBlank()) {
       throw new IllegalArgumentException("missing required field: client_id");
@@ -174,14 +173,6 @@ public record ItauCredentials(
 
   private static String blankToNull(String s) {
     return s == null || s.isBlank() ? null : s;
-  }
-
-  private static String sha256Hex(byte[] bytes) {
-    try {
-      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
-    } catch (java.security.NoSuchAlgorithmException e) {
-      throw new IllegalStateException(e);
-    }
   }
 
   /** Intermediate shape for Jackson: snake_case wire names, nothing validated yet. */

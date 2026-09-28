@@ -3,6 +3,7 @@ package com.gateway.providers.cielo.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.gateway.kernel.security.Secret;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
@@ -44,6 +45,18 @@ class CieloCredentialsTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("merchant_key must be 40 letters or digits")
         .hasMessageNotContaining("SHORT-KEY");
+  }
+
+  /**
+   * The invariant lives in the compact constructor, not in {@code parse}, so a direct {@code new}
+   * cannot bypass it — the rule the global code standard requires and {@code ItauCredentials}
+   * already follows.
+   */
+  @Test
+  void directConstructionIsValidatedTooNotOnlyParse() {
+    assertThatThrownBy(() -> new CieloCredentials(MERCHANT_ID, Secret.of("SHORT-KEY"), "fp"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("merchant_key must be 40 letters or digits");
   }
 
   @Test
