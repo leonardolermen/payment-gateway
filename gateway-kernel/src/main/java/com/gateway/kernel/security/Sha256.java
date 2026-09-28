@@ -1,5 +1,6 @@
 package com.gateway.kernel.security;
 
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
@@ -14,6 +15,11 @@ import java.util.HexFormat;
 public final class Sha256 {
 
   private Sha256() {}
+
+  /** The UTF-8 bytes of {@code text}; the inbound notification key is stored as this. */
+  public static String hex(String text) {
+    return hex(text.getBytes(StandardCharsets.UTF_8));
+  }
 
   public static String hex(byte[] bytes) {
     try {

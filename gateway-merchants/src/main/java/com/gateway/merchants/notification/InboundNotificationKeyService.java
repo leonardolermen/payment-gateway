@@ -2,11 +2,10 @@ package com.gateway.merchants.notification;
 
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.security.Secret;
+import com.gateway.kernel.security.Sha256;
 import com.gateway.merchants.notification.persistence.InboundNotificationKeyRepository;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.Optional;
 
 /**
@@ -22,7 +21,7 @@ public class InboundNotificationKeyService {
   }
 
   public void set(MerchantId merchantId, String provider, Secret key) {
-    keys.upsert(merchantId, provider, sha256Hex(key.reveal()));
+    keys.upsert(merchantId, provider, Sha256.hex(key.reveal()));
   }
 
   public boolean matches(MerchantId merchantId, String provider, String presented) {
@@ -34,16 +33,6 @@ public class InboundNotificationKeyService {
     return stored.isPresent()
         && MessageDigest.isEqual(
             stored.get().getBytes(StandardCharsets.US_ASCII),
-            sha256Hex(presented).getBytes(StandardCharsets.US_ASCII));
-  }
-
-  private static String sha256Hex(String value) {
-    try {
-      return HexFormat.of()
-          .formatHex(
-              MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException(e);
-    }
+            Sha256.hex(presented).getBytes(StandardCharsets.US_ASCII));
   }
 }
