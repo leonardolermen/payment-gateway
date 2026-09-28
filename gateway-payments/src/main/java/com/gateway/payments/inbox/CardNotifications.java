@@ -111,16 +111,17 @@ public class CardNotifications {
    * The gateway's own partial refund also makes the Cielo send ChangeType 25, and the notification
    * carries no amount to tell the two apart: every partial refund done through the API opened a
    * PARTIAL_REFUND_AT_PROVIDER for a human to close. A COMPLETED or PROCESSING refund of this
-   * payment in the last 24 h accounts for it; the Cielo notifies within minutes, so 24 h only has to
-   * outlast its retries. The cost is a refund done at the Cielo inside that window going unflagged
-   * — the reconciliation still compares totals.
+   * payment in the last 24 h accounts for it; the Cielo notifies within minutes, so 24 h only has
+   * to outlast its retries. The cost is a refund done at the Cielo inside that window going
+   * unflagged — the reconciliation still compares totals.
    */
   private boolean explainedByOwnRefund(Payment payment) {
     Instant since = clock.instant().minus(OWN_REFUND_WINDOW);
     return refunds.findByPayment(payment.id()).stream()
         .anyMatch(
             refund ->
-                (refund.state() == RefundState.COMPLETED || refund.state() == RefundState.PROCESSING)
+                (refund.state() == RefundState.COMPLETED
+                        || refund.state() == RefundState.PROCESSING)
                     && refund.createdAt().isAfter(since));
   }
 

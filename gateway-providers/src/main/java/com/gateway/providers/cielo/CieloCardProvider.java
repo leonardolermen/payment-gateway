@@ -179,8 +179,9 @@ public class CieloCardProvider implements CardMethodProvider {
   }
 
   /**
-   * The result carries the void's own ReturnCode, which is what {@link CardRefundResult#completed()}
-   * reads: a partial void answers 0 with the sale still Status 2, so the status cannot decide.
+   * The result carries the void's own ReturnCode, which is what {@link
+   * CardRefundResult#completed()} reads: a partial void answers 0 with the sale still Status 2, so
+   * the status cannot decide.
    */
   @Override
   public CardRefundResult refund(

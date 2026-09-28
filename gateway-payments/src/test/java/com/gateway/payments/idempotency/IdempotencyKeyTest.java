@@ -46,7 +46,8 @@ class IdempotencyKeyTest {
   @Test
   void theSameBodyUnderAnotherKeyHashesDifferently() {
     assertThat(IdempotencyKey.hashOf("body-a", KEY))
-        .isNotEqualTo(IdempotencyKey.hashOf("body-a", "other-key".getBytes(StandardCharsets.UTF_8)));
+        .isNotEqualTo(
+            IdempotencyKey.hashOf("body-a", "other-key".getBytes(StandardCharsets.UTF_8)));
   }
 
   @Test

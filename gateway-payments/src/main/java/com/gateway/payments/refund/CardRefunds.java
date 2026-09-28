@@ -147,8 +147,7 @@ public class CardRefunds {
   private DomainException afterFailure(
       MerchantId merchantId, Payment payment, Refund refund, ProviderException failure) {
     if (!MAY_HAVE_LANDED.contains(failure.code())) {
-      return markFailed(
-          merchantId, refund, failure, ProviderErrors.message("PROVIDER_DECLINED"));
+      return markFailed(merchantId, refund, failure, ProviderErrors.message("PROVIDER_DECLINED"));
     }
 
     unitOfWork.run(

@@ -32,7 +32,9 @@ class IdempotencyServiceIntegrationTest extends ServiceIntegrationTestBase {
   void sameKeyDifferentBodyIsAMismatch() {
     idempotency.begin(merchant, "key-2", IdempotencyKey.hashOf("a", IdempotencyKeyTest.KEY));
 
-    assertThat(idempotency.begin(merchant, "key-2", IdempotencyKey.hashOf("b", IdempotencyKeyTest.KEY)))
+    assertThat(
+            idempotency.begin(
+                merchant, "key-2", IdempotencyKey.hashOf("b", IdempotencyKeyTest.KEY)))
         .isInstanceOf(IdempotencyService.Outcome.Mismatch.class);
   }
 }

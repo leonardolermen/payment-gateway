@@ -43,9 +43,9 @@ public record IdempotencyKey(
 
   /**
    * HMAC-SHA256 hex of the canonical request body under a server key — used to detect a
-   * same-key-different-body conflict. Keyed, not a bare SHA-256: a card request body carries PAN and
-   * CVV, and an unkeyed digest of a body whose other fields are guessable is brute-forceable back to
-   * the PAN from the idempotency table (PCI DSS 3.5.1 wants a keyed hash for that).
+   * same-key-different-body conflict. Keyed, not a bare SHA-256: a card request body carries PAN
+   * and CVV, and an unkeyed digest of a body whose other fields are guessable is brute-forceable
+   * back to the PAN from the idempotency table (PCI DSS 3.5.1 wants a keyed hash for that).
    */
   public static String hashOf(String canonicalBody, byte[] hmacKey) {
     if (hmacKey == null || hmacKey.length == 0) {

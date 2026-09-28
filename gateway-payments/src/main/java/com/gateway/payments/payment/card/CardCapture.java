@@ -182,9 +182,7 @@ public class CardCapture {
 
           Money capturedAmount =
               requested.orElse(
-                  captured.capturedAmount() == null
-                      ? payment.amount()
-                      : captured.capturedAmount());
+                  captured.capturedAmount() == null ? payment.amount() : captured.capturedAmount());
           Payment saved =
               payments.save(
                   payment,
