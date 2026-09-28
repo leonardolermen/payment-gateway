@@ -113,22 +113,12 @@ public class CardRefunds {
                     + "; an authorization is canceled");
           }
 
-          long reserved =
-              refunds.findByPayment(paymentId).stream()
-                  .filter(existing -> existing.state() != RefundState.FAILED)
-                  .mapToLong(existing -> existing.amount().cents())
-                  .sum();
-          long remaining = locked.refundable().cents() - reserved;
           Money amount =
-              amountOrNull == null
-                  ? new Money(Math.max(remaining, 0), locked.amount().currency())
-                  : amountOrNull;
-          if (amount.isZero() || amount.cents() > remaining) {
-            throw new DomainException(
-                "REFUND_EXCEEDS_AMOUNT",
-                "refunds would total more than the paid amount; remaining "
-                    + Math.max(remaining, 0));
-          }
+              RefundReservation.reserve(
+                  refunds.findByPayment(paymentId),
+                  locked.refundable(),
+                  amountOrNull,
+                  "paid amount");
 
           return refunds.save(Refund.request(paymentId, merchantId, amount, clock));
         });

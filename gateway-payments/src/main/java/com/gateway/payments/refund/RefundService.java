@@ -131,27 +131,12 @@ public class RefundService {
                 throw new DomainException(
                     "REFUND_WINDOW_CLOSED", "the bank accepts refunds up to 90 days after payment");
               }
-              // Reserved = everything not FAILED: a PROCESSING or UNKNOWN refund is money the bank
-              // may
-              // still send back, and counting only COMPLETED ones would let two quick requests
-              // exceed
-              // the original.
-              long reserved =
-                  refunds.findByPayment(paymentId).stream()
-                      .filter(existing -> existing.state() != RefundState.FAILED)
-                      .mapToLong(existing -> existing.amount().cents())
-                      .sum();
-              long remaining = locked.amount().cents() - reserved;
               Money amount =
-                  amountOrNull == null
-                      ? new Money(Math.max(remaining, 0), locked.amount().currency())
-                      : amountOrNull;
-              if (amount.isZero() || amount.cents() > remaining) {
-                throw new DomainException(
-                    "REFUND_EXCEEDS_AMOUNT",
-                    "refunds would total more than the payment amount; remaining "
-                        + Math.max(remaining, 0));
-              }
+                  RefundReservation.reserve(
+                      refunds.findByPayment(paymentId),
+                      locked.amount(),
+                      amountOrNull,
+                      "payment amount");
               return refunds.save(Refund.request(paymentId, merchantId, amount, clock));
             });
 
