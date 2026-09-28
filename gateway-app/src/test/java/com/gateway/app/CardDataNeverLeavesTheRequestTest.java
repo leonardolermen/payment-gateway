@@ -8,11 +8,13 @@ import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.put;
+import static com.github.tomakehurst.wiremock.client.WireMock.putRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.classic.spi.IThrowableProxy;
@@ -26,7 +28,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -74,6 +78,27 @@ class CardDataNeverLeavesTheRequestTest {
   static final WireMockServer CIELO = new WireMockServer(options().dynamicPort());
   static final ListAppender<ILoggingEvent> LOGS = new ListAppender<>();
 
+  /**
+   * Where a card number would leak in practice: body and parameter logging at DEBUG/TRACE, which
+   * the INFO root level of the test profile never emits. Raised to TRACE for this test only.
+   * WireMock's own notifier is left out on purpose: it logs what the fake Cielo received, which is
+   * the number by design, and is not the gateway writing it.
+   */
+  static final List<String> WATCHED_LOGGERS =
+      List.of(
+          "com.gateway",
+          "org.springframework.web",
+          "org.springframework.web.client",
+          "java.net.http",
+          "jdk.internal.httpclient",
+          "org.apache.hc",
+          "tools.jackson",
+          "com.fasterxml.jackson",
+          "org.hibernate.SQL",
+          "org.hibernate.orm.jdbc.bind");
+
+  static final Map<String, Level> PREVIOUS_LEVELS = new HashMap<>();
+
   static {
     CIELO.start();
   }
@@ -85,10 +110,7 @@ class CardDataNeverLeavesTheRequestTest {
   }
 
   @BeforeAll
-  static void stubsAndLogs() {
-    LOGS.start();
-    ((Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME)).addAppender(LOGS);
-
+  static void stubs() {
     CIELO.stubFor(
         WireMock.post(urlEqualTo("/api/1/sales"))
             .withRequestBody(matchingJsonPath("$.Payment.CreditCard.CardNumber", equalTo(NUMBER)))
@@ -131,8 +153,37 @@ class CardDataNeverLeavesTheRequestTest {
 
   @AfterAll
   static void stop() {
-    ((Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME)).detachAppender(LOGS);
     CIELO.stop();
+  }
+
+  /**
+   * Attached once the Spring context is up, not in @BeforeAll: Boot's logging system resets logback
+   * when the context starts, which silently detached an appender added earlier and left the scan
+   * with no log events at all whenever this test ran first (measured: 0 events alone).
+   */
+  @BeforeEach
+  void watchLogs() {
+    LOGS.start();
+    ((Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME)).addAppender(LOGS);
+    for (String name : WATCHED_LOGGERS) {
+      Logger logger = (Logger) LoggerFactory.getLogger(name);
+      PREVIOUS_LEVELS.put(name, logger.getLevel());
+      logger.setLevel(Level.TRACE);
+      // A logger configured non-additive never reaches the root appender.
+      if (!logger.isAdditive()) {
+        logger.addAppender(LOGS);
+      }
+    }
+  }
+
+  @AfterEach
+  void unwatchLogs() {
+    ((Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME)).detachAppender(LOGS);
+    for (String name : WATCHED_LOGGERS) {
+      Logger logger = (Logger) LoggerFactory.getLogger(name);
+      logger.detachAppender(LOGS);
+      logger.setLevel(PREVIOUS_LEVELS.get(name));
+    }
   }
 
   static com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder created(String body) {
@@ -172,7 +223,8 @@ class CardDataNeverLeavesTheRequestTest {
   }
 
   @SuppressWarnings("unchecked")
-  Map<String, Object> post(String apiKey, String idempotencyKey, String uri, Object body) {
+  Map<String, Object> post(
+      String apiKey, String idempotencyKey, String uri, Object body, int expectedStatus) {
     return http()
         .post()
         .uri(uri)
@@ -181,6 +233,8 @@ class CardDataNeverLeavesTheRequestTest {
         .contentType(MediaType.APPLICATION_JSON)
         .body(body)
         .exchange()
+        .expectStatus()
+        .isEqualTo(expectedStatus)
         .expectBody(Map.class)
         .returnResult()
         .getResponseBody();
@@ -237,11 +291,12 @@ class CardDataNeverLeavesTheRequestTest {
         .is2xxSuccessful();
 
     // Save the card (sent grouped, as a payer types it), capture, refund.
-    Map<String, Object> saved = post(apiKey, "p1", "/v1/payments", newCard(GROUPED, false, true));
+    Map<String, Object> saved =
+        post(apiKey, "p1", "/v1/payments", newCard(GROUPED, false, true), 201);
     String paymentId = (String) saved.get("id");
     String cardId = (String) ((Map<String, Object>) saved.get("card")).get("card_id");
-    post(apiKey, "p2", "/v1/payments/" + paymentId + "/capture", Map.of());
-    post(apiKey, "p3", "/v1/payments/" + paymentId + "/refunds", Map.of("amount", 1000));
+    post(apiKey, "p2", "/v1/payments/" + paymentId + "/capture", Map.of(), 200);
+    post(apiKey, "p3", "/v1/payments/" + paymentId + "/refunds", Map.of("amount", 1000), 201);
 
     // Charge the saved card, a decline, a Cielo 400 echoing the card, and a card the gateway
     // refuses.
@@ -260,13 +315,29 @@ class CardDataNeverLeavesTheRequestTest {
                 CVV,
                 "customer",
                 Map.of("name", "Joao da Silva")));
-    post(apiKey, "p4", "/v1/payments", byCardId);
-    post(apiKey, "p5", "/v1/payments", newCard(DECLINED_NUMBER, true, false));
-    post(apiKey, "p6", "/v1/payments", newCard(CIELO_REFUSES, true, false));
-    post(apiKey, "p7", "/v1/payments", newCard("4024007153763172", true, false));
+    post(apiKey, "p4", "/v1/payments", byCardId, 201);
+    post(apiKey, "p5", "/v1/payments", newCard(DECLINED_NUMBER, true, false), 402);
+    post(apiKey, "p6", "/v1/payments", newCard(CIELO_REFUSES, true, false), 422);
+    post(apiKey, "p7", "/v1/payments", newCard("4024007153763172", true, false), 422);
 
-    // The scan is not vacuous: the number did reach the Cielo, and only the Cielo.
-    CIELO.verify(postRequestedFor(urlEqualTo("/api/1/sales")).withRequestBody(containing(NUMBER)));
+    // The scan is not vacuous: every step reached the Cielo, and the numbers only the Cielo. The
+    // refused card never leaves the gateway.
+    for (String number : List.of(NUMBER, DECLINED_NUMBER, CIELO_REFUSES)) {
+      CIELO.verify(
+          postRequestedFor(urlEqualTo("/api/1/sales")).withRequestBody(containing(number)));
+    }
+    CIELO.verify(
+        postRequestedFor(urlEqualTo("/api/1/sales"))
+            .withRequestBody(matchingJsonPath("$.Payment.CreditCard.CardToken")));
+    CIELO.verify(
+        0,
+        postRequestedFor(urlEqualTo("/api/1/sales"))
+            .withRequestBody(containing("4024007153763172")));
+    CIELO.verify(
+        putRequestedFor(
+            urlPathEqualTo("/api/1/sales/" + CardFlowIntegrationTest.SALE + "/capture")));
+    CIELO.verify(
+        putRequestedFor(urlPathEqualTo("/api/1/sales/" + CardFlowIntegrationTest.SALE + "/void")));
 
     List<String> stored = new ArrayList<>();
     stored.addAll(
@@ -287,7 +358,14 @@ class CardDataNeverLeavesTheRequestTest {
             .toList());
 
     List<String> logged = new ArrayList<>();
+    // The test's own RestTestClient runs on this thread and logs the request it sends, card and
+    // all; that is the payer's side of the wire. The gateway handles requests on the server's
+    // threads and runs jobs on its own, so everything else is the gateway's.
+    String payerThread = Thread.currentThread().getName();
     for (ILoggingEvent event : LOGS.list) {
+      if (event.getThreadName().equals(payerThread)) {
+        continue;
+      }
       logged.add(event.getFormattedMessage());
       for (IThrowableProxy thrown = event.getThrowableProxy();
           thrown != null;
@@ -306,7 +384,19 @@ class CardDataNeverLeavesTheRequestTest {
       assertThat(CVV_TOKEN.matcher(text).find()).as("CVV in: %s", text).isFalse();
     }
     assertThat(stored).isNotEmpty();
-    assertThat(logged).isNotEmpty();
+    // The net is live: request handling and SQL binding were logged at the levels a leak uses.
+    assertThat(LOGS.list)
+        .anyMatch(
+            event ->
+                !event.getThreadName().equals(payerThread)
+                    && event.getLoggerName().startsWith("org.springframework.web")
+                    && event.getLevel() == Level.DEBUG);
+    assertThat(LOGS.list)
+        .anyMatch(
+            event ->
+                !event.getThreadName().equals(payerThread)
+                    && event.getLoggerName().startsWith("org.hibernate.orm.jdbc.bind")
+                    && event.getLevel() == Level.TRACE);
   }
 
   List<String> text(String sql) {

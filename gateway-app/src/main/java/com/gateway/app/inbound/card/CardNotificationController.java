@@ -1,7 +1,8 @@
 package com.gateway.app.inbound.card;
 
+import com.gateway.app.inbound.InboundBody;
+import com.gateway.app.inbound.InboundHeaders;
 import com.gateway.app.inbound.pix.WebhookTokenGuard;
-import com.gateway.app.security.Problems;
 import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.merchants.merchant.Merchant;
 import com.gateway.merchants.notification.InboundNotificationKeyService;
@@ -9,8 +10,7 @@ import com.gateway.payments.inbox.WebhookInboxService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.Optional;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -60,32 +60,16 @@ public class CardNotificationController {
       throw new NotFoundException("webhook", "unknown");
     }
 
-    byte[] body = request.getInputStream().readNBytes(MAX_BODY_BYTES + 1);
-    if (body.length > MAX_BODY_BYTES) {
-      Problems.write(
-          response,
-          413,
-          "PAYLOAD_TOO_LARGE",
-          "notification body exceeds " + MAX_BODY_BYTES + " bytes");
+    Optional<byte[]> body = InboundBody.read(request, response, MAX_BODY_BYTES);
+    if (body.isEmpty()) {
       return null;
     }
 
-    inbox.accept(PROVIDER, merchant.id(), headers(request), body);
+    inbox.accept(
+        PROVIDER,
+        merchant.id(),
+        json.writeValueAsString(InboundHeaders.traced(request)),
+        body.get());
     return ResponseEntity.ok().build();
-  }
-
-  /** What traces a delivery; never the notification key header itself. */
-  private String headers(HttpServletRequest request) {
-    Map<String, String> traced = new LinkedHashMap<>();
-    put(traced, "X-Correlation-Id", request.getHeader("X-Correlation-Id"));
-    put(traced, "User-Agent", request.getHeader("User-Agent"));
-    put(traced, "Content-Type", request.getContentType());
-    return json.writeValueAsString(traced);
-  }
-
-  private static void put(Map<String, String> traced, String name, String value) {
-    if (value != null) {
-      traced.put(name, value);
-    }
   }
 }
