@@ -308,3 +308,92 @@ handler agora derruba o startup em vez de falhar no primeiro job; e um tipo que 
 resultado depende do hook `finish`, que é fácil de esquecer.
 Correção da entrada anterior: `PaymentsConfiguration` tem 412 linhas depois de todos os commits da fase
 (não 383) — continua só wiring, um `@Bean` por classe, e continua grande de propósito.
+
+## 2026-09-28 — Cartão pela Cielo: o cartão passa pelo gateway, e o PAN morre na chamada
+O número e o CVV chegam em `POST /v1/payments` e existem em memória só dentro de `CardData`/`CardToken`,
+entre a leitura do request e `SaleRequestFactory`. Rejeitado: Silent Order Post (o merchant precisaria de
+credencial SOP e de um passo no front). Custo: o gateway entra no escopo PCI de dados em trânsito, pago com
+`CardNumber` sem `toString` revelador, o mixin do Jackson no app, o `Masker` com PAN/CVV, o
+`CieloPayloadMasker` nas mensagens de exceção e o teste `CardDataNeverLeavesTheRequestTest`. Custo se
+errado: um log com PAN é incidente de segurança.
+
+## 2026-09-28 — Negativa é resultado, não exceção
+`Status 3/13` vira `FAILED` com `decline_code` e um 402 ao merchant; exceção é só o que impediu a Cielo de
+responder. Rejeitado: tratar a negativa como `ProviderException` (entraria no caminho de retentativa).
+Custo se errado: retentativa automática de uma negativa, o que as bandeiras penalizam.
+
+## 2026-09-28 — Timeout sem transação é FAILED, e consulta que falha não é "sem transação"
+Depois de um timeout (ou de um 201 em dúvida: Status 0, 12, 14) o gateway consulta por `MerchantOrderId`
+(o id do pagamento): achou e decidido, adota; não achou ou ainda em dúvida, `FAILED` — ao contrário do
+boleto, porque a Cielo não tem "em andamento" que dure e a Garantia de Cancelamento desfaz o `Status 0`.
+Se a própria consulta falha, o pagamento fica `CREATED` e o sweeper pergunta de novo. Rejeitado: falhar
+também quando a consulta falha (diria "não cobrei" sobre uma venda que pode segurar o limite do pagador).
+Custo se errado: uma autorização que a consulta não achou e depois apareceu fica órfã até a reconciliação
+(`CARD_ACTIVE_AT_PROVIDER`) apontar.
+
+## 2026-09-28 — AUTHORIZED sem prazo próprio; a reconciliação avisa
+Uma autorização não expira no gateway; depois de `card-capture-deadline` (5 dias) a reconciliação abre
+`CAPTURE_OVERDUE` — depois de consultar a venda, para não sinalizar uma capturada por fora. Rejeitado:
+expirar em N dias como o Pix (a Cielo não expira, e cancelar por conta própria libera um limite que o
+merchant pode querer capturar). Custo se errado: limite preso no cartão do cliente até alguém olhar a
+divergência.
+
+## 2026-09-28 — card_id é nosso, o token é da Cielo, selado
+O merchant recebe e usa `card_id` (ULID nosso); o `CardToken` da Cielo fica em `payments.cards`, selado
+pela porta `kernel/security/Sealer` que `merchants` implementa com o `EnvelopeCipher`
+(AAD `merchant|provider|environment|card`). Rejeitado: expor o `CardToken` ao merchant (prende o merchant
+à Cielo e o token vira dado sensível na mão dele); e `payments` importar `merchants` para cifrar (a
+fronteira proíbe). Custo se errado: perder a `GATEWAY_MASTER_KEY` perde todos os cartões guardados, como
+já perde as credenciais.
+Um cartão salvo entra em transação própria, antes da adoção do pagamento: uma venda aprovada sempre
+confirma mesmo que salvar o cartão falhe (`card_id` nulo, WARN — não se perde uma cobrança aprovada por
+causa de um `save_card`). Um adotador concorrente ou uma retentativa podem gravar o mesmo cartão duas
+vezes (`payments.cards` sem unicidade por token ainda); aceito nesta fase, com dedupe por token como
+follow-up.
+
+## 2026-09-28 — CVV obrigatório com card_id, contra a spec
+A spec dizia `cvv` opcional com `card_id`; o schema da cobrança com token na doc da Cielo lista
+`"required": ["CardToken", "SecurityCode"]`. A doc ganha: 422 `CARD_INVALID` "cvv is required with
+card_id". Rejeitado: seguir a spec e descobrir no sandbox. Custo se errado: um merchant que guardou o
+cartão para cobrar sem pedir o CVV de novo não consegue; o smoke (passo 9 de `NOTES.md`) confirma e,
+se a Cielo aceitar sem, uma entrada nova afrouxa a regra.
+
+## 2026-09-28 — A notificação da Cielo: token da URL e um header fixo, só o hash guardado
+A Cielo não assina nem oferece mTLS; a autenticação é o token da URL do merchant **e** o header
+`X-Gateway-Notification-Key` que ele configura no site da Cielo. A chave mora num conceito próprio dos
+merchants (`inbound_notification_keys`, V102) como SHA-256, comparada em tempo constante; sem os dois,
+404. A rota fica no conector principal (a Cielo só entrega na 443) e o `MtlsPortFilter` passa a cercar só
+`/v1/providers/itau/**`. Rejeitado: guardar a chave em claro ou cifrada (não há quem precise lê-la de
+volta). Custo se errado: quem descobre o token de um merchant e a chave forja notificações — que não
+movem nada sozinhas, porque o gateway sempre consulta a venda.
+ChangeType 25 (cancelamento/reembolso parcial) abre `PARTIAL_REFUND_AT_PROVIDER`: a venda da Cielo
+continua PAID depois de um reembolso parcial e `CardAuthorization` não guarda valor estornado, então a
+notificação é a única evidência. Isso também dispara para os próprios reembolsos parciais do gateway
+(sem como distinguir "já sabíamos" de "a Cielo fez sozinha" nesta fase) — follow-up, não corrigido aqui.
+Um ChangeType ignorável sobre um pagamento ainda `CREATED` vira IGNORED sem tocar o pagamento.
+
+## 2026-09-28 — Devolução de cartão síncrona, e o timeout reserva
+A devolução do cartão é o void com `amount`, respondido na mesma chamada: `REQUESTED → COMPLETED | FAILED`
+sem job de polling, contra o `paid_amount` (que a captura parcial diminui). Timeout ou 503 deixam o
+`Refund` em `PROCESSING` com o valor reservado e uma divergência `REFUND_UNKNOWN`. A regra de reserva
+(`RefundReservation`) é uma só, compartilhada com o Pix: o teto do Pix é o `amount` do pagamento, o do
+cartão é o `refundable` (o que a captura ainda não devolveu) — mesma classe, tetos diferentes.
+`CardRefunds` usa a porta `UnitOfWork`, como o resto do fluxo de cartão. Rejeitado: falhar o
+reembolso no timeout (liberaria o valor enquanto o dinheiro pode já ter voltado; um segundo reembolso
+devolveria duas vezes). Custo se errado: um reembolso que não aconteceu fica reservado até um humano
+fechar a divergência.
+
+## 2026-09-28 — Payment e RefundService crescem de novo, citando a entrada da Fase 2
+`Payment` passa de 535 para 710 linhas (as transições do cartão precisam do estado privado do agregado);
+`RefundService` ganha o despacho para `CardRefunds` e chega a 9 dependências; `WebhookInboxService` ganha
+o despacho para `CardNotifications` e chega a 8. Segue a entrada "Fase 2: …" que manda a próxima classe
+acima do limite citar a decisão ou ser dividida: esta cita. Rejeitado: dividir o agregado dentro da fase
+do cartão (misturaria refactor e feature no mesmo commit). Custo se errado: o próximo método de pagamento
+encontra um `Payment` ainda maior e a divisão fica mais cara.
+
+## 2026-09-28 — Fora desta fase
+Registrados como follow-up e não implementados: dedupe de cartões salvos por token (adotador concorrente
+ou retentativa podem duplicar); suprimir `PARTIAL_REFUND_AT_PROVIDER` para os próprios reembolsos
+parciais do gateway; valor estornado em `CardAuthorization`; `CieloDates` com parsing estrito, ao
+contrário do parsing tolerante do Itaú; `RequestId` = id de correlação só quando ele é um GUID (ULID cai
+para um UUID aleatório, porque a Cielo exige 36 caracteres no formato GUID e o `RequestId` é opcional).
