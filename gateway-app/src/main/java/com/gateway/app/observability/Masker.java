@@ -1,5 +1,6 @@
 package com.gateway.app.observability;
 
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -14,16 +15,59 @@ public final class Masker {
       Pattern.compile(
           "(\"(?:client_secret|secret|previous_secret|pix_copia_e_cola|password|token|access_token|certificate)\"\\s*:\\s*\")[^\"]*(\")");
 
+  /** 13–19 digits, grouped by spaces or hyphens or not; only those that pass Luhn are masked. */
+  private static final Pattern CARD_NUMBER =
+      Pattern.compile("(?<![\\d-])\\d(?:[ -]?\\d){12,18}(?![\\d-])");
+
+  private static final Pattern CARD_SECURITY_CODE =
+      Pattern.compile("(\"(?:cvv|SecurityCode)\"\\s*:\\s*\")\\d+(\")");
+
   private Masker() {}
 
   public static String mask(String s) {
     if (s == null || s.isEmpty()) {
       return s;
     }
-    String r = BEARER.matcher(s).replaceAll("$1***");
+    String r = maskCardNumbers(s);
+    r = CARD_SECURITY_CODE.matcher(r).replaceAll("$1***$2");
+    r = BEARER.matcher(r).replaceAll("$1***");
     r = API_KEY.matcher(r).replaceAll("***");
     r = CPF.matcher(r).replaceAll("***");
     r = FIELDS.matcher(r).replaceAll("$1***$2");
     return r;
+  }
+
+  /**
+   * Spec §7: a PAN becomes ****last4. Luhn-checked so a 13-digit epoch millisecond or an order id
+   * survives nine times out of ten; the tenth is masked, which is the cheap mistake.
+   */
+  private static String maskCardNumbers(String s) {
+    Matcher matcher = CARD_NUMBER.matcher(s);
+    StringBuilder out = new StringBuilder();
+    while (matcher.find()) {
+      String digits = matcher.group().replaceAll("[ -]", "");
+      String replacement =
+          passesLuhn(digits) ? "****" + digits.substring(digits.length() - 4) : matcher.group();
+      matcher.appendReplacement(out, Matcher.quoteReplacement(replacement));
+    }
+    matcher.appendTail(out);
+    return out.toString();
+  }
+
+  private static boolean passesLuhn(String digits) {
+    int sum = 0;
+    boolean doubleIt = false;
+    for (int i = digits.length() - 1; i >= 0; i--) {
+      int digit = digits.charAt(i) - '0';
+      if (doubleIt) {
+        digit *= 2;
+        if (digit > 9) {
+          digit -= 9;
+        }
+      }
+      sum += digit;
+      doubleIt = !doubleIt;
+    }
+    return sum % 10 == 0;
   }
 }

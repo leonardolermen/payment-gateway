@@ -47,7 +47,7 @@ public class IdempotencyFilter extends OncePerRequestFilter {
   /** idempotency_keys.key is VARCHAR(128) and holds "LIVE:" + the client's key; longer would fail at the insert as a 500. */
   private static final int MAX_KEY_LENGTH = 123;
 
-  private static final Pattern PAYMENT_ACTION = Pattern.compile("^/v1/payments/[^/]+/(cancel|refunds)$");
+  private static final Pattern PAYMENT_ACTION = Pattern.compile("^/v1/payments/[^/]+/(cancel|refunds|capture)$");
 
   private final IdempotencyService idempotency;
 

@@ -3,10 +3,13 @@ package com.gateway.app.api.payment.dto;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.kernel.provider.ProviderEnvironment;
+import com.gateway.payments.payment.create.CardChoice;
 import com.gateway.payments.payment.create.CreateBolecodePayment;
+import com.gateway.payments.payment.create.CreateCardPayment;
 import com.gateway.payments.payment.create.CreatePixPayment;
 import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
@@ -157,5 +160,88 @@ class CreatePaymentRequestTest {
                 .toCommand(MerchantId.next(), ProviderEnvironment.TEST);
 
     assertThat(command.payer()).isNull();
+  }
+
+  static final String CARD_BODY =
+      "{\"method\":\"CARD\",\"amount\":12990,\"currency\":\"BRL\",\"reference\":\"order-42\","
+          + "\"description\":\"Pedido 42\",\"soft_descriptor\":\"LOJA42\","
+          + "\"card\":{\"number\":\"4024007153763171\",\"holder\":\"JOAO DA SILVA\",\"expiry\":\"12/2030\","
+          + "\"cvv\":\"123\",\"brand\":\"VISA\"},"
+          + "\"installments\":3,\"capture\":true,\"save_card\":true,"
+          + "\"customer\":{\"name\":\"Joao da Silva\",\"document\":\"12345678901\",\"email\":\"joao@example.com\"}}";
+
+  /** Spec §9's own example body. */
+  @Test
+  void aCardBodyDeserialisesToTheCardShapeAndBuildsTheCommand() {
+    CreatePaymentRequest request = read(CARD_BODY);
+
+    assertThat(request).isInstanceOf(CardPaymentRequest.class);
+    request.validate();
+    CreateCardPayment command =
+        (CreateCardPayment) request.toCommand(MerchantId.next(), ProviderEnvironment.TEST);
+    assertThat(command.card()).isInstanceOf(CardChoice.NewCard.class);
+    assertThat(((CardChoice.NewCard) command.card()).save()).isTrue();
+    assertThat(((CardChoice.NewCard) command.card()).card().last4()).isEqualTo("3171");
+    assertThat(command.installments()).isEqualTo(3);
+    assertThat(command.softDescriptor()).isEqualTo("LOJA42");
+    assertThat(command.customer().email()).isEqualTo("joao@example.com");
+  }
+
+  @Test
+  void aCardRequestNeverPrintsTheCard() {
+    assertThat(read(CARD_BODY).toString())
+        .doesNotContain("4024007153763171")
+        .doesNotContain("\"123\"")
+        .doesNotContain("cvv=123");
+  }
+
+  @Test
+  void cardAndCardIdAreExclusive() {
+    CreatePaymentRequest both =
+        read(
+            CARD_BODY.replace("\"installments\":3", "\"card_id\":\"01K0CARD\",\"installments\":3"));
+    CreatePaymentRequest neither =
+        read(
+            "{\"method\":\"CARD\",\"amount\":100,\"currency\":\"BRL\",\"customer\":{\"name\":\"Ana\"}}");
+
+    assertThatThrownBy(both::validate)
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("exactly one of card and card_id is required");
+    assertThatThrownBy(neither::validate)
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("exactly one of card and card_id is required");
+  }
+
+  /** Plan D3: with card_id the cvv is required. */
+  @Test
+  void aCardIdWithoutCvvIsCardInvalid() {
+    CreatePaymentRequest request =
+        read(
+            "{\"method\":\"CARD\",\"amount\":100,\"currency\":\"BRL\",\"card_id\":\"01K0CARD\","
+                + "\"customer\":{\"name\":\"Ana\"}}");
+    request.validate();
+
+    assertThatThrownBy(() -> request.toCommand(MerchantId.next(), ProviderEnvironment.TEST))
+        .isInstanceOf(DomainException.class)
+        .hasMessage("cvv is required with card_id");
+  }
+
+  @Test
+  void aBadCardNumberIsCardInvalidNamingTheField() {
+    CreatePaymentRequest request = read(CARD_BODY.replace("4024007153763171", "4024007153763172"));
+
+    assertThatThrownBy(() -> request.toCommand(MerchantId.next(), ProviderEnvironment.TEST))
+        .isInstanceOf(DomainException.class)
+        .satisfies(
+            thrown -> {
+              assertThat(((DomainException) thrown).code()).isEqualTo("CARD_INVALID");
+              assertThat(thrown.getMessage()).isEqualTo("card.number must pass the Luhn check");
+            });
+  }
+
+  @Test
+  void aPixFieldInACardBodyIsRefused() {
+    assertThatThrownBy(() -> read(CARD_BODY.replace("\"installments\":3", "\"expires_in\":60")))
+        .isInstanceOf(JacksonException.class);
   }
 }

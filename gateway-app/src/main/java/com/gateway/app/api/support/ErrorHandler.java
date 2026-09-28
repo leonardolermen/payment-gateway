@@ -5,7 +5,9 @@ import com.gateway.app.security.UnauthenticatedException;
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.kernel.provider.ProviderException;
+import com.gateway.payments.payment.card.CardDeclinedException;
 import java.net.URI;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -30,14 +32,32 @@ public class ErrorHandler {
   }
 
   /**
-   * ALREADY_PAID is a conflict, not a validation error: the cancel lost to the payer and the
-   * resource moved to COMPLETED.
+   * The domain codes that are not a 422. ALREADY_PAID and the two capture conflicts are 409: the
+   * resource is in a state the call cannot change (the cancel lost to the payer; the sale was
+   * captured already, or is not an authorization). CARD_DECLINED has its own handler (402).
    */
+  private static final Map<String, HttpStatus> STATUS_BY_CODE =
+      Map.of(
+          "ALREADY_PAID", HttpStatus.CONFLICT,
+          "CAPTURE_NOT_ALLOWED", HttpStatus.CONFLICT,
+          "ALREADY_CAPTURED", HttpStatus.CONFLICT);
+
   @ExceptionHandler(DomainException.class)
   public ProblemDetail domainError(DomainException e) {
-    HttpStatus status =
-        "ALREADY_PAID".equals(e.code()) ? HttpStatus.CONFLICT : HttpStatus.UNPROCESSABLE_ENTITY;
+    HttpStatus status = STATUS_BY_CODE.getOrDefault(e.code(), HttpStatus.UNPROCESSABLE_ENTITY);
     return problem(status, e.code(), e.getMessage());
+  }
+
+  /**
+   * Spec §9: 402 with our decline_code, and the payment id — the payment exists, FAILED, and the
+   * merchant needs it to reconcile. The detail is fixed; the issuer's text never reaches here.
+   */
+  @ExceptionHandler(CardDeclinedException.class)
+  public ProblemDetail cardDeclined(CardDeclinedException e) {
+    ProblemDetail problem = problem(HttpStatus.PAYMENT_REQUIRED, e.code(), e.getMessage());
+    problem.setProperty("decline_code", e.declineCode());
+    problem.setProperty("payment_id", e.paymentId());
+    return problem;
   }
 
   @ExceptionHandler(IllegalArgumentException.class)
@@ -47,9 +67,10 @@ public class ErrorHandler {
 
   /**
    * A body Jackson could not read. The type id is the one case with a message of its own, because
-   * "method must be PIX or BOLECODE" is what this API has always answered and an error message is
+   * "method must be PIX, BOLECODE or CARD" is what this API answers and an error message is
    * contract — the create body became polymorphic on {@code method}, so an unknown one now fails in
-   * the deserialiser instead of in a validate().
+   * the deserialiser instead of in a validate(). An error message is contract: it gained CARD with
+   * the card method (plan 2026-09-28, Global Constraints).
    *
    * <p>Everything else gets a fixed detail: Jackson's own text carries class names and a slice of
    * the body, which are ours to read in the log and not the merchant's.
@@ -57,7 +78,8 @@ public class ErrorHandler {
   @ExceptionHandler(HttpMessageNotReadableException.class)
   public ProblemDetail unreadableBody(HttpMessageNotReadableException e) {
     if (unknownTypeId(e)) {
-      return problem(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "method must be PIX or BOLECODE");
+      return problem(
+          HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "method must be PIX, BOLECODE or CARD");
     }
 
     log.info("unreadable request body: {}", Masker.mask(e.getMessage()));

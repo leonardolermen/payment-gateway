@@ -1,16 +1,19 @@
 package com.gateway.app.api.payment;
 
+import com.gateway.app.api.payment.dto.CaptureRequestBody;
 import com.gateway.app.api.payment.dto.CreatePaymentRequest;
 import com.gateway.app.api.payment.dto.PaymentEventResponse;
 import com.gateway.app.api.payment.dto.PaymentResponse;
 import com.gateway.app.api.support.IdempotencyFilter;
 import com.gateway.app.security.MerchantContext;
+import com.gateway.kernel.money.Money;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.merchants.apikey.ApiKeyEnvironment;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentCancellation;
 import com.gateway.payments.payment.PaymentQueries;
 import com.gateway.payments.payment.PaymentService;
+import com.gateway.payments.payment.card.CardCapture;
 import com.gateway.payments.payment.create.CreatePaymentCommand;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -36,12 +39,17 @@ public class PaymentsController {
   private final PaymentService payments;
   private final PaymentQueries queries;
   private final PaymentCancellation cancellation;
+  private final CardCapture capture;
 
   public PaymentsController(
-      PaymentService payments, PaymentQueries queries, PaymentCancellation cancellation) {
+      PaymentService payments,
+      PaymentQueries queries,
+      PaymentCancellation cancellation,
+      CardCapture capture) {
     this.payments = payments;
     this.queries = queries;
     this.cancellation = cancellation;
+    this.capture = capture;
   }
 
   @PostMapping
@@ -100,6 +108,22 @@ public class PaymentsController {
   public ResponseEntity<PaymentResponse> cancel(@PathVariable String id) {
     return withResource(
         HttpStatus.OK, cancellation.cancel(MerchantContext.current().merchantId(), id));
+  }
+
+  /** Spec §6. Wrapped by IdempotencyFilter like every POST action on a payment. */
+  @PostMapping("/{id}/capture")
+  public ResponseEntity<PaymentResponse> capture(
+      @PathVariable String id, @RequestBody(required = false) CaptureRequestBody body) {
+    Long cents = body == null ? null : body.amount();
+    if (cents != null && cents <= 0) {
+      throw new IllegalArgumentException("amount must be a positive number of cents");
+    }
+
+    Payment captured =
+        capture.capture(
+            MerchantContext.current().merchantId(), id, cents == null ? null : Money.brl(cents));
+
+    return withResource(HttpStatus.OK, captured);
   }
 
   /**
