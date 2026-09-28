@@ -7,6 +7,7 @@ import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.kernel.provider.pix.ReceivedPix;
 import com.gateway.payments.UnitOfWork;
 import com.gateway.payments.payment.boleto.PaidVia;
+import com.gateway.payments.payment.create.PixPaymentFlow;
 import com.gateway.payments.payment.persistence.PaymentRepository;
 import com.gateway.payments.provider.ProviderGateway;
 import com.gateway.payments.provider.ProviderGateway.ResolvedProvider;
@@ -164,7 +165,7 @@ public class PixSettlement {
     // By txid, not by id: a Bolecode's txid is the bank's BL..., and the webhook only knows the
     // txid.
     Optional<Payment> found =
-        payments.findByMerchantAndTxid(merchantId, PaymentService.PROVIDER, txid);
+        payments.findByMerchantAndTxid(merchantId, PixPaymentFlow.PROVIDER, txid);
     if (found.isEmpty()) {
       return Settlement.UNKNOWN_PAYMENT;
     }

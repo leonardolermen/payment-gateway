@@ -10,6 +10,7 @@ import com.gateway.kernel.provider.ProviderException;
 import com.gateway.payments.jobs.JobType;
 import com.gateway.payments.jobs.persistence.JobRepository;
 import com.gateway.payments.payment.boleto.BoletoDates;
+import com.gateway.payments.payment.create.BolecodePaymentFlow;
 import com.gateway.payments.payment.create.CreateBolecodePayment;
 import com.gateway.payments.payment.create.PayerData;
 import com.gateway.payments.payment.create.PayerFactory;
@@ -419,7 +420,7 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
     Payment p = newBolecode(700);
     assertThat(p.status()).isEqualTo(PaymentStatus.PENDING);
     var resolved =
-        providers.resolveBoleto(merchant, ProviderEnvironment.TEST, PaymentService.PROVIDER);
+        providers.resolveBoleto(merchant, ProviderEnvironment.TEST, BolecodePaymentFlow.PROVIDER);
     Payment again =
         paymentService.adoptBolecodeFromStatus(
             p.id(), resolved, boletos.status("00000001"), EventSource.SYSTEM);

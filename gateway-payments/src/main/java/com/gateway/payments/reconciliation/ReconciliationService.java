@@ -14,6 +14,7 @@ import com.gateway.payments.payment.PaymentService;
 import com.gateway.payments.payment.PaymentStatus;
 import com.gateway.payments.payment.PixSettlement;
 import com.gateway.payments.payment.boleto.BoletoPollingService;
+import com.gateway.payments.payment.create.PixPaymentFlow;
 import com.gateway.payments.payment.persistence.PaymentRepository;
 import com.gateway.payments.provider.ProviderGateway;
 import com.gateway.payments.provider.ProviderGateway.ResolvedProvider;
@@ -148,7 +149,7 @@ public class ReconciliationService {
   /** Returns how many payments were completed or got a new divergence. */
   public int reconcile(MerchantId merchantId, ProviderEnvironment env, Instant from, Instant to) {
     ResolvedProvider<PixMethodProvider> resolved =
-        providers.resolvePix(merchantId, env, PaymentService.PROVIDER);
+        providers.resolvePix(merchantId, env, PixPaymentFlow.PROVIDER);
     List<Charge> charges =
         providers.call(
             null,
@@ -158,7 +159,7 @@ public class ReconciliationService {
     int changed = 0;
     for (Charge charge : charges) {
       Optional<Payment> found =
-          payments.findByMerchantAndTxid(merchantId, PaymentService.PROVIDER, charge.txid());
+          payments.findByMerchantAndTxid(merchantId, PixPaymentFlow.PROVIDER, charge.txid());
       if (found.isEmpty()) {
         continue; // not ours, or another merchant's with the same bank account
       }
