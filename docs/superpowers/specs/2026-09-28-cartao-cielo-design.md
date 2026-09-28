@@ -273,3 +273,36 @@ Endpoints novos: `POST /v1/payments/{id}/capture {amount?}` → 200 com o pagame
   capturar. Custo se errado: limite preso no cartão do cliente até alguém olhar a divergência.
 - **`card_id` é nosso, o token é da Cielo, cifrado.** Rejeitado: expor o `CardToken` da Cielo ao
   merchant — prende o merchant à Cielo e o token vira dado sensível na mão dele.
+
+## 12. Emendas ao escrever o plano (2026-09-28, lidas na doc da Cielo e no código)
+
+O plano (`docs/superpowers/plans/2026-09-28-plano-d-cartao-cielo.md`) foi escrito contra as páginas
+`.md` da doc e o código da Fase 2; onde discordam desta spec, vale o que está aqui:
+
+1. **Status**: a tabela atual tem `11` Refunded e `20` Scheduled, sem `14`/`15`. Void no mesmo dia
+   da venda responde `10` mesmo depois da captura.
+2. **CVV com cartão guardado é obrigatório** (`required: [CardToken, SecurityCode]`), não opcional.
+3. **Bandeiras**: sem Hipercard. `CardBrand` = Visa, Master, Amex, Elo, Diners, Discover, JCB, Aura.
+4. **Parcelas**: `ByMerchant` exige parcela mínima de R$ 5,00 → `INVALID_INSTALLMENTS` abaixo disso.
+5. **Card On File** só para Visa, Master e Elo; `InitiatedTransactionIndicator` só Mastercard.
+6. **Códigos de negativa** medidos contra a tabela ABECS (`api-codes` não tem os do emissor); no
+   sandbox `57` é "vencido", em produção é "não permitido para o cartão" — a tabela segue produção.
+7. **Notificação**: responder `200` (não 202); `ChangeType 6` é boleto e `7` é chargeback, ambos
+   ignorados; o sandbox envia notificações depois que a URL é cadastrada por e-mail no suporte.
+8. **Consultas**: a consulta por pedido escreve `ReceveidDate` (sic); a resposta da captura não traz
+   valor nem data capturados, então a captura consulta a venda em seguida; não há 404 documentado
+   para `PaymentId` desconhecido (há o código 307).
+9. **Exemplos da doc**: o 201 Elo é JSON inválido; 400/401 são strings. O cartão de teste da doc
+   (`4024007153763191`) não passa em Luhn; testes e smoke usam números válidos com o último dígito
+   certo.
+10. **`@JsonIgnoreType` no kernel** não existe (sem Jackson): mixin no app.
+11. **`provider_requests` não guarda corpo** (`request = null`): a regra vira "toda mensagem de
+    exceção da Cielo passa pelo masker", e o teste PCI continua varrendo a tabela.
+12. **`inbound_webhook_secret`** não existe: tabela nova em merchants (V102) com o SHA-256 do header.
+13. **`MtlsPortFilter`** hoje devolve 404 para todo `/v1/providers/**` fora da porta mTLS: a cerca
+    passa a valer só para os caminhos do Itaú.
+14. **Timeout**: `FAILED` só quando a consulta por `MerchantOrderId` responde vazio; se a própria
+    consulta falha, fica `CREATED` para o sweeper (que ganha um ramo de cartão).
+15. **Cifra do token**: porta `Sealer` no kernel, adaptador `EnvelopeSealer` em merchants, fornecido
+    pelo app — payments continua sem importar merchants.
+16. `tokenize` fica no contrato e no provider, sem chamador em payments nesta fase.
