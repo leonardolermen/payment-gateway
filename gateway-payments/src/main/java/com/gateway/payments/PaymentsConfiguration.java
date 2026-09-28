@@ -2,6 +2,7 @@ package com.gateway.payments;
 
 import com.gateway.kernel.provider.CredentialLookup;
 import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
+import com.gateway.kernel.provider.card.CardMethodProvider;
 import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.payments.idempotency.IdempotencyService;
 import com.gateway.payments.idempotency.persistence.IdempotencyRepository;
@@ -35,6 +36,7 @@ import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepository;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepositoryImpl;
 import com.gateway.payments.payment.create.BolecodeFromQuery;
 import com.gateway.payments.payment.create.BolecodePaymentFlow;
+import com.gateway.payments.payment.create.CardPaymentFlow;
 import com.gateway.payments.payment.create.CreateFailures;
 import com.gateway.payments.payment.create.PaymentDraftFactory;
 import com.gateway.payments.payment.create.PaymentFlow;
@@ -105,17 +107,22 @@ public class PaymentsConfiguration {
   }
 
   /**
-   * ObjectProvider: a context with no BoletoMethodProvider at all (some payments tests) must still
-   * start.
+   * ObjectProvider: a context with no BoletoMethodProvider or CardMethodProvider at all (some
+   * payments tests) must still start.
    */
   @Bean
   ProviderGateway providerGateway(
       List<PixMethodProvider> providers,
       ObjectProvider<BoletoMethodProvider> boletoProviders,
+      ObjectProvider<CardMethodProvider> cardProviders,
       CredentialLookup credentials,
       ProviderRequestRepository requests) {
     return new ProviderGateway(
-        providers, boletoProviders.orderedStream().toList(), credentials, requests);
+        providers,
+        boletoProviders.orderedStream().toList(),
+        cardProviders.orderedStream().toList(),
+        credentials,
+        requests);
   }
 
   @Bean
@@ -192,6 +199,11 @@ public class PaymentsConfiguration {
       Clock clock) {
     return new BolecodePaymentFlow(
         providers, drafts, adoption, fromQuery, failures, properties, clock);
+  }
+
+  @Bean
+  CardPaymentFlow cardPaymentFlow() {
+    return new CardPaymentFlow();
   }
 
   /**
