@@ -1,0 +1,58 @@
+{
+  "MerchantOrderId": "Loja123456",
+  "Customer": {
+    "Name": "Comprador crédito completo",
+    "Email": "compradorteste@teste.com",
+    "Birthdate": "1991-01-02",
+    "Address": {
+      "Street": "Rua Teste",
+      "Number": "123",
+      "Complement": "AP 123",
+      "ZipCode": "12345987",
+      "City": "Rio de Janeiro",
+      "State": "RJ",
+      "Country": "BRA"
+    }
+  },
+  "Payment": {
+    "ServiceTaxAmount": 0,
+    "Installments": 1,
+    "Interest": "ByMerchant",
+    "Capture": true,
+    "Authenticate": false,
+    "Recurrent": false,
+    "IssuerTransactionId": "580027442382078",
+    "CreditCard": {
+      "CardNumber": "123412******1234",
+      "Holder": "Teste Holder",
+      "ExpirationDate": "12/2030",
+      "Brand": "Visa",
+      "PaymentAccountReference": "NUKBZZQ3E34FLV2SAHZXJBVSGWWV8"
+    },
+    "ProofOfSale": "553486",
+    "Tid": "1212092931654",
+    "AuthorizationCode": "520520",
+    "PaymentId": "2352fc91-f9a4-4ca2-aedb-31488b9658c9",
+    "Type": "CreditCard",
+    "Amount": 15700,
+    "ReceivedDate": "2024-12-12 09:29:31",
+    "CapturedAmount": 15700,
+    "CapturedDate": "2024-12-12 09:29:31",
+    "Currency": "BRL",
+    "Country": "BRA",
+    "Provider": "Simulado",
+    "Status": 2,
+    "Links": [
+      {
+        "Method": "GET",
+        "Rel": "self",
+        "Href": "https://apiquerysandbox.cieloecommerce.cielo.com.br/1/sales/2352fc91-f9a4-4ca2-aedb-31488b9658c9"
+      },
+      {
+        "Method": "PUT",
+        "Rel": "void",
+        "Href": "https://apisandbox.cieloecommerce.cielo.com.br/1/sales/2352fc91-f9a4-4ca2-aedb-31488b9658c9/void"
+      }
+    ]
+  }
+}
