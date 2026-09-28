@@ -107,19 +107,19 @@ public class WebhookInboxService {
     mark(entry, matched ? "PROCESSED" : "IGNORED", null);
   }
 
-  private void mark(WebhookInboxEntry e, String status, String error) {
+  private void mark(WebhookInboxEntry entry, String status, String error) {
     String err = error == null || error.length() <= 500 ? error : error.substring(0, 500);
     transactionTemplate.executeWithoutResult(
         transaction ->
             inbox.save(
                 new WebhookInboxEntry(
-                    e.id(),
-                    e.provider(),
-                    e.merchantId(),
-                    e.rawHeaders(),
-                    e.rawBody(),
+                    entry.id(),
+                    entry.provider(),
+                    entry.merchantId(),
+                    entry.rawHeaders(),
+                    entry.rawBody(),
                     status,
                     err,
-                    e.receivedAt())));
+                    entry.receivedAt())));
   }
 }

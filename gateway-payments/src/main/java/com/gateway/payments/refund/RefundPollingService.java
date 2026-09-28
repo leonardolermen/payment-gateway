@@ -85,9 +85,9 @@ public class RefundPollingService {
     return refunds.findById(refundId).map(RefundPollingService::terminal).orElse(true);
   }
 
-  private static boolean terminal(Refund r) {
-    return r.state() == RefundState.COMPLETED
-        || r.state() == RefundState.FAILED
-        || r.state() == RefundState.UNKNOWN;
+  private static boolean terminal(Refund refund) {
+    return refund.state() == RefundState.COMPLETED
+        || refund.state() == RefundState.FAILED
+        || refund.state() == RefundState.UNKNOWN;
   }
 }

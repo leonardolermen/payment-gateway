@@ -29,7 +29,7 @@ public class JobRepositoryImpl implements JobRepository {
    */
   @Override
   @Transactional
-  public boolean enqueue(Job j) {
+  public boolean enqueue(Job job) {
     int inserted =
         entityManager
             .createNativeQuery(
@@ -38,15 +38,15 @@ public class JobRepositoryImpl implements JobRepository {
                 VALUES (:id, :type, :refId, :nextRunAt, :attempts, :status, :claimedAt, :lastError, :createdAt)
                 ON CONFLICT (type, ref_id) DO NOTHING
                 """)
-            .setParameter("id", j.id())
-            .setParameter("type", j.type().name())
-            .setParameter("refId", j.refId())
-            .setParameter("nextRunAt", j.nextRunAt())
-            .setParameter("attempts", j.attempts())
-            .setParameter("status", j.status())
-            .setParameter("claimedAt", j.claimedAt())
-            .setParameter("lastError", j.lastError())
-            .setParameter("createdAt", j.createdAt())
+            .setParameter("id", job.id())
+            .setParameter("type", job.type().name())
+            .setParameter("refId", job.refId())
+            .setParameter("nextRunAt", job.nextRunAt())
+            .setParameter("attempts", job.attempts())
+            .setParameter("status", job.status())
+            .setParameter("claimedAt", job.claimedAt())
+            .setParameter("lastError", job.lastError())
+            .setParameter("createdAt", job.createdAt())
             .executeUpdate();
     return inserted > 0;
   }
@@ -77,18 +77,18 @@ public class JobRepositoryImpl implements JobRepository {
    */
   @Override
   @Transactional
-  public void save(Job j) {
-    JobEntity e = jpa.findById(j.id()).orElseGet(JobEntity::new);
-    e.id = j.id();
-    e.type = j.type().name();
-    e.refId = j.refId();
-    e.nextRunAt = j.nextRunAt();
-    e.attempts = j.attempts();
-    e.status = j.status();
-    e.claimedAt = j.claimedAt();
-    e.lastError = j.lastError();
-    e.createdAt = j.createdAt();
-    jpa.save(e);
+  public void save(Job job) {
+    JobEntity entity = jpa.findById(job.id()).orElseGet(JobEntity::new);
+    entity.id = job.id();
+    entity.type = job.type().name();
+    entity.refId = job.refId();
+    entity.nextRunAt = job.nextRunAt();
+    entity.attempts = job.attempts();
+    entity.status = job.status();
+    entity.claimedAt = job.claimedAt();
+    entity.lastError = job.lastError();
+    entity.createdAt = job.createdAt();
+    jpa.save(entity);
   }
 
   @Override
@@ -96,16 +96,16 @@ public class JobRepositoryImpl implements JobRepository {
     return jpa.findByTypeAndRefId(type.name(), refId).map(JobRepositoryImpl::toDomain);
   }
 
-  private static Job toDomain(JobEntity e) {
+  private static Job toDomain(JobEntity entity) {
     return new Job(
-        e.id,
-        JobType.valueOf(e.type),
-        e.refId,
-        e.nextRunAt,
-        e.attempts,
-        e.status,
-        e.claimedAt,
-        e.lastError,
-        e.createdAt);
+        entity.id,
+        JobType.valueOf(entity.type),
+        entity.refId,
+        entity.nextRunAt,
+        entity.attempts,
+        entity.status,
+        entity.claimedAt,
+        entity.lastError,
+        entity.createdAt);
   }
 }

@@ -13,21 +13,21 @@ public final class PixAmounts {
 
   private PixAmounts() {}
 
-  public static String toItau(Money m) {
-    if (!"BRL".equals(m.currency())) {
-      throw new IllegalArgumentException("Pix is BRL only: " + m.currency());
+  public static String toItau(Money money) {
+    if (!"BRL".equals(money.currency())) {
+      throw new IllegalArgumentException("Pix is BRL only: " + money.currency());
     }
-    if (m.cents() <= 0 || m.cents() > MAX_CENTS) {
-      throw new IllegalArgumentException("amount outside the Bacen range: " + m.cents());
+    if (money.cents() <= 0 || money.cents() > MAX_CENTS) {
+      throw new IllegalArgumentException("amount outside the Bacen range: " + money.cents());
     }
-    return m.cents() / 100 + "." + String.format("%02d", m.cents() % 100);
+    return money.cents() / 100 + "." + String.format("%02d", money.cents() % 100);
   }
 
-  public static Money fromItau(String s) {
-    if (s == null || !BACEN.matcher(s).matches()) {
-      throw new IllegalArgumentException("not a Bacen amount: " + s);
+  public static Money fromItau(String raw) {
+    if (raw == null || !BACEN.matcher(raw).matches()) {
+      throw new IllegalArgumentException("not a Bacen amount: " + raw);
     }
-    String[] p = s.split("\\.");
-    return Money.brl(Long.parseLong(p[0]) * 100 + Long.parseLong(p[1]));
+    String[] parts = raw.split("\\.");
+    return Money.brl(Long.parseLong(parts[0]) * 100 + Long.parseLong(parts[1]));
   }
 }

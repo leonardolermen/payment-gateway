@@ -98,10 +98,10 @@ public class PaymentsController {
    * {@link IdempotencyFilter#RESOURCE_ID_HEADER} is read and stripped by the filter; clients never
    * see it.
    */
-  private static ResponseEntity<PaymentResponse> withResource(HttpStatus status, Payment p) {
+  private static ResponseEntity<PaymentResponse> withResource(HttpStatus status, Payment payment) {
     return ResponseEntity.status(status)
-        .header(IdempotencyFilter.RESOURCE_ID_HEADER, p.id())
-        .body(PaymentResponse.from(p));
+        .header(IdempotencyFilter.RESOURCE_ID_HEADER, payment.id())
+        .body(PaymentResponse.from(payment));
   }
 
   static ProviderEnvironment providerEnvironment(ApiKeyEnvironment env) {

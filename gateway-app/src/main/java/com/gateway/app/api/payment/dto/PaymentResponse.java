@@ -48,21 +48,21 @@ public record PaymentResponse(
       LocalDate paymentLimitDate,
       String paidVia) {}
 
-  public static PaymentResponse from(Payment p) {
-    PixDetails pix = p.pix();
-    BoletoDetails boleto = p.boleto();
+  public static PaymentResponse from(Payment payment) {
+    PixDetails pix = payment.pix();
+    BoletoDetails boleto = payment.boleto();
     return new PaymentResponse(
-        p.id(),
-        p.status().name(),
-        p.method().name(),
-        p.provider(),
-        p.environment().name(),
-        p.amount().cents(),
-        p.amount().currency(),
-        p.reference(),
-        p.description(),
+        payment.id(),
+        payment.status().name(),
+        payment.method().name(),
+        payment.provider(),
+        payment.environment().name(),
+        payment.amount().cents(),
+        payment.amount().currency(),
+        payment.reference(),
+        payment.description(),
         pix == null
-            ? new Pix(p.id(), null, null, null)
+            ? new Pix(payment.id(), null, null, null)
             : new Pix(pix.txid(), pix.pixCopiaECola(), pix.location(), pix.endToEndId()),
         boleto == null
             ? null
@@ -72,10 +72,10 @@ public record PaymentResponse(
                 boleto.dueDate(),
                 boleto.paymentLimitDate(),
                 boleto.paidVia() == null ? null : boleto.paidVia().name()),
-        p.expiresAt(),
-        p.paidAt(),
-        p.paidAmount() == null ? null : p.paidAmount().cents(),
-        p.refundedAmount().cents(),
-        p.createdAt());
+        payment.expiresAt(),
+        payment.paidAt(),
+        payment.paidAmount() == null ? null : payment.paidAmount().cents(),
+        payment.refundedAmount().cents(),
+        payment.createdAt());
   }
 }

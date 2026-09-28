@@ -13,7 +13,7 @@ public interface JobRepository {
    * {@code true} iff this call inserted the row; the RECONCILE job always uses {@code ref_id =
    * "all"}, so a caller needs this to tell "I created the singleton" from "it was already there".
    */
-  boolean enqueue(Job j);
+  boolean enqueue(Job job);
 
   /** {@code FOR UPDATE SKIP LOCKED}; requires an active transaction. */
   default List<Job> claimDue(Instant now, int limit, Duration lease) {
@@ -26,7 +26,7 @@ public interface JobRepository {
    */
   List<Job> claimDue(Instant now, int limit, Duration lease, Duration reconcileLease);
 
-  void save(Job j);
+  void save(Job job);
 
   Optional<Job> findByTypeAndRef(JobType type, String refId);
 }

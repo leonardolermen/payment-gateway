@@ -36,7 +36,7 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   }
 
   /**
-   * {@code expected} is {@code p.version()} minus {@code newEvents.size()}: the version the
+   * {@code expected} is {@code payment.version()} minus {@code newEvents.size()}: the version the
    * aggregate had before the transitions that produced {@code newEvents} were applied in memory —
    * i.e. the version it was loaded (or created) at. {@code expected == 0} means the aggregate has
    * never been persisted (see {@link Payment#create}, which starts at version 1), so this is an
@@ -44,51 +44,51 @@ public class PaymentRepositoryImpl implements PaymentRepository {
    */
   @Override
   @Transactional(propagation = Propagation.MANDATORY)
-  public Payment save(Payment p, List<PaymentEvent> newEvents) {
-    long newVersion = p.version();
+  public Payment save(Payment payment, List<PaymentEvent> newEvents) {
+    long newVersion = payment.version();
     long expectedVersion = newVersion - newEvents.size();
-    String details = PaymentDetailsJson.write(p.pix(), p.boleto());
+    String details = PaymentDetailsJson.write(payment.pix(), payment.boleto());
 
     if (expectedVersion == 0) {
-      PaymentEntity e = new PaymentEntity();
-      e.id = p.id();
-      e.merchantId = p.merchantId().value();
-      e.environment = p.environment().name();
-      e.provider = p.provider();
-      e.method = p.method().name();
-      e.status = p.status().name();
-      e.amount = p.amount().cents();
-      e.currency = p.amount().currency();
-      e.reference = p.reference();
-      e.description = p.description();
-      e.customerDocumentHash = p.customerDocumentHash();
-      e.details = details;
-      e.expiresAt = p.expiresAt();
-      e.paidAt = p.paidAt();
-      e.paidAmount = p.paidAmount() == null ? null : p.paidAmount().cents();
-      e.refundedAmount = p.refundedAmount().cents();
-      e.version = newVersion;
-      e.createdAt = p.createdAt();
-      e.updatedAt = p.updatedAt();
+      PaymentEntity entity = new PaymentEntity();
+      entity.id = payment.id();
+      entity.merchantId = payment.merchantId().value();
+      entity.environment = payment.environment().name();
+      entity.provider = payment.provider();
+      entity.method = payment.method().name();
+      entity.status = payment.status().name();
+      entity.amount = payment.amount().cents();
+      entity.currency = payment.amount().currency();
+      entity.reference = payment.reference();
+      entity.description = payment.description();
+      entity.customerDocumentHash = payment.customerDocumentHash();
+      entity.details = details;
+      entity.expiresAt = payment.expiresAt();
+      entity.paidAt = payment.paidAt();
+      entity.paidAmount = payment.paidAmount() == null ? null : payment.paidAmount().cents();
+      entity.refundedAmount = payment.refundedAmount().cents();
+      entity.version = newVersion;
+      entity.createdAt = payment.createdAt();
+      entity.updatedAt = payment.updatedAt();
       // persist, not jpa.save: the id is already assigned (a ULID), so save() would go through
       // Hibernate's merge path (a SELECT to check whether the row exists, then an INSERT) — an
       // unnecessary round trip for a row we know is brand new. persist() inserts directly.
-      entityManager.persist(e);
+      entityManager.persist(entity);
     } else {
       int updated =
           jpa.updateIfVersionMatches(
-              p.id(),
-              p.status().name(),
+              payment.id(),
+              payment.status().name(),
               details,
-              p.expiresAt(),
-              p.paidAt(),
-              p.paidAmount() == null ? null : p.paidAmount().cents(),
-              p.refundedAmount().cents(),
+              payment.expiresAt(),
+              payment.paidAt(),
+              payment.paidAmount() == null ? null : payment.paidAmount().cents(),
+              payment.refundedAmount().cents(),
               newVersion,
-              p.updatedAt(),
+              payment.updatedAt(),
               expectedVersion);
       if (updated == 0) {
-        throw new ObjectOptimisticLockingFailureException(PaymentEntity.class, p.id());
+        throw new ObjectOptimisticLockingFailureException(PaymentEntity.class, payment.id());
       }
     }
 
@@ -97,7 +97,7 @@ public class PaymentRepositoryImpl implements PaymentRepository {
       // id, so persist() (direct INSERT) instead of save() (SELECT-then-INSERT/UPDATE merge).
       entityManager.persist(toEventEntity(event));
     }
-    return p;
+    return payment;
   }
 
   @Override
@@ -196,49 +196,49 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   }
 
   private static PaymentEventEntity toEventEntity(PaymentEvent event) {
-    PaymentEventEntity e = new PaymentEventEntity();
-    e.id = event.id();
-    e.paymentId = event.paymentId();
-    e.sequence = event.sequence();
-    e.type = event.type();
-    e.source = event.source().name();
-    e.payload = event.payload();
-    e.createdAt = event.at();
-    return e;
+    PaymentEventEntity entity = new PaymentEventEntity();
+    entity.id = event.id();
+    entity.paymentId = event.paymentId();
+    entity.sequence = event.sequence();
+    entity.type = event.type();
+    entity.source = event.source().name();
+    entity.payload = event.payload();
+    entity.createdAt = event.at();
+    return entity;
   }
 
-  private static PaymentEvent toEventDomain(PaymentEventEntity e) {
+  private static PaymentEvent toEventDomain(PaymentEventEntity entity) {
     return new PaymentEvent(
-        e.id,
-        e.paymentId,
-        e.sequence,
-        e.type,
-        EventSource.valueOf(e.source),
-        e.payload,
-        e.createdAt);
+        entity.id,
+        entity.paymentId,
+        entity.sequence,
+        entity.type,
+        EventSource.valueOf(entity.source),
+        entity.payload,
+        entity.createdAt);
   }
 
-  private static Payment toDomain(PaymentEntity e) {
+  private static Payment toDomain(PaymentEntity entity) {
     return Payment.rehydrate(
-        e.id,
-        new MerchantId(e.merchantId),
-        ProviderEnvironment.valueOf(e.environment),
-        e.provider,
-        PaymentMethod.valueOf(e.method),
-        PaymentStatus.valueOf(e.status),
-        new Money(e.amount, e.currency),
-        e.reference,
-        e.description,
-        e.customerDocumentHash,
-        PaymentDetailsJson.readPix(e.details),
-        PaymentDetailsJson.readBoleto(e.details),
-        e.expiresAt,
-        e.paidAt,
-        e.paidAmount == null ? null : new Money(e.paidAmount, e.currency),
-        new Money(e.refundedAmount, e.currency),
-        e.version,
-        e.createdAt,
-        e.updatedAt,
+        entity.id,
+        new MerchantId(entity.merchantId),
+        ProviderEnvironment.valueOf(entity.environment),
+        entity.provider,
+        PaymentMethod.valueOf(entity.method),
+        PaymentStatus.valueOf(entity.status),
+        new Money(entity.amount, entity.currency),
+        entity.reference,
+        entity.description,
+        entity.customerDocumentHash,
+        PaymentDetailsJson.readPix(entity.details),
+        PaymentDetailsJson.readBoleto(entity.details),
+        entity.expiresAt,
+        entity.paidAt,
+        entity.paidAmount == null ? null : new Money(entity.paidAmount, entity.currency),
+        new Money(entity.refundedAmount, entity.currency),
+        entity.version,
+        entity.createdAt,
+        entity.updatedAt,
         Clock.systemUTC());
   }
 }

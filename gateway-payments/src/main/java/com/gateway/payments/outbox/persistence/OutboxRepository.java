@@ -9,7 +9,7 @@ public interface OutboxRepository {
    * Same transaction as the caller — the outbox row and the domain change commit or roll back
    * together.
    */
-  void append(OutboxMessage m);
+  void append(OutboxMessage message);
 
   /** {@code FOR UPDATE SKIP LOCKED}; requires an active transaction. */
   List<OutboxMessage> claimPending(int limit, Duration lease);

@@ -27,11 +27,11 @@ class BoletoInstructionClient {
    * CONFLICT the caller turns into "already paid" after asking the query API; the 422 has no schema
    * and no code, so the text is all there is.
    */
-  void baixa(ItauCredentials c, String idBoleto) {
+  void baixa(ItauCredentials credentials, String idBoleto) {
     HttpRequest.Builder builder =
         http.request("/boletos/" + BoletoHttp.seg(idBoleto) + "/baixa")
             .method("PATCH", HttpRequest.BodyPublishers.noBody());
-    HttpResponse<String> res = http.send(c, builder);
+    HttpResponse<String> res = http.send(credentials, builder);
     int status = res.statusCode();
     if (status == 200 || status == 202 || status == 204) {
       return;

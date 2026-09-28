@@ -18,18 +18,18 @@ public class RefundRepositoryImpl implements RefundRepository {
 
   @Override
   public Refund save(Refund refund) {
-    RefundEntity e = jpa.findById(refund.id()).orElseGet(RefundEntity::new);
-    e.id = refund.id();
-    e.paymentId = refund.paymentId();
-    e.merchantId = refund.merchantId().value();
-    e.amount = refund.amount().cents();
-    e.state = refund.state().name();
-    e.providerRefundId = null;
-    e.reason = refund.failureReason();
-    e.requestedAt = refund.createdAt();
-    e.settledAt = refund.settledAt();
-    e.updatedAt = refund.settledAt() != null ? refund.settledAt() : refund.createdAt();
-    return toDomain(jpa.save(e));
+    RefundEntity entity = jpa.findById(refund.id()).orElseGet(RefundEntity::new);
+    entity.id = refund.id();
+    entity.paymentId = refund.paymentId();
+    entity.merchantId = refund.merchantId().value();
+    entity.amount = refund.amount().cents();
+    entity.state = refund.state().name();
+    entity.providerRefundId = null;
+    entity.reason = refund.failureReason();
+    entity.requestedAt = refund.createdAt();
+    entity.settledAt = refund.settledAt();
+    entity.updatedAt = refund.settledAt() != null ? refund.settledAt() : refund.createdAt();
+    return toDomain(jpa.save(entity));
   }
 
   @Override
@@ -47,15 +47,15 @@ public class RefundRepositoryImpl implements RefundRepository {
     return jpa.findByState(state.name()).stream().map(RefundRepositoryImpl::toDomain).toList();
   }
 
-  private static Refund toDomain(RefundEntity e) {
+  private static Refund toDomain(RefundEntity entity) {
     return Refund.rehydrate(
-        e.id,
-        e.paymentId,
-        new MerchantId(e.merchantId),
-        new Money(e.amount, "BRL"),
-        RefundState.valueOf(e.state),
-        e.settledAt,
-        e.reason,
-        e.requestedAt);
+        entity.id,
+        entity.paymentId,
+        new MerchantId(entity.merchantId),
+        new Money(entity.amount, "BRL"),
+        RefundState.valueOf(entity.state),
+        entity.settledAt,
+        entity.reason,
+        entity.requestedAt);
   }
 }

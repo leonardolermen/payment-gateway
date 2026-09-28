@@ -15,16 +15,16 @@ public class WebhookInboxRepositoryImpl implements WebhookInboxRepository {
 
   @Override
   public WebhookInboxEntry save(WebhookInboxEntry entry) {
-    WebhookInboxEntity e = jpa.findById(entry.id()).orElseGet(WebhookInboxEntity::new);
-    e.id = entry.id();
-    e.provider = entry.provider();
-    e.merchantId = entry.merchantId().value();
-    e.rawHeaders = entry.rawHeaders();
-    e.rawBody = entry.rawBody();
-    e.status = entry.status();
-    e.error = entry.error();
-    e.receivedAt = entry.receivedAt();
-    return toDomain(jpa.save(e));
+    WebhookInboxEntity entity = jpa.findById(entry.id()).orElseGet(WebhookInboxEntity::new);
+    entity.id = entry.id();
+    entity.provider = entry.provider();
+    entity.merchantId = entry.merchantId().value();
+    entity.rawHeaders = entry.rawHeaders();
+    entity.rawBody = entry.rawBody();
+    entity.status = entry.status();
+    entity.error = entry.error();
+    entity.receivedAt = entry.receivedAt();
+    return toDomain(jpa.save(entity));
   }
 
   @Override
@@ -32,15 +32,15 @@ public class WebhookInboxRepositoryImpl implements WebhookInboxRepository {
     return jpa.findById(id).map(WebhookInboxRepositoryImpl::toDomain);
   }
 
-  private static WebhookInboxEntry toDomain(WebhookInboxEntity e) {
+  private static WebhookInboxEntry toDomain(WebhookInboxEntity entity) {
     return new WebhookInboxEntry(
-        e.id,
-        e.provider,
-        new MerchantId(e.merchantId),
-        e.rawHeaders,
-        e.rawBody,
-        e.status,
-        e.error,
-        e.receivedAt);
+        entity.id,
+        entity.provider,
+        new MerchantId(entity.merchantId),
+        entity.rawHeaders,
+        entity.rawBody,
+        entity.status,
+        entity.error,
+        entity.receivedAt);
   }
 }

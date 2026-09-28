@@ -58,40 +58,46 @@ public class OutboxRelay {
     // emitting N+1 in the same batch would deliver it ahead of N's retry: every later message of
     // that key is released unsent, and the whole key retries together, in order, next tick.
     Set<String> failedKeys = new HashSet<>();
-    for (OutboxMessage m : claimed) {
-      if (failedKeys.contains(m.partitionKey())) {
-        release(m);
+    for (OutboxMessage message : claimed) {
+      if (failedKeys.contains(message.partitionKey())) {
+        release(message);
         continue;
       }
       try {
         events.emitRaw(
-            m.merchantId(),
-            m.eventType(),
-            m.aggregateId(),
-            m.partitionKey(),
-            m.payload(),
-            eventId(m));
-        outbox.markSent(m.id());
+            message.merchantId(),
+            message.eventType(),
+            message.aggregateId(),
+            message.partitionKey(),
+            message.payload(),
+            eventId(message));
+        outbox.markSent(message.id());
       } catch (RuntimeException e) {
         // Released, not left claimed: waiting out the lease would delay this payment's later events
         // too.
         log.warn(
-            "outbox message {} ({}) not relayed; released for retry", m.id(), m.eventType(), e);
-        failedKeys.add(m.partitionKey());
-        release(m);
+            "outbox message {} ({}) not relayed; released for retry",
+            message.id(),
+            message.eventType(),
+            e);
+        failedKeys.add(message.partitionKey());
+        release(message);
       }
     }
   }
 
-  static UUID eventId(OutboxMessage m) {
-    return UUID.nameUUIDFromBytes(m.id().getBytes(StandardCharsets.UTF_8));
+  static UUID eventId(OutboxMessage message) {
+    return UUID.nameUUIDFromBytes(message.id().getBytes(StandardCharsets.UTF_8));
   }
 
-  private void release(OutboxMessage m) {
+  private void release(OutboxMessage message) {
     try {
-      outbox.release(m.id());
+      outbox.release(message.id());
     } catch (RuntimeException again) {
-      log.warn("could not release outbox message {}; its lease will expire instead", m.id(), again);
+      log.warn(
+          "could not release outbox message {}; its lease will expire instead",
+          message.id(),
+          again);
     }
   }
 }

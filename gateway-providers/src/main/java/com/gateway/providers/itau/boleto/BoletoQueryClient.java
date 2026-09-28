@@ -30,15 +30,15 @@ class BoletoQueryClient {
    * nosso_numero, but a static mock (the sandbox) answers its example whatever we ask, and treating
    * that as "our boleto" would complete the wrong payment.
    */
-  Optional<BoletoQueryItem> find(ItauCredentials c, String nossoNumero) {
-    String q =
+  Optional<BoletoQueryItem> find(ItauCredentials credentials, String nossoNumero) {
+    String query =
         "?id_beneficiario="
-            + BoletoHttp.enc(c.beneficiaryId())
+            + BoletoHttp.enc(credentials.beneficiaryId())
             + "&codigo_carteira="
-            + BoletoHttp.enc(c.walletCode())
+            + BoletoHttp.enc(credentials.walletCode())
             + "&nosso_numero="
             + BoletoHttp.enc(nossoNumero);
-    HttpResponse<String> res = http.send(c, http.request("/boletos" + q).GET());
+    HttpResponse<String> res = http.send(credentials, http.request("/boletos" + query).GET());
     int status = res.statusCode();
     if (status == 404) {
       return Optional.empty();
