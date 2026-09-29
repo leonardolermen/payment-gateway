@@ -17,7 +17,7 @@ fixtures (`gateway-providers/src/test/resources/cielo/fixtures/README.md` lists 
 Headers `MerchantId` (GUID) and `MerchantKey` on every call, `RequestId` (36 chars) optional — the
 gateway sends the correlation id. No OAuth, no mTLS. The docs call the key a 40-character GUID; their
 example is 40 upper-case letters, so the gateway checks 40 letters or digits. Sandbox credentials are
-created without a contract at the sandbox signup page.
+created without a contract at the signup form embedded in the docs (docs.cielo.com.br/ecommerce-cielo/page/sandbox-api-ecommerce); the old host cadastrosandbox.cieloecommerce.cielo.com.br no longer resolves (checked 2026-09-29). The form shows the Merchant ID and Merchant Key once; copy them into .env.
 
 ## Operations used
 
