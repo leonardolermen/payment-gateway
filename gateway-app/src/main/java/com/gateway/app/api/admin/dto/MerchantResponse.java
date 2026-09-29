@@ -9,7 +9,8 @@ import com.gateway.merchants.merchant.MerchantStatus;
  */
 public record MerchantResponse(
     String id, String name, MerchantStatus status, String inboundWebhookUrl) {
-  public static MerchantResponse from(Merchant m, String inboundWebhookUrl) {
-    return new MerchantResponse(m.id().value(), m.name(), m.status(), inboundWebhookUrl);
+  public static MerchantResponse from(Merchant merchant, String inboundWebhookUrl) {
+    return new MerchantResponse(
+        merchant.id().value(), merchant.name(), merchant.status(), inboundWebhookUrl);
   }
 }

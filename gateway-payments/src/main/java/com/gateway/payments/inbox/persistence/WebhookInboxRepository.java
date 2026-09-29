@@ -4,7 +4,7 @@ import com.gateway.payments.inbox.WebhookInboxEntry;
 import java.util.Optional;
 
 public interface WebhookInboxRepository {
-  WebhookInboxEntry save(WebhookInboxEntry e);
+  WebhookInboxEntry save(WebhookInboxEntry entry);
 
   Optional<WebhookInboxEntry> findById(String id);
 }

@@ -33,19 +33,19 @@ public class PixPaymentFlow implements PaymentFlow {
   private final PaymentDraftFactory drafts;
   private final PendingAdoption adoption;
   private final CreateFailures failures;
-  private final PaymentsProperties props;
+  private final PaymentsProperties properties;
 
   public PixPaymentFlow(
       ProviderGateway providers,
       PaymentDraftFactory drafts,
       PendingAdoption adoption,
       CreateFailures failures,
-      PaymentsProperties props) {
+      PaymentsProperties properties) {
     this.providers = providers;
     this.drafts = drafts;
     this.adoption = adoption;
     this.failures = failures;
-    this.props = props;
+    this.properties = properties;
   }
 
   @Override
@@ -62,7 +62,9 @@ public class PixPaymentFlow implements PaymentFlow {
         providers.resolvePix(pix.merchantId(), pix.environment(), PaymentService.PROVIDER);
 
     int expires =
-        pix.expiresInSeconds() == null ? props.defaultExpiresInSeconds() : pix.expiresInSeconds();
+        pix.expiresInSeconds() == null
+            ? properties.defaultExpiresInSeconds()
+            : pix.expiresInSeconds();
     Payment payment = drafts.pix(pix, PaymentService.PROVIDER, expires);
 
     Charge charge = issueOrRecover(payment, pix, expires, resolved);

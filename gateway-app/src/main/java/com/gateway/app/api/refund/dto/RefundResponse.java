@@ -12,14 +12,14 @@ public record RefundResponse(
     Instant requestedAt,
     Instant settledAt) {
 
-  public static RefundResponse from(Refund r) {
+  public static RefundResponse from(Refund refund) {
     return new RefundResponse(
-        r.id(),
-        r.paymentId(),
-        r.amount().cents(),
-        r.state().name(),
-        r.failureReason(),
-        r.createdAt(),
-        r.settledAt());
+        refund.id(),
+        refund.paymentId(),
+        refund.amount().cents(),
+        refund.state().name(),
+        refund.failureReason(),
+        refund.createdAt(),
+        refund.settledAt());
   }
 }

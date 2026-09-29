@@ -124,16 +124,18 @@ public class ProvidersConfiguration {
 
     private static ItauEndpoints merge(
         ItauEndpoints defaults, String api, String token, Boolean mtls) {
-      return ItauEndpoints.custom(
-          api == null || api.isBlank() ? defaults.apiBase() : URI.create(api),
-          token == null || token.isBlank() ? defaults.tokenUrl() : URI.create(token),
-          mtls == null ? defaults.mutualTls() : mtls);
+      URI apiBase = api == null || api.isBlank() ? defaults.apiBase() : URI.create(api);
+      URI tokenUrl = token == null || token.isBlank() ? defaults.tokenUrl() : URI.create(token);
+      boolean mutualTls = mtls == null ? defaults.mutualTls() : mtls;
+      return mutualTls
+          ? ItauEndpoints.mutualTls(apiBase, tokenUrl)
+          : ItauEndpoints.plain(apiBase, tokenUrl);
     }
   }
 
   @Bean
-  ItauTokenClient itauTokenClient(Clock clock, ProvidersProperties props) {
-    return new ItauTokenClient(clock, Duration.ofSeconds(3), props.readTimeout());
+  ItauTokenClient itauTokenClient(Clock clock, ProvidersProperties properties) {
+    return new ItauTokenClient(clock, Duration.ofSeconds(3), properties.readTimeout());
   }
 
   /**
@@ -142,21 +144,30 @@ public class ProvidersConfiguration {
    */
   @Bean
   PixMethodProvider itauPixProvider(
-      ItauTokenClient tokens, Clock clock, ProvidersProperties props) {
+      ItauTokenClient tokens, Clock clock, ProvidersProperties properties) {
     return new ItauPixProvider(
-        tokens, trustStore(props), props.readTimeout(), clock, props.live(), props.test());
+        tokens,
+        trustStore(properties),
+        properties.readTimeout(),
+        clock,
+        properties.live(),
+        properties.test());
   }
 
   /** Same token client and trust store as Pix: one credential, one cache, one CA. */
   @Bean
-  BoletoMethodProvider itauBoletoProvider(ItauTokenClient tokens, ProvidersProperties props) {
+  BoletoMethodProvider itauBoletoProvider(ItauTokenClient tokens, ProvidersProperties properties) {
     return new ItauBoletoProvider(
-        tokens, trustStore(props), props.readTimeout(), props.boletoLive(), props.boletoTest());
+        tokens,
+        trustStore(properties),
+        properties.readTimeout(),
+        properties.boletoLive(),
+        properties.boletoTest());
   }
 
-  private static KeyStore trustStore(ProvidersProperties props) {
-    return props.trustStorePem() == null || props.trustStorePem().isBlank()
+  private static KeyStore trustStore(ProvidersProperties properties) {
+    return properties.trustStorePem() == null || properties.trustStorePem().isBlank()
         ? null
-        : ItauPixProvider.trustStoreFromPem(props.trustStorePem());
+        : ItauPixProvider.trustStoreFromPem(properties.trustStorePem());
   }
 }

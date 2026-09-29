@@ -245,7 +245,7 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
         .hasMessage("The bank declined the request.")
         .extracting(e -> ((DomainException) e).code())
         .isEqualTo("PROVIDER_DECLINED");
-    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    Payment p = paymentQueries.list(merchant, 10, null).getFirst();
     assertThat(p.status()).isEqualTo(PaymentStatus.FAILED);
     assertThat(outboxTypes(p.id())).containsExactly("payment.failed");
   }
@@ -281,7 +281,7 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
         .isInstanceOf(DomainException.class)
         .extracting(e -> ((DomainException) e).code())
         .isEqualTo("PROVIDER_TIMEOUT");
-    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    Payment p = paymentQueries.list(merchant, 10, null).getFirst();
     assertThat(p.status()).isEqualTo(PaymentStatus.CREATED);
     assertThat(outboxTypes(p.id())).isEmpty();
     assertThat(boletos.callsFor(merchant, "00000001"))
@@ -336,7 +336,7 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
         .isInstanceOf(DomainException.class)
         .extracting(e -> ((DomainException) e).code())
         .isEqualTo("PROVIDER_TIMEOUT");
-    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    Payment p = paymentQueries.list(merchant, 10, null).getFirst();
     assertThat(p.status()).isEqualTo(PaymentStatus.CREATED);
     assertThat(outboxTypes(p.id())).isEmpty();
     assertThat(jobs.findByTypeAndRef(JobType.EXPIRE_PAYMENT, p.id())).isEmpty();
@@ -387,7 +387,7 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
         .isInstanceOf(DomainException.class)
         .extracting(e -> ((DomainException) e).code())
         .isEqualTo("PROVIDER_TIMEOUT");
-    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    Payment p = paymentQueries.list(merchant, 10, null).getFirst();
     assertThat(p.status()).isEqualTo(PaymentStatus.CREATED);
     assertThat(outboxTypes(p.id())).isEmpty();
   }

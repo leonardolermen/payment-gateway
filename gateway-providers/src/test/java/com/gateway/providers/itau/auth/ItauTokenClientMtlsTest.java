@@ -100,12 +100,12 @@ public class ItauTokenClientMtlsTest {
     AccessToken t1 =
         client.tokenFor(
             creds(),
-            ItauEndpoints.custom(URI.create("https://localhost/unused"), tokenUrl(), true),
+            ItauEndpoints.mutualTls(URI.create("https://localhost/unused"), tokenUrl()),
             certs.caTrust());
     AccessToken t2 =
         client.tokenFor(
             creds(),
-            ItauEndpoints.custom(URI.create("https://localhost/unused"), tokenUrl(), true),
+            ItauEndpoints.mutualTls(URI.create("https://localhost/unused"), tokenUrl()),
             certs.caTrust());
     assertThat(t1.value()).isEqualTo("tok-1");
     assertThat(t2).isSameAs(t1);
@@ -123,18 +123,18 @@ public class ItauTokenClientMtlsTest {
         new ItauTokenClient(clock, Duration.ofSeconds(3), Duration.ofSeconds(5));
     client.tokenFor(
         creds(),
-        ItauEndpoints.custom(URI.create("https://localhost/unused"), tokenUrl(), true),
+        ItauEndpoints.mutualTls(URI.create("https://localhost/unused"), tokenUrl()),
         certs.caTrust());
     clock.advance(Duration.ofSeconds(239));
     client.tokenFor(
         creds(),
-        ItauEndpoints.custom(URI.create("https://localhost/unused"), tokenUrl(), true),
+        ItauEndpoints.mutualTls(URI.create("https://localhost/unused"), tokenUrl()),
         certs.caTrust());
     server.verify(1, postRequestedFor(urlEqualTo("/as/token.oauth2")));
     clock.advance(Duration.ofSeconds(2));
     client.tokenFor(
         creds(),
-        ItauEndpoints.custom(URI.create("https://localhost/unused"), tokenUrl(), true),
+        ItauEndpoints.mutualTls(URI.create("https://localhost/unused"), tokenUrl()),
         certs.caTrust());
     server.verify(2, postRequestedFor(urlEqualTo("/as/token.oauth2")));
   }
@@ -150,7 +150,7 @@ public class ItauTokenClientMtlsTest {
             () ->
                 client.tokenFor(
                     creds(),
-                    ItauEndpoints.custom(URI.create("https://localhost/unused"), tokenUrl(), true),
+                    ItauEndpoints.mutualTls(URI.create("https://localhost/unused"), tokenUrl()),
                     certs.caTrust()))
         .isInstanceOf(ProviderException.class)
         .extracting("code")
@@ -194,10 +194,9 @@ public class ItauTokenClientMtlsTest {
               "{\"client_id\":\"sandbox-client\",\"client_secret\":\"sandbox-secret\",\"pix_key\":\"60701190000104\"}"
                   .getBytes());
       ItauEndpoints endpoints =
-          ItauEndpoints.custom(
+          ItauEndpoints.plain(
               URI.create("https://sandbox/unused"),
-              URI.create("http://localhost:" + sandbox.port() + "/api/oauth/jwt"),
-              false);
+              URI.create("http://localhost:" + sandbox.port() + "/api/oauth/jwt"));
       ItauTokenClient client =
           new ItauTokenClient(Clock.systemUTC(), Duration.ofSeconds(3), Duration.ofSeconds(5));
 
@@ -217,7 +216,7 @@ public class ItauTokenClientMtlsTest {
             "{\"client_id\":\"sandbox-client\",\"client_secret\":\"sandbox-secret\",\"pix_key\":\"60701190000104\"}"
                 .getBytes());
     ItauEndpoints endpoints =
-        ItauEndpoints.custom(URI.create("https://localhost/unused"), tokenUrl(), true);
+        ItauEndpoints.mutualTls(URI.create("https://localhost/unused"), tokenUrl());
     ItauTokenClient client =
         new ItauTokenClient(Clock.systemUTC(), Duration.ofSeconds(3), Duration.ofSeconds(5));
 

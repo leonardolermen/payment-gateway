@@ -8,6 +8,8 @@ import com.gateway.app.security.MerchantContext;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.merchants.apikey.ApiKeyEnvironment;
 import com.gateway.payments.payment.Payment;
+import com.gateway.payments.payment.PaymentCancellation;
+import com.gateway.payments.payment.PaymentQueries;
 import com.gateway.payments.payment.PaymentService;
 import com.gateway.payments.payment.create.CreatePaymentCommand;
 import java.util.List;
@@ -32,9 +34,14 @@ public class PaymentsController {
   private static final int MAX_PAGE = 100;
 
   private final PaymentService payments;
+  private final PaymentQueries queries;
+  private final PaymentCancellation cancellation;
 
-  public PaymentsController(PaymentService payments) {
+  public PaymentsController(
+      PaymentService payments, PaymentQueries queries, PaymentCancellation cancellation) {
     this.payments = payments;
+    this.queries = queries;
+    this.cancellation = cancellation;
   }
 
   @PostMapping
@@ -50,7 +57,7 @@ public class PaymentsController {
 
   @GetMapping("/{id}")
   public PaymentResponse get(@PathVariable String id) {
-    return PaymentResponse.from(payments.get(MerchantContext.current().merchantId(), id));
+    return PaymentResponse.from(queries.get(MerchantContext.current().merchantId(), id));
   }
 
   /**
@@ -74,34 +81,35 @@ public class PaymentsController {
       if (cursor != null) {
         throw new IllegalArgumentException("cursor and reference cannot be combined");
       }
-      return payments.listByReference(merchantId, reference, limit).stream()
+      return queries.listByReference(merchantId, reference, limit).stream()
           .map(PaymentResponse::from)
           .toList();
     }
 
-    return payments.list(merchantId, limit, cursor).stream().map(PaymentResponse::from).toList();
+    return queries.list(merchantId, limit, cursor).stream().map(PaymentResponse::from).toList();
   }
 
   @GetMapping("/{id}/events")
   public List<PaymentEventResponse> events(@PathVariable String id) {
-    return payments.events(MerchantContext.current().merchantId(), id).stream()
+    return queries.events(MerchantContext.current().merchantId(), id).stream()
         .map(PaymentEventResponse::from)
         .toList();
   }
 
   @PostMapping("/{id}/cancel")
   public ResponseEntity<PaymentResponse> cancel(@PathVariable String id) {
-    return withResource(HttpStatus.OK, payments.cancel(MerchantContext.current().merchantId(), id));
+    return withResource(
+        HttpStatus.OK, cancellation.cancel(MerchantContext.current().merchantId(), id));
   }
 
   /**
    * {@link IdempotencyFilter#RESOURCE_ID_HEADER} is read and stripped by the filter; clients never
    * see it.
    */
-  private static ResponseEntity<PaymentResponse> withResource(HttpStatus status, Payment p) {
+  private static ResponseEntity<PaymentResponse> withResource(HttpStatus status, Payment payment) {
     return ResponseEntity.status(status)
-        .header(IdempotencyFilter.RESOURCE_ID_HEADER, p.id())
-        .body(PaymentResponse.from(p));
+        .header(IdempotencyFilter.RESOURCE_ID_HEADER, payment.id())
+        .body(PaymentResponse.from(payment));
   }
 
   static ProviderEnvironment providerEnvironment(ApiKeyEnvironment env) {

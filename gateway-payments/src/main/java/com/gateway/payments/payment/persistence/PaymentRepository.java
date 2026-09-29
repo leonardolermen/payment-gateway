@@ -11,13 +11,13 @@ import java.util.Set;
 
 public interface PaymentRepository {
   /**
-   * Persists {@code p} plus the events it produced since it was loaded (or created). Optimistic:
-   * the update is {@code WHERE version = expected}, {@code expected} being {@code p.version()}
-   * minus {@code newEvents.size()} — the version the aggregate had before these events were applied
-   * in memory. A mismatch (someone else saved first) throws {@link
+   * Persists {@code payment} plus the events it produced since it was loaded (or created).
+   * Optimistic: the update is {@code WHERE version = expected}, {@code expected} being {@code
+   * payment.version()} minus {@code newEvents.size()} — the version the aggregate had before these
+   * events were applied in memory. A mismatch (someone else saved first) throws {@link
    * org.springframework.orm.ObjectOptimisticLockingFailureException}.
    */
-  Payment save(Payment p, List<PaymentEvent> newEvents);
+  Payment save(Payment payment, List<PaymentEvent> newEvents);
 
   Optional<Payment> findById(String id);
 

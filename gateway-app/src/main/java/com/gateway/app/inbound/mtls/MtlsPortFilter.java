@@ -31,14 +31,14 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Component
 @Order(-10)
 public class MtlsPortFilter extends OncePerRequestFilter {
-  private final WebhookMtlsProperties props;
+  private final WebhookMtlsProperties properties;
 
   private final List<X500Principal> allowedSubjects;
 
-  public MtlsPortFilter(WebhookMtlsProperties props) {
-    this.props = props;
+  public MtlsPortFilter(WebhookMtlsProperties properties) {
+    this.properties = properties;
     // X500Principal equality compares the canonical form, so "CN=a, O=b" and "cn=a,o=b" match.
-    this.allowedSubjects = props.allowedSubjects().stream().map(X500Principal::new).toList();
+    this.allowedSubjects = properties.allowedSubjects().stream().map(X500Principal::new).toList();
   }
 
   /**
@@ -56,37 +56,37 @@ public class MtlsPortFilter extends OncePerRequestFilter {
 
   @Override
   protected void doFilterInternal(
-      HttpServletRequest req, HttpServletResponse res, FilterChain chain)
+      HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
-    boolean onMtlsPort = props.enabled() && req.getLocalPort() == props.port();
-    boolean providerPath = isProviderPath(RequestPath.of(req).normalized());
+    boolean onMtlsPort = properties.enabled() && request.getLocalPort() == properties.port();
+    boolean providerPath = isProviderPath(RequestPath.of(request).normalized());
     if (providerPath && !onMtlsPort) {
-      Problems.write(res, 404, "NOT_FOUND", "not found");
+      Problems.write(response, 404, "NOT_FOUND", "not found");
       return;
     }
     if (!providerPath && onMtlsPort) {
-      Problems.write(res, 403, "FORBIDDEN", "this port only serves provider webhooks");
+      Problems.write(response, 403, "FORBIDDEN", "this port only serves provider webhooks");
       return;
     }
     if (onMtlsPort) {
-      if (req.getContentLengthLong() > props.maxBodyBytes()) {
+      if (request.getContentLengthLong() > properties.maxBodyBytes()) {
         Problems.write(
-            res,
+            response,
             413,
             "PAYLOAD_TOO_LARGE",
-            "webhook body exceeds " + props.maxBodyBytes() + " bytes");
+            "webhook body exceeds " + properties.maxBodyBytes() + " bytes");
         return;
       }
-      if (!allowedSubjects.isEmpty() && !subjectAllowed(req)) {
-        Problems.write(res, 403, "FORBIDDEN", "client certificate not allowed");
+      if (!allowedSubjects.isEmpty() && !subjectAllowed(request)) {
+        Problems.write(response, 403, "FORBIDDEN", "client certificate not allowed");
         return;
       }
     }
-    chain.doFilter(req, res);
+    chain.doFilter(request, response);
   }
 
-  private boolean subjectAllowed(HttpServletRequest req) {
-    return req.getAttribute("jakarta.servlet.request.X509Certificate")
+  private boolean subjectAllowed(HttpServletRequest request) {
+    return request.getAttribute("jakarta.servlet.request.X509Certificate")
             instanceof X509Certificate[] chain
         && chain.length > 0
         && allowedSubjects.contains(chain[0].getSubjectX500Principal());

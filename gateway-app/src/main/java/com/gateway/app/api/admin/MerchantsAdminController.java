@@ -40,13 +40,14 @@ public class MerchantsAdminController {
     this.mtls = mtls;
   }
 
-  private MerchantResponse response(Merchant m) {
-    return MerchantResponse.from(m, mtls.inboundWebhookUrl(m.inboundWebhookToken()));
+  private MerchantResponse response(Merchant merchant) {
+    return MerchantResponse.from(merchant, mtls.inboundWebhookUrl(merchant.inboundWebhookToken()));
   }
 
   @PostMapping
-  public ResponseEntity<MerchantResponse> create(@RequestBody MerchantRequest req) {
-    return ResponseEntity.status(HttpStatus.CREATED).body(response(merchants.create(req.name())));
+  public ResponseEntity<MerchantResponse> create(@RequestBody MerchantRequest request) {
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(response(merchants.create(request.name())));
   }
 
   @GetMapping
@@ -71,15 +72,15 @@ public class MerchantsAdminController {
 
   @PostMapping("/{id}/api-keys")
   public ResponseEntity<ApiKeyIssuedResponse> issueApiKey(
-      @PathVariable String id, @RequestBody ApiKeyEnvironmentRequest req) {
-    var issued = apiKeys.issue(new MerchantId(id), req.environment());
+      @PathVariable String id, @RequestBody ApiKeyEnvironmentRequest request) {
+    var issued = apiKeys.issue(new MerchantId(id), request.environment());
     return ResponseEntity.status(HttpStatus.CREATED).body(ApiKeyIssuedResponse.from(issued));
   }
 
   @PostMapping("/{id}/api-keys/rotate")
   public ResponseEntity<ApiKeyIssuedResponse> rotateApiKey(
-      @PathVariable String id, @RequestBody ApiKeyEnvironmentRequest req) {
-    var issued = apiKeys.rotate(new MerchantId(id), req.environment());
+      @PathVariable String id, @RequestBody ApiKeyEnvironmentRequest request) {
+    var issued = apiKeys.rotate(new MerchantId(id), request.environment());
     return ResponseEntity.status(HttpStatus.CREATED).body(ApiKeyIssuedResponse.from(issued));
   }
 
@@ -94,8 +95,8 @@ public class MerchantsAdminController {
   public void storeProviderCredential(
       @PathVariable String id,
       @PathVariable Provider provider,
-      @RequestBody ProviderCredentialRequest req) {
-    byte[] payload = objectMapper.writeValueAsBytes(req.payload());
-    credentials.store(new MerchantId(id), provider, req.environment(), payload);
+      @RequestBody ProviderCredentialRequest request) {
+    byte[] payload = objectMapper.writeValueAsBytes(request.payload());
+    credentials.store(new MerchantId(id), provider, request.environment(), payload);
   }
 }

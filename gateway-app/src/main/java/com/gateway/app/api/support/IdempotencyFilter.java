@@ -56,27 +56,27 @@ public class IdempotencyFilter extends OncePerRequestFilter {
   }
 
   @Override
-  protected boolean shouldNotFilter(HttpServletRequest req) {
-    if (!"POST".equals(req.getMethod())) {
+  protected boolean shouldNotFilter(HttpServletRequest request) {
+    if (!"POST".equals(request.getMethod())) {
       return true;
     }
-    String path = RequestPath.of(req).normalized();
+    String path = RequestPath.of(request).normalized();
     return !(path.equals("/v1/payments") || PAYMENT_ACTION.matcher(path).matches());
   }
 
   @Override
-  protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain) throws ServletException, IOException {
-    String key = req.getHeader(KEY_HEADER);
+  protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws ServletException, IOException {
+    String key = request.getHeader(KEY_HEADER);
     if (key == null || key.isBlank()) {
-      Problems.write(res, 400, "IDEMPOTENCY_KEY_REQUIRED", "this request requires an Idempotency-Key header");
+      Problems.write(response, 400, "IDEMPOTENCY_KEY_REQUIRED", "this request requires an Idempotency-Key header");
       return;
     }
     if (key.length() > MAX_KEY_LENGTH) {
-      Problems.write(res, 400, "INVALID_REQUEST", "Idempotency-Key must be at most " + MAX_KEY_LENGTH + " characters");
+      Problems.write(response, 400, "INVALID_REQUEST", "Idempotency-Key must be at most " + MAX_KEY_LENGTH + " characters");
       return;
     }
-    byte[] body = req.getInputStream().readAllBytes();
-    String path = RequestPath.of(req).normalized();
+    byte[] body = request.getInputStream().readAllBytes();
+    String path = RequestPath.of(request).normalized();
 
     // Scoped by environment too: the key row's PK is (merchant, key), and a LIVE request repeating a
     // TEST request's key and body would otherwise replay the TEST payment as if it were live. The
@@ -84,26 +84,26 @@ public class IdempotencyFilter extends OncePerRequestFilter {
     MerchantContext.Current who = MerchantContext.current();
     String scopedKey = who.environment().name() + ":" + key;
     String hash = IdempotencyKey.hashOf(
-        who.environment().name() + " " + req.getMethod() + " " + path + "\n" + new String(body, StandardCharsets.UTF_8));
+        who.environment().name() + " " + request.getMethod() + " " + path + "\n" + new String(body, StandardCharsets.UTF_8));
     Outcome outcome = idempotency.begin(who.merchantId(), scopedKey, hash);
     switch (outcome) {
-      case Outcome.Replayed(IdempotencyService.Replay r) -> replay(res, r);
+      case Outcome.Replayed(IdempotencyService.Replay r) -> replay(response, r);
       case Outcome.InProgress() ->
           // The old text said "retry with a new Idempotency-Key" first: for an interrupted create that
           // is exactly how a client pays the same order twice. Check first, new key only if nothing exists.
-          Problems.write(res, 409, "IN_PROGRESS", "A request with this Idempotency-Key is still in progress or was interrupted by a server error."
+          Problems.write(response, 409, "IN_PROGRESS", "A request with this Idempotency-Key is still in progress or was interrupted by a server error."
                   + " Check the resource with GET /v1/payments?reference=… before retrying; only use a new Idempotency-Key if no payment exists.");
       case Outcome.Mismatch() ->
-          Problems.write(res, 422, "IDEMPOTENCY_KEY_REUSED", "this Idempotency-Key was already used with a different request");
-      case Outcome.Proceed(IdempotencyKey k) -> proceed(new CachedBodyRequest(req, body), res, chain, k);
+          Problems.write(response, 422, "IDEMPOTENCY_KEY_REUSED", "this Idempotency-Key was already used with a different request");
+      case Outcome.Proceed(IdempotencyKey k) -> proceed(new CachedBodyRequest(request, body), response, chain, k);
     }
   }
 
-  private void proceed(HttpServletRequest req, HttpServletResponse res, FilterChain chain, IdempotencyKey k) throws ServletException, IOException {
-    ResourceIdCapturingResponse capturing = new ResourceIdCapturingResponse(res);
+  private void proceed(HttpServletRequest request, HttpServletResponse response, FilterChain chain, IdempotencyKey k) throws ServletException, IOException {
+    ResourceIdCapturingResponse capturing = new ResourceIdCapturingResponse(response);
     ContentCachingResponseWrapper cached = new ContentCachingResponseWrapper(capturing);
     try {
-      chain.doFilter(req, cached);
+      chain.doFilter(request, cached);
       int status = cached.getStatus();
       // 2xx and 4xx are answers: replaying them is exactly what the client is owed. A 5xx (or an
       // exception escaping the chain) is not finished on purpose: the key stays IN_PROGRESS until the
@@ -119,14 +119,14 @@ public class IdempotencyFilter extends OncePerRequestFilter {
     }
   }
 
-  private static void replay(HttpServletResponse res, IdempotencyService.Replay r) throws IOException {
-    res.setStatus(r.code());
-    res.setHeader(REPLAYED_HEADER, "true");
+  private static void replay(HttpServletResponse response, IdempotencyService.Replay r) throws IOException {
+    response.setStatus(r.code());
+    response.setHeader(REPLAYED_HEADER, "true");
     // Content type is not stored; every body this filter stores is JSON, a problem for 4xx.
-    res.setContentType(r.code() >= 400 ? "application/problem+json" : "application/json");
+    response.setContentType(r.code() >= 400 ? "application/problem+json" : "application/json");
     if (r.body() != null) {
-      res.setCharacterEncoding(StandardCharsets.UTF_8.name());
-      res.getWriter().write(r.body());
+      response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+      response.getWriter().write(r.body());
     }
   }
 
@@ -134,7 +134,7 @@ public class IdempotencyFilter extends OncePerRequestFilter {
   private static final class ResourceIdCapturingResponse extends HttpServletResponseWrapper {
     String resourceId;
 
-    ResourceIdCapturingResponse(HttpServletResponse res) { super(res); }
+    ResourceIdCapturingResponse(HttpServletResponse response) { super(response); }
 
     @Override
     public void setHeader(String name, String value) {
@@ -159,8 +159,8 @@ public class IdempotencyFilter extends OncePerRequestFilter {
   private static final class CachedBodyRequest extends HttpServletRequestWrapper {
     private final byte[] body;
 
-    CachedBodyRequest(HttpServletRequest req, byte[] body) {
-      super(req);
+    CachedBodyRequest(HttpServletRequest request, byte[] body) {
+      super(request);
       this.body = body;
     }
 

@@ -20,20 +20,24 @@ public class ProviderCredentialService {
   }
 
   @Transactional
-  public ProviderCredential store(MerchantId m, Provider p, ApiKeyEnvironment e, byte[] plaintext) {
-    Encrypted enc = cipher.encrypt(plaintext, aad(m, p, e));
-    ProviderCredential cred =
-        repo.find(m, p, e)
-            .map(credential -> credential.withPayload(enc))
-            .orElseGet(() -> ProviderCredential.create(m, p, e, enc));
-    return repo.save(cred);
+  public ProviderCredential store(
+      MerchantId merchantId, Provider provider, ApiKeyEnvironment environment, byte[] plaintext) {
+    Encrypted enc = cipher.encrypt(plaintext, aad(merchantId, provider, environment));
+    ProviderCredential credential =
+        repo.find(merchantId, provider, environment)
+            .map(existing -> existing.withPayload(enc))
+            .orElseGet(() -> ProviderCredential.create(merchantId, provider, environment, enc));
+    return repo.save(credential);
   }
 
   @Transactional(readOnly = true)
-  public Optional<byte[]> decrypt(MerchantId m, Provider p, ApiKeyEnvironment e) {
-    return repo.find(m, p, e)
+  public Optional<byte[]> decrypt(
+      MerchantId merchantId, Provider provider, ApiKeyEnvironment environment) {
+    return repo.find(merchantId, provider, environment)
         .filter(ProviderCredential::active)
-        .map(credential -> cipher.decrypt(credential.payload(), aad(m, p, e)));
+        .map(
+            credential ->
+                cipher.decrypt(credential.payload(), aad(merchantId, provider, environment)));
   }
 
   /**
@@ -41,12 +45,13 @@ public class ProviderCredentialService {
    * row swapped with the same merchant's TEST row decrypted fine, so TEST code could end up holding
    * LIVE bank credentials. A mismatch throws {@link SecurityException} from the cipher.
    */
-  private static String aad(MerchantId m, Provider p, ApiKeyEnvironment e) {
-    return m.value() + "|" + p + "|" + e;
+  private static String aad(
+      MerchantId merchantId, Provider provider, ApiKeyEnvironment environment) {
+    return merchantId.value() + "|" + provider + "|" + environment;
   }
 
   @Transactional(readOnly = true)
-  public List<ProviderCredential> list(MerchantId m) {
-    return repo.findByMerchant(m);
+  public List<ProviderCredential> list(MerchantId merchantId) {
+    return repo.findByMerchant(merchantId);
   }
 }

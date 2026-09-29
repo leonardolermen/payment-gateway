@@ -54,41 +54,45 @@ class PixApiClient {
     this.readTimeout = readTimeout;
   }
 
-  CobResponse putCob(ItauCredentials c, String txid, CobRequest body) {
-    return send(c, request("/cob/" + seg(txid)).PUT(json(body)), CobResponse.class, false)
+  CobResponse putCob(ItauCredentials credentials, String txid, CobRequest body) {
+    return send(credentials, request("/cob/" + seg(txid)).PUT(json(body)), CobResponse.class, false)
         .orElseThrow();
   }
 
-  Optional<CobResponse> getCob(ItauCredentials c, String txid) {
-    return send(c, request("/cob/" + seg(txid)).GET(), CobResponse.class, true);
+  Optional<CobResponse> getCob(ItauCredentials credentials, String txid) {
+    return send(credentials, request("/cob/" + seg(txid)).GET(), CobResponse.class, true);
   }
 
-  CobResponse patchCob(ItauCredentials c, String txid, Map<String, Object> patch) {
+  CobResponse patchCob(ItauCredentials credentials, String txid, Map<String, Object> patch) {
     return send(
-            c, request("/cob/" + seg(txid)).method("PATCH", json(patch)), CobResponse.class, false)
+            credentials,
+            request("/cob/" + seg(txid)).method("PATCH", json(patch)),
+            CobResponse.class,
+            false)
         .orElseThrow();
   }
 
   DevolucaoResponse putDevolucao(
-      ItauCredentials c, String e2eid, String id, DevolucaoRequest body) {
+      ItauCredentials credentials, String e2eid, String id, DevolucaoRequest body) {
     return send(
-            c,
+            credentials,
             request("/pix/" + seg(e2eid) + "/devolucao/" + seg(id)).PUT(json(body)),
             DevolucaoResponse.class,
             false)
         .orElseThrow();
   }
 
-  Optional<DevolucaoResponse> getDevolucao(ItauCredentials c, String e2eid, String id) {
+  Optional<DevolucaoResponse> getDevolucao(ItauCredentials credentials, String e2eid, String id) {
     return send(
-        c,
+        credentials,
         request("/pix/" + seg(e2eid) + "/devolucao/" + seg(id)).GET(),
         DevolucaoResponse.class,
         true);
   }
 
-  CobList listCob(ItauCredentials c, Instant inicio, Instant fim, int page, int pageSize) {
-    String q =
+  CobList listCob(
+      ItauCredentials credentials, Instant inicio, Instant fim, int page, int pageSize) {
+    String query =
         "?inicio="
             + enc(DateTimeFormatter.ISO_INSTANT.format(inicio))
             + "&fim="
@@ -97,7 +101,7 @@ class PixApiClient {
             + page
             + "&paginacao.itensPorPagina="
             + pageSize;
-    return send(c, request("/cob" + q).GET(), CobList.class, false).orElseThrow();
+    return send(credentials, request("/cob" + query).GET(), CobList.class, false).orElseThrow();
   }
 
   private HttpRequest.Builder request(String pathAndQuery) {
@@ -115,29 +119,32 @@ class PixApiClient {
    * an error.
    */
   private <T> Optional<T> send(
-      ItauCredentials creds, HttpRequest.Builder b, Class<T> type, boolean emptyOn404) {
-    HttpClient http = tokens.httpClientFor(creds, endpoints, trustStore);
-    b.header("Authorization", "Bearer " + tokens.tokenFor(creds, endpoints, trustStore).value())
+      ItauCredentials credentials, HttpRequest.Builder builder, Class<T> type, boolean emptyOn404) {
+    HttpClient http = tokens.httpClientFor(credentials, endpoints, trustStore);
+    builder
+        .header(
+            "Authorization",
+            "Bearer " + tokens.tokenFor(credentials, endpoints, trustStore).value())
         .header("x-itau-correlationID", correlationId())
         .header("Content-Type", "application/json")
         .header("Accept", "application/json");
 
     // Production requires it; the sandbox documents no apikey (NOTES.md "Sandbox authentication").
-    if (creds.apiKey() != null) {
-      b.header("x-itau-apikey", creds.apiKey());
+    if (credentials.apiKey() != null) {
+      builder.header("x-itau-apikey", credentials.apiKey());
     }
-    HttpRequest req = b.build();
-    HttpResponse<String> res;
+    HttpRequest request = builder.build();
+    HttpResponse<String> response;
 
     try {
-      res = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+      response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
     } catch (HttpTimeoutException e) {
       throw new ProviderException(
-          ProviderException.Code.TIMEOUT, "Itaú " + req.method() + " timed out", e);
+          ProviderException.Code.TIMEOUT, "Itaú " + request.method() + " timed out", e);
     } catch (IOException e) {
       throw new ProviderException(
           ProviderException.Code.UNAVAILABLE,
-          "Itaú " + req.method() + " failed: " + e.getMessage(),
+          "Itaú " + request.method() + " failed: " + e.getMessage(),
           e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
@@ -145,11 +152,11 @@ class PixApiClient {
           ProviderException.Code.UNAVAILABLE, "interrupted calling Itaú", e);
     }
 
-    int status = res.statusCode();
+    int status = response.statusCode();
 
     if (status >= 200 && status < 300) {
       try {
-        return Optional.of(mapper.readValue(res.body(), type));
+        return Optional.of(mapper.readValue(response.body(), type));
       } catch (RuntimeException e) {
         throw new ProviderException(
             ProviderException.Code.UNKNOWN, "unreadable provider response", e);
@@ -158,16 +165,16 @@ class PixApiClient {
 
     // Only the Pix API's own "not found" is an answer. A 404 from a wrong base URL or a proxy page
     // would otherwise read as "charge does not exist" and reconciliation would drop paid charges.
-    if (status == 404 && emptyOn404 && ItauErrors.isPixNotFound(res.body())) {
+    if (status == 404 && emptyOn404 && ItauErrors.isPixNotFound(response.body())) {
       return Optional.empty();
     }
 
     // A rejected token must not be reused: the next call fetches a fresh one (and a fresh
     // HttpClient).
     if (status == 401) {
-      tokens.evict(creds.fingerprint());
+      tokens.evict(credentials.fingerprint());
     }
-    throw ItauErrors.from(status, res.body());
+    throw ItauErrors.from(status, response.body());
   }
 
   private static String correlationId() {
@@ -177,11 +184,11 @@ class PixApiClient {
         : UUID.randomUUID().toString();
   }
 
-  private static String seg(String s) {
-    return URLEncoder.encode(s, StandardCharsets.UTF_8).replace("+", "%20");
+  private static String seg(String value) {
+    return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
   }
 
-  private static String enc(String s) {
-    return URLEncoder.encode(s, StandardCharsets.UTF_8);
+  private static String enc(String value) {
+    return URLEncoder.encode(value, StandardCharsets.UTF_8);
   }
 }

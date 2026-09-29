@@ -30,22 +30,22 @@ class BoletoPixApiClient {
    * 200 (and 201) is the issued boleto; 202 "operação em andamento" becomes a TIMEOUT in
    * BoletoErrors: the bank has not decided.
    */
-  BoletoPixResponse post(ItauCredentials c, BoletoPixRequest body) {
+  BoletoPixResponse post(ItauCredentials credentials, BoletoPixRequest body) {
     HttpRequest.Builder builder =
         http.request("/boletos-pix")
             .POST(
                 HttpRequest.BodyPublishers.ofString(
                     mapper.writeValueAsString(body), StandardCharsets.UTF_8));
-    HttpResponse<String> res = http.send(c, builder);
-    int status = res.statusCode();
+    HttpResponse<String> response = http.send(credentials, builder);
+    int status = response.statusCode();
     if (status == 200 || status == 201) {
       try {
-        return mapper.readValue(res.body(), BoletoPixResponse.class);
+        return mapper.readValue(response.body(), BoletoPixResponse.class);
       } catch (RuntimeException e) {
         throw new ProviderException(
             ProviderException.Code.UNKNOWN, "unreadable provider response", e);
       }
     }
-    throw BoletoErrors.from(status, res.body());
+    throw BoletoErrors.from(status, response.body());
   }
 }

@@ -51,31 +51,31 @@ public final class PixDetailsJson {
     return matcher.group(2) == null ? null : unescape(matcher.group(2));
   }
 
-  private static String jsonString(String s) {
-    if (s == null) {
+  private static String jsonString(String text) {
+    if (text == null) {
       return "null";
     }
-    StringBuilder stringBuilder = new StringBuilder(s.length() + 2).append('"');
-    for (int i = 0; i < s.length(); i++) {
-      char c = s.charAt(i);
-      switch (c) {
+    StringBuilder stringBuilder = new StringBuilder(text.length() + 2).append('"');
+    for (int i = 0; i < text.length(); i++) {
+      char character = text.charAt(i);
+      switch (character) {
         case '"' -> stringBuilder.append("\\\"");
         case '\\' -> stringBuilder.append("\\\\");
         case '\n' -> stringBuilder.append("\\n");
         case '\r' -> stringBuilder.append("\\r");
         case '\t' -> stringBuilder.append("\\t");
-        default -> stringBuilder.append(c);
+        default -> stringBuilder.append(character);
       }
     }
     return stringBuilder.append('"').toString();
   }
 
-  private static String unescape(String s) {
-    StringBuilder stringBuilder = new StringBuilder(s.length());
-    for (int i = 0; i < s.length(); i++) {
-      char c = s.charAt(i);
-      if (c == '\\' && i + 1 < s.length()) {
-        char next = s.charAt(++i);
+  private static String unescape(String text) {
+    StringBuilder stringBuilder = new StringBuilder(text.length());
+    for (int i = 0; i < text.length(); i++) {
+      char character = text.charAt(i);
+      if (character == '\\' && i + 1 < text.length()) {
+        char next = text.charAt(++i);
         switch (next) {
           case 'n' -> stringBuilder.append('\n');
           case 'r' -> stringBuilder.append('\r');
@@ -83,7 +83,7 @@ public final class PixDetailsJson {
           default -> stringBuilder.append(next);
         }
       } else {
-        stringBuilder.append(c);
+        stringBuilder.append(character);
       }
     }
     return stringBuilder.toString();

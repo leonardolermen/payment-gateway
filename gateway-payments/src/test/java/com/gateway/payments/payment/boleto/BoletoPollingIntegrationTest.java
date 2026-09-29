@@ -11,8 +11,8 @@ import com.gateway.payments.jobs.JobType;
 import com.gateway.payments.jobs.persistence.JobRepository;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
-import com.gateway.payments.payment.PaymentService;
 import com.gateway.payments.payment.PaymentStatus;
+import com.gateway.payments.payment.Settlement;
 import com.gateway.payments.payment.create.CreateBolecodePayment;
 import com.gateway.payments.payment.persistence.PaymentRepository;
 import com.gateway.payments.support.ServiceIntegrationTestBase;
@@ -29,7 +29,7 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
   @Autowired PaymentRepository payments;
   @Autowired JobRepository jobs;
   @Autowired JobRunner jobRunner;
-  @Autowired com.gateway.payments.payment.ExpirationService expiration;
+  @Autowired com.gateway.payments.payment.StuckCreatedSweep sweep;
 
   /**
    * runDue claims one batch; the shared context leaves earlier tests' jobs due at the same instant,
@@ -150,12 +150,12 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
     Payment p = newBolecode(12990);
     bank.markPaid(p.pix().txid(), e2e, Money.brl(12990));
     assertThat(
-            paymentService.settle(
+            pixSettlement.settle(
                 merchant,
                 p.id(),
                 bank.find(null, p.pix().txid()).orElseThrow().firstPix().orElseThrow(),
                 EventSource.PROVIDER_WEBHOOK))
-        .isEqualTo(PaymentService.Settlement.COMPLETED);
+        .isEqualTo(Settlement.COMPLETED);
     assertThat(payments.findById(p.id()).orElseThrow().boleto().paidVia()).isEqualTo(PaidVia.PIX);
     return p;
   }
@@ -204,7 +204,7 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
   void completedViaPixWithTheBoletoStillOpenIsIgnored() {
     Payment p = newBolecode(12990);
     bank.markPaid(p.pix().txid(), "E2E-QR2", Money.brl(12990));
-    paymentService.settle(
+    pixSettlement.settle(
         merchant,
         p.id(),
         bank.find(null, p.pix().txid()).orElseThrow().firstPix().orElseThrow(),
@@ -278,7 +278,7 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
   @Test
   void aCanceledBolecodeKeepsBeingPolledAndABarcodePaidAfterTheBaixaIsBoletoPaid() {
     Payment p = newBolecode(12990);
-    paymentService.cancel(merchant, p.id());
+    paymentCancellation.cancel(merchant, p.id());
     assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL))
         .as("baixa'd, still within the window")
         .isFalse();
@@ -306,7 +306,7 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
                 payer(),
                 BoletoDates.today(clock),
                 0));
-    paymentService.cancel(merchant, p.id());
+    paymentCancellation.cancel(merchant, p.id());
     assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isFalse();
     clock.advance(Duration.ofDays(3));
     assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isTrue();
@@ -323,11 +323,11 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
         new ProviderException(ProviderException.Code.UNAVAILABLE, 503, null, "down"));
     assertThatThrownBy(() -> newBolecode(12990))
         .isInstanceOf(com.gateway.kernel.errors.DomainException.class);
-    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    Payment p = paymentQueries.list(merchant, 10, null).getFirst();
     var registered = boletos.status(nn(p));
     boletos.remove(nn(p)); // the bank's 202: not visible yet when the sweeper asks
     clock.advance(Duration.ofMinutes(11));
-    expiration.sweepStuckCreated(clock.instant());
+    sweep.sweepStuckCreated(clock.instant());
     assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.FAILED);
 
     boletos.restore(nn(p), registered);
@@ -350,7 +350,7 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
             ProviderException.Code.DECLINED, 422, "422", "Vencimento menor que prazo mínimo"));
     assertThatThrownBy(() -> newBolecode(100))
         .isInstanceOf(com.gateway.kernel.errors.DomainException.class);
-    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    Payment p = paymentQueries.list(merchant, 10, null).getFirst();
     assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isFalse();
     assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isFalse();
     assertThat(divergences(p.id()))

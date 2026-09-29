@@ -4,8 +4,12 @@ import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.money.Money;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.payments.TestApp;
+import com.gateway.payments.payment.BoletoSettlement;
 import com.gateway.payments.payment.Payment;
+import com.gateway.payments.payment.PaymentCancellation;
+import com.gateway.payments.payment.PaymentQueries;
 import com.gateway.payments.payment.PaymentService;
+import com.gateway.payments.payment.PixSettlement;
 import com.gateway.payments.payment.create.CreateBolecodePayment;
 import com.gateway.payments.payment.create.CreatePixPayment;
 import com.gateway.payments.payment.create.PayerData;
@@ -35,6 +39,10 @@ public abstract class ServiceIntegrationTestBase {
   @Autowired protected RecordingPixProvider bank;
   @Autowired protected JdbcTemplate jdbc;
   @Autowired protected PaymentService paymentService;
+  @Autowired protected PaymentQueries paymentQueries;
+  @Autowired protected PaymentCancellation paymentCancellation;
+  @Autowired protected PixSettlement pixSettlement;
+  @Autowired protected BoletoSettlement boletoSettlement;
   @Autowired protected RecordingBoletoProvider boletos;
 
   protected MerchantId merchant;

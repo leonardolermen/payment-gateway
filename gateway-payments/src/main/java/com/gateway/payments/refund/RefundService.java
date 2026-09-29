@@ -48,7 +48,7 @@ public class RefundService {
   /** The bank's own window (NOTES.md); asking after it only buys a 4xx from the bank. */
   static final Duration WINDOW = Duration.ofDays(90);
 
-  /** Same period the polling keeps afterwards (JobRunner). */
+  /** Same period the polling keeps afterwards (PollRefundJob). */
   public static final Duration POLL_EVERY = Duration.ofMinutes(5);
 
   private final RefundRepository refunds;

@@ -2,7 +2,7 @@ package com.gateway.app.jobs;
 
 import com.gateway.payments.idempotency.IdempotencyService;
 import com.gateway.payments.jobs.JobRunner;
-import com.gateway.payments.payment.ExpirationService;
+import com.gateway.payments.payment.PaymentExpiration;
 import java.time.Clock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,8 +15,8 @@ import org.springframework.stereotype.Component;
  * {@code @Scheduled} inside a library module would start firing in every test context that imports
  * it.
  *
- * <p>Deliberately NOT here: {@code ExpirationService.sweepStuckCreated}, which the RECONCILE job
- * already runs every 15 minutes (see {@code JobRunner.run}); scheduling it twice would only race
+ * <p>Deliberately NOT here: {@code StuckCreatedSweep.sweepStuckCreated}, which the RECONCILE job
+ * already runs every 15 minutes (see {@code ReconcileJob}); scheduling it twice would only race
  * against itself.
  */
 @Component
@@ -25,11 +25,11 @@ public class JobScheduler {
 
   private final JobRunner jobs;
   private final IdempotencyService idempotency;
-  private final ExpirationService expiration;
+  private final PaymentExpiration expiration;
   private final Clock clock;
 
   public JobScheduler(
-      JobRunner jobs, IdempotencyService idempotency, ExpirationService expiration, Clock clock) {
+      JobRunner jobs, IdempotencyService idempotency, PaymentExpiration expiration, Clock clock) {
     this.jobs = jobs;
     this.idempotency = idempotency;
     this.expiration = expiration;

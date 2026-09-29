@@ -20,18 +20,18 @@ public class OutboxRepositoryImpl implements OutboxRepository {
 
   @Override
   @Transactional(propagation = Propagation.MANDATORY)
-  public void append(OutboxMessage m) {
-    OutboxEntity e = new OutboxEntity();
-    e.id = m.id();
-    e.merchantId = m.merchantId().value();
-    e.aggregateId = m.aggregateId();
-    e.partitionKey = m.partitionKey();
-    e.eventType = m.eventType();
-    e.payload = m.payload();
-    e.status = m.status();
-    e.claimedAt = m.claimedAt();
-    e.createdAt = m.createdAt();
-    jpa.save(e);
+  public void append(OutboxMessage message) {
+    OutboxEntity entity = new OutboxEntity();
+    entity.id = message.id();
+    entity.merchantId = message.merchantId().value();
+    entity.aggregateId = message.aggregateId();
+    entity.partitionKey = message.partitionKey();
+    entity.eventType = message.eventType();
+    entity.payload = message.payload();
+    entity.status = message.status();
+    entity.claimedAt = message.claimedAt();
+    entity.createdAt = message.createdAt();
+    jpa.save(entity);
   }
 
   /**
@@ -64,16 +64,16 @@ public class OutboxRepositoryImpl implements OutboxRepository {
     jpa.release(id);
   }
 
-  private static OutboxMessage toDomain(OutboxEntity e) {
+  private static OutboxMessage toDomain(OutboxEntity entity) {
     return new OutboxMessage(
-        e.id,
-        new com.gateway.kernel.ids.MerchantId(e.merchantId),
-        e.aggregateId,
-        e.partitionKey,
-        e.eventType,
-        e.payload,
-        e.status,
-        e.claimedAt,
-        e.createdAt);
+        entity.id,
+        new com.gateway.kernel.ids.MerchantId(entity.merchantId),
+        entity.aggregateId,
+        entity.partitionKey,
+        entity.eventType,
+        entity.payload,
+        entity.status,
+        entity.claimedAt,
+        entity.createdAt);
   }
 }

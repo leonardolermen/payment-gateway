@@ -59,25 +59,25 @@ public record BoletoPixRequest(
       @JsonProperty("data_limite_pagamento") String dataLimitePagamento,
       @JsonProperty("texto_uso_beneficiario") String textoUsoBeneficiario) {}
 
-  public static BoletoPixRequest forIssue(BoletoIssueRequest r, ItauCredentials c) {
-    String digits = r.payer().document().digits();
+  public static BoletoPixRequest forIssue(BoletoIssueRequest request, ItauCredentials credentials) {
+    String digits = request.payer().document().digits();
     TipoPessoa tipo =
         digits.length() == 14
             ? new TipoPessoa("J", null, digits)
             : new TipoPessoa("F", digits, null);
-    var address = r.payer().address();
-    String amount = BoletoAmounts.toItau(r.amount());
+    var address = request.payer().address();
+    String amount = BoletoAmounts.toItau(request.amount());
     return new BoletoPixRequest(
         "efetivacao",
-        new Beneficiario(c.beneficiaryId()),
+        new Beneficiario(credentials.beneficiaryId()),
         new DadoBoleto(
             "boleto_pix",
             "a vista",
-            c.walletCode(),
-            c.speciesCode(),
+            credentials.walletCode(),
+            credentials.speciesCode(),
             amount,
             new Pagador(
-                new Pessoa(BoletoText.name(r.payer().name().value(), 50), tipo),
+                new Pessoa(BoletoText.name(request.payer().name().value(), 50), tipo),
                 new Endereco(
                     BoletoText.text(address.street(), 45),
                     BoletoText.text(address.district(), 15),
@@ -86,10 +86,14 @@ public record BoletoPixRequest(
                     address.zip().digits())),
             List.of(
                 new DadoIndividual(
-                    r.nossoNumero(),
-                    r.dueDate().toString(),
+                    request.nossoNumero(),
+                    request.dueDate().toString(),
                     amount,
-                    r.paymentLimitDate() == null ? null : r.paymentLimitDate().toString(),
-                    r.description() == null ? null : BoletoText.text(r.description(), 25)))));
+                    request.paymentLimitDate() == null
+                        ? null
+                        : request.paymentLimitDate().toString(),
+                    request.description() == null
+                        ? null
+                        : BoletoText.text(request.description(), 25)))));
   }
 }

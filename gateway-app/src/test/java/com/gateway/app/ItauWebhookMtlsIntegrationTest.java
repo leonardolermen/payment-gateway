@@ -119,7 +119,7 @@ class ItauWebhookMtlsIntegrationTest {
   }
 
   @DynamicPropertySource
-  static void props(DynamicPropertyRegistry r) {
+  static void properties(DynamicPropertyRegistry r) {
     r.add("gateway.providers.itau.test-api-base", ITAU::baseUrl);
     r.add("gateway.providers.itau.test-token-url", () -> ITAU.baseUrl() + "/api/oauth/jwt");
     r.add("gateway.providers.itau.test-mutual-tls", () -> "false");
@@ -367,13 +367,13 @@ class ItauWebhookMtlsIntegrationTest {
                             .replace("\"567.89\"", "\"159.90\""))));
 
     long start = System.nanoTime();
-    HttpResponse<String> res =
+    HttpResponse<String> response =
         postWebhook(
             client(BANK),
             mtlsUrl("/v1/providers/itau/webhooks/" + m.token() + "/pix"),
             webhookFor(paymentId));
     Duration took = Duration.ofNanos(System.nanoTime() - start);
-    assertThat(res.statusCode()).isEqualTo(202);
+    assertThat(response.statusCode()).isEqualTo(202);
     assertThat(took).isLessThan(Duration.ofSeconds(2));
 
     Awaitility.await()
@@ -445,13 +445,13 @@ class ItauWebhookMtlsIntegrationTest {
   void oversizedBodyWithContentLengthIs413AndNothingIsStored() throws Exception {
     Merchant m = merchant();
     int before = inboxRows();
-    HttpResponse<String> res =
+    HttpResponse<String> response =
         postWebhook(
             client(BANK),
             mtlsUrl("/v1/providers/itau/webhooks/" + m.token() + "/pix"),
             "x".repeat(5000));
-    assertThat(res.statusCode()).isEqualTo(413);
-    assertThat(res.body()).contains("urn:gateway:PAYLOAD_TOO_LARGE");
+    assertThat(response.statusCode()).isEqualTo(413);
+    assertThat(response.body()).contains("urn:gateway:PAYLOAD_TOO_LARGE");
     assertThat(inboxRows()).isEqualTo(before);
   }
 
@@ -462,7 +462,7 @@ class ItauWebhookMtlsIntegrationTest {
     byte[] big = "x".repeat(5000).getBytes(StandardCharsets.US_ASCII);
     // ofInputStream has no known length, so the client sends Transfer-Encoding: chunked, no
     // Content-Length.
-    HttpResponse<String> res =
+    HttpResponse<String> response =
         client(BANK)
             .send(
                 HttpRequest.newBuilder(
@@ -473,7 +473,7 @@ class ItauWebhookMtlsIntegrationTest {
                             () -> new ByteArrayInputStream(big)))
                     .build(),
                 HttpResponse.BodyHandlers.ofString());
-    assertThat(res.statusCode()).isEqualTo(413);
+    assertThat(response.statusCode()).isEqualTo(413);
     assertThat(inboxRows()).isEqualTo(before);
   }
 
@@ -492,23 +492,23 @@ class ItauWebhookMtlsIntegrationTest {
 
   @Test
   void unknownTokenIs404() throws Exception {
-    HttpResponse<String> res =
+    HttpResponse<String> response =
         postWebhook(
             client(BANK),
             mtlsUrl("/v1/providers/itau/webhooks/" + "0".repeat(26) + "/pix"),
             "{\"pix\":[]}");
-    assertThat(res.statusCode()).isEqualTo(404);
+    assertThat(response.statusCode()).isEqualTo(404);
     // The problem's "instance" echoes the caller's own path, which tells it nothing new; what must
     // not
     // happen is a distinguishable answer (401/403/422) that would confirm a token's shape or
     // existence.
-    assertThat(res.body()).contains("urn:gateway:NOT_FOUND").doesNotContain("merchant");
+    assertThat(response.body()).contains("urn:gateway:NOT_FOUND").doesNotContain("merchant");
   }
 
   @Test
   void apiRoutesOnTheMtlsPortAre403() throws Exception {
     Merchant m = merchant();
-    HttpResponse<String> res =
+    HttpResponse<String> response =
         client(BANK)
             .send(
                 HttpRequest.newBuilder(URI.create(mtlsUrl("/v1/merchant")))
@@ -516,6 +516,6 @@ class ItauWebhookMtlsIntegrationTest {
                     .GET()
                     .build(),
                 HttpResponse.BodyHandlers.ofString());
-    assertThat(res.statusCode()).isEqualTo(403);
+    assertThat(response.statusCode()).isEqualTo(403);
   }
 }

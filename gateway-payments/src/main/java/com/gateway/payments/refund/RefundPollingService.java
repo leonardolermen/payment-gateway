@@ -21,7 +21,7 @@ public class RefundPollingService {
   private final PaymentRepository payments;
   private final ProviderGateway providers;
   private final RefundService refundService;
-  private final PaymentsProperties props;
+  private final PaymentsProperties properties;
   private final Clock clock;
 
   public RefundPollingService(
@@ -29,19 +29,19 @@ public class RefundPollingService {
       PaymentRepository payments,
       ProviderGateway providers,
       RefundService refundService,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       Clock clock) {
     this.refunds = refunds;
     this.payments = payments;
     this.providers = providers;
     this.refundService = refundService;
-    this.props = props;
+    this.properties = properties;
     this.clock = clock;
   }
 
   /**
    * Returns {@code true} once the refund is settled either way. {@code false} means "still
-   * processing": the {@link JobRunner} polls again in 5 minutes, up to {@code
+   * processing": the {@code PollRefundJob} polls again in 5 minutes, up to {@code
    * refundPollMaxAttempts} (288, i.e. 24 h); then the job goes DEAD and {@link
    * RefundService#giveUp} marks the refund UNKNOWN (amount still reserved) and opens a divergence.
    *
@@ -67,7 +67,7 @@ public class RefundPollingService {
                     .provider()
                     .findRefund(target.credentials(), payment.pix().endToEndId(), refundId));
     if (result.isEmpty()) {
-      Instant cutoff = refund.createdAt().plus(props.refundNotFoundGrace());
+      Instant cutoff = refund.createdAt().plus(properties.refundNotFoundGrace());
       if (clock.instant().isAfter(cutoff)) {
         refundService.applyProviderUpdate(
             new RefundResult(
@@ -85,9 +85,9 @@ public class RefundPollingService {
     return refunds.findById(refundId).map(RefundPollingService::terminal).orElse(true);
   }
 
-  private static boolean terminal(Refund r) {
-    return r.state() == RefundState.COMPLETED
-        || r.state() == RefundState.FAILED
-        || r.state() == RefundState.UNKNOWN;
+  private static boolean terminal(Refund refund) {
+    return refund.state() == RefundState.COMPLETED
+        || refund.state() == RefundState.FAILED
+        || refund.state() == RefundState.UNKNOWN;
   }
 }

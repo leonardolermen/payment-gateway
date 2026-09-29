@@ -29,8 +29,12 @@ public record ItauEndpoints(URI apiBase, URI tokenUrl, boolean mutualTls) {
     };
   }
 
-  public static ItauEndpoints custom(URI apiBase, URI tokenUrl, boolean mutualTls) {
-    return new ItauEndpoints(apiBase, tokenUrl, mutualTls);
+  public static ItauEndpoints mutualTls(URI apiBase, URI tokenUrl) {
+    return new ItauEndpoints(apiBase, tokenUrl, true);
+  }
+
+  public static ItauEndpoints plain(URI apiBase, URI tokenUrl) {
+    return new ItauEndpoints(apiBase, tokenUrl, false);
   }
 
   // Bolecode (spec 2026-09-25 §1): three products, three bases. Production issue/query authenticate

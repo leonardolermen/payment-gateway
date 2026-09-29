@@ -25,11 +25,11 @@ public record Money(long cents, String currency) {
   }
 
   public Money minus(Money other) {
-    long r = cents - sameCurrency(other).cents;
-    if (r < 0) {
+    long result = cents - sameCurrency(other).cents;
+    if (result < 0) {
       throw new IllegalArgumentException("negative result");
     }
-    return new Money(r, currency);
+    return new Money(result, currency);
   }
 
   public boolean greaterThan(Money other) {

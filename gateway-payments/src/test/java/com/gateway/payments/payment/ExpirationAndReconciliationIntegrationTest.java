@@ -7,6 +7,7 @@ import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.provider.pix.ChargeStatus;
 import com.gateway.kernel.provider.pix.PixIssueRequest;
 import com.gateway.payments.jobs.Job;
+import com.gateway.payments.jobs.JobBackoff;
 import com.gateway.payments.jobs.JobRunner;
 import com.gateway.payments.jobs.JobType;
 import com.gateway.payments.jobs.persistence.JobRepository;
@@ -23,7 +24,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestBase {
 
-  @Autowired ExpirationService expiration;
+  @Autowired PaymentExpiration expiration;
+  @Autowired StuckCreatedSweep sweep;
   @Autowired ReconciliationService reconciliation;
   @Autowired JobRunner runner;
   @Autowired PaymentRepository payments;
@@ -306,7 +308,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
     bank.issue(null, new PixIssueRequest(p.id(), Money.brl(1000), 3600, null, null, null));
     clock.advance(Duration.ofMinutes(11));
 
-    expiration.sweepStuckCreated(clock.instant());
+    sweep.sweepStuckCreated(clock.instant());
 
     Payment after = reload(p);
     assertThat(after.status()).isEqualTo(PaymentStatus.PENDING);
@@ -323,7 +325,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
     bank.markPaid(p.id(), "E2E" + p.id(), Money.brl(1000));
     clock.advance(Duration.ofMinutes(11));
 
-    expiration.sweepStuckCreated(clock.instant());
+    sweep.sweepStuckCreated(clock.instant());
 
     assertThat(reload(p).status()).isEqualTo(PaymentStatus.COMPLETED);
     assertThat(outboxTypes(p.id())).containsExactly("payment.pending", "payment.completed");
@@ -334,7 +336,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
     Payment p = stuckCreated();
     clock.advance(Duration.ofMinutes(11));
 
-    expiration.sweepStuckCreated(clock.instant());
+    sweep.sweepStuckCreated(clock.instant());
 
     assertThat(reload(p).status()).isEqualTo(PaymentStatus.FAILED);
     assertThat(payments.events(p.id()).getLast().source()).isEqualTo(EventSource.SYSTEM);
@@ -346,7 +348,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
     Payment p = stuckCreated();
     clock.advance(Duration.ofMinutes(2));
 
-    expiration.sweepStuckCreated(clock.instant());
+    sweep.sweepStuckCreated(clock.instant());
 
     assertThat(reload(p).status()).isEqualTo(PaymentStatus.CREATED);
   }
@@ -361,7 +363,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
             "declined but created"));
     assertThatThrownBy(() -> newCharge(1000))
         .isInstanceOf(com.gateway.kernel.errors.DomainException.class);
-    Payment p = paymentService.list(merchant, 10, null).getFirst();
+    Payment p = paymentQueries.list(merchant, 10, null).getFirst();
     bank.markPaid(p.id(), "E2E" + p.id(), Money.brl(1000));
 
     reconciliation.reconcileAll(clock.instant().plus(Duration.ofMinutes(30)));
@@ -377,8 +379,8 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
 
   @Test
   void backoffDoublesAndCapsAtOneDay() {
-    assertThat(JobRunner.backoff(0)).isEqualTo(Duration.ofMinutes(1));
-    assertThat(JobRunner.backoff(3)).isEqualTo(Duration.ofMinutes(8));
-    assertThat(JobRunner.backoff(30)).isEqualTo(Duration.ofHours(24));
+    assertThat(JobBackoff.backoff(0)).isEqualTo(Duration.ofMinutes(1));
+    assertThat(JobBackoff.backoff(3)).isEqualTo(Duration.ofMinutes(8));
+    assertThat(JobBackoff.backoff(30)).isEqualTo(Duration.ofHours(24));
   }
 }

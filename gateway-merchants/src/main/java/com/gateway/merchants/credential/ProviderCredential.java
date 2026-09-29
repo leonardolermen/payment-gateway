@@ -21,9 +21,10 @@ public record ProviderCredential(
     Instant createdAt,
     Instant updatedAt) {
   public static ProviderCredential create(
-      MerchantId m, Provider p, ApiKeyEnvironment e, Encrypted payload) {
+      MerchantId merchantId, Provider provider, ApiKeyEnvironment environment, Encrypted payload) {
     Instant now = Instant.now();
-    return new ProviderCredential(Ulid.next(), m, p, e, payload, true, now, now);
+    return new ProviderCredential(
+        Ulid.next(), merchantId, provider, environment, payload, true, now, now);
   }
 
   public ProviderCredential withPayload(Encrypted next) {

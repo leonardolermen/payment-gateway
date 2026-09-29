@@ -9,14 +9,27 @@ import com.gateway.payments.idempotency.persistence.IdempotencyRepositoryImpl;
 import com.gateway.payments.inbox.WebhookInboxService;
 import com.gateway.payments.inbox.persistence.WebhookInboxRepository;
 import com.gateway.payments.inbox.persistence.WebhookInboxRepositoryImpl;
+import com.gateway.payments.jobs.ExpirePaymentJob;
+import com.gateway.payments.jobs.JobBackoff;
+import com.gateway.payments.jobs.JobHandler;
+import com.gateway.payments.jobs.JobHandlers;
 import com.gateway.payments.jobs.JobRunner;
+import com.gateway.payments.jobs.PollBoletoJob;
+import com.gateway.payments.jobs.PollRefundJob;
+import com.gateway.payments.jobs.ProcessWebhookJob;
+import com.gateway.payments.jobs.ReconcileJob;
 import com.gateway.payments.jobs.persistence.JobRepository;
 import com.gateway.payments.jobs.persistence.JobRepositoryImpl;
 import com.gateway.payments.outbox.persistence.OutboxRepository;
 import com.gateway.payments.outbox.persistence.OutboxRepositoryImpl;
-import com.gateway.payments.payment.ExpirationService;
+import com.gateway.payments.payment.BoletoSettlement;
+import com.gateway.payments.payment.PaymentCancellation;
 import com.gateway.payments.payment.PaymentEvents;
+import com.gateway.payments.payment.PaymentExpiration;
+import com.gateway.payments.payment.PaymentQueries;
 import com.gateway.payments.payment.PaymentService;
+import com.gateway.payments.payment.PixSettlement;
+import com.gateway.payments.payment.StuckCreatedSweep;
 import com.gateway.payments.payment.boleto.BoletoPollingService;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepository;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepositoryImpl;
@@ -107,8 +120,8 @@ public class PaymentsConfiguration {
 
   @Bean
   IdempotencyService idempotencyService(
-      IdempotencyRepository keys, PaymentsProperties props, Clock clock) {
-    return new IdempotencyService(keys, props, clock);
+      IdempotencyRepository keys, PaymentsProperties properties, Clock clock) {
+    return new IdempotencyService(keys, properties, clock);
   }
 
   /** The one adapter from Spring's template to the port the create collaborators take. */
@@ -137,10 +150,10 @@ public class PaymentsConfiguration {
       JobRepository jobs,
       PaymentEvents events,
       Divergences divergences,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       UnitOfWork unitOfWork,
       Clock clock) {
-    return new PendingAdoption(payments, jobs, events, divergences, props, unitOfWork, clock);
+    return new PendingAdoption(payments, jobs, events, divergences, properties, unitOfWork, clock);
   }
 
   @Bean
@@ -164,8 +177,8 @@ public class PaymentsConfiguration {
       PaymentDraftFactory drafts,
       PendingAdoption adoption,
       CreateFailures failures,
-      PaymentsProperties props) {
-    return new PixPaymentFlow(providers, drafts, adoption, failures, props);
+      PaymentsProperties properties) {
+    return new PixPaymentFlow(providers, drafts, adoption, failures, properties);
   }
 
   @Bean
@@ -175,9 +188,10 @@ public class PaymentsConfiguration {
       PendingAdoption adoption,
       BolecodeFromQuery fromQuery,
       CreateFailures failures,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       Clock clock) {
-    return new BolecodePaymentFlow(providers, drafts, adoption, fromQuery, failures, props, clock);
+    return new BolecodePaymentFlow(
+        providers, drafts, adoption, fromQuery, failures, properties, clock);
   }
 
   /**
@@ -191,29 +205,49 @@ public class PaymentsConfiguration {
 
   @Bean
   PaymentService paymentService(
-      PaymentRepository payments,
       Divergences divergences,
-      ProviderGateway providers,
-      PaymentEvents events,
       PaymentFlows flows,
       PendingAdoption adoption,
       BolecodeFromQuery bolecodeFromQuery,
-      CreateFailures failures,
-      PaymentsProperties props,
-      TransactionTemplate paymentsTransactionTemplate,
+      CreateFailures failures) {
+    return new PaymentService(divergences, flows, adoption, bolecodeFromQuery, failures);
+  }
+
+  @Bean
+  PaymentQueries paymentQueries(PaymentRepository payments) {
+    return new PaymentQueries(payments);
+  }
+
+  @Bean
+  PixSettlement pixSettlement(
+      PaymentRepository payments,
+      Divergences divergences,
+      PaymentEvents events,
+      ProviderGateway providers,
+      UnitOfWork unitOfWork) {
+    return new PixSettlement(payments, divergences, events, providers, unitOfWork);
+  }
+
+  @Bean
+  BoletoSettlement boletoSettlement(
+      PaymentRepository payments,
+      Divergences divergences,
+      PaymentEvents events,
+      UnitOfWork unitOfWork,
       Clock clock) {
-    return new PaymentService(
-        payments,
-        divergences,
-        providers,
-        events,
-        flows,
-        adoption,
-        bolecodeFromQuery,
-        failures,
-        props,
-        paymentsTransactionTemplate,
-        clock);
+    return new BoletoSettlement(payments, divergences, events, unitOfWork, clock);
+  }
+
+  @Bean
+  PaymentCancellation paymentCancellation(
+      PaymentQueries queries,
+      PaymentRepository payments,
+      PaymentEvents events,
+      ProviderGateway providers,
+      UnitOfWork unitOfWork,
+      BoletoSettlement boletoSettlement) {
+    return new PaymentCancellation(
+        queries, payments, events, providers, unitOfWork, boletoSettlement);
   }
 
   @Bean
@@ -243,9 +277,9 @@ public class PaymentsConfiguration {
       PaymentRepository payments,
       ProviderGateway providers,
       RefundService refundService,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       Clock clock) {
-    return new RefundPollingService(refunds, payments, providers, refundService, props, clock);
+    return new RefundPollingService(refunds, payments, providers, refundService, properties, clock);
   }
 
   @Bean
@@ -253,24 +287,37 @@ public class PaymentsConfiguration {
       WebhookInboxRepository inbox,
       JobRepository jobs,
       ProviderGateway providers,
-      PaymentService paymentService,
+      PixSettlement pixSettlement,
       RefundService refundService,
       TransactionTemplate paymentsTransactionTemplate,
       Clock clock) {
     return new WebhookInboxService(
-        inbox, jobs, providers, paymentService, refundService, paymentsTransactionTemplate, clock);
+        inbox, jobs, providers, pixSettlement, refundService, paymentsTransactionTemplate, clock);
   }
 
   @Bean
-  ExpirationService expirationService(
+  PaymentExpiration paymentExpiration(
+      PaymentRepository payments,
+      ProviderGateway providers,
+      PixSettlement pixSettlement,
+      BoletoSettlement boletoSettlement,
+      PaymentEvents events,
+      PaymentsProperties properties,
+      UnitOfWork unitOfWork) {
+    return new PaymentExpiration(
+        payments, providers, pixSettlement, boletoSettlement, events, properties, unitOfWork);
+  }
+
+  @Bean
+  StuckCreatedSweep stuckCreatedSweep(
       PaymentRepository payments,
       ProviderGateway providers,
       PaymentService paymentService,
-      PaymentEvents events,
-      PaymentsProperties props,
-      TransactionTemplate paymentsTransactionTemplate) {
-    return new ExpirationService(
-        payments, providers, paymentService, events, props, paymentsTransactionTemplate);
+      PixSettlement pixSettlement,
+      BoletoSettlement boletoSettlement,
+      PaymentsProperties properties) {
+    return new StuckCreatedSweep(
+        payments, providers, paymentService, pixSettlement, boletoSettlement, properties);
   }
 
   @Bean
@@ -279,11 +326,19 @@ public class PaymentsConfiguration {
       ReconciliationDivergenceRepository divergences,
       ProviderGateway providers,
       PaymentService paymentService,
+      PixSettlement pixSettlement,
       BoletoPollingService boletoPolling,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       Clock clock) {
     return new ReconciliationService(
-        payments, divergences, providers, paymentService, boletoPolling, props, clock);
+        payments,
+        divergences,
+        providers,
+        paymentService,
+        pixSettlement,
+        boletoPolling,
+        properties,
+        clock);
   }
 
   @Bean
@@ -291,35 +346,67 @@ public class PaymentsConfiguration {
       PaymentRepository payments,
       ProviderGateway providers,
       PaymentService paymentService,
-      PaymentsProperties props,
+      PixSettlement pixSettlement,
+      BoletoSettlement boletoSettlement,
+      PaymentsProperties properties,
       TransactionTemplate paymentsTransactionTemplate,
       Clock clock) {
     return new BoletoPollingService(
-        payments, providers, paymentService, props, paymentsTransactionTemplate, clock);
+        payments,
+        providers,
+        paymentService,
+        pixSettlement,
+        boletoSettlement,
+        properties,
+        paymentsTransactionTemplate,
+        clock);
+  }
+
+  @Bean
+  JobBackoff jobBackoff(PaymentsProperties properties) {
+    return new JobBackoff(properties);
+  }
+
+  @Bean
+  ProcessWebhookJob processWebhookJob(WebhookInboxService inbox, JobBackoff backoff) {
+    return new ProcessWebhookJob(inbox, backoff);
+  }
+
+  @Bean
+  ExpirePaymentJob expirePaymentJob(PaymentExpiration expiration, JobBackoff backoff) {
+    return new ExpirePaymentJob(expiration, backoff);
+  }
+
+  @Bean
+  PollRefundJob pollRefundJob(
+      RefundPollingService polling, RefundService refunds, PaymentsProperties properties) {
+    return new PollRefundJob(polling, refunds, properties);
+  }
+
+  @Bean
+  ReconcileJob reconcileJob(
+      StuckCreatedSweep sweep, ReconciliationService reconciliation, JobBackoff backoff) {
+    return new ReconcileJob(sweep, reconciliation, backoff);
+  }
+
+  @Bean
+  PollBoletoJob pollBoletoJob(BoletoPollingService boletoPolling, PaymentsProperties properties) {
+    return new PollBoletoJob(boletoPolling, properties);
+  }
+
+  /** A list, so a job type added without its handler fails the startup instead of its first run. */
+  @Bean
+  JobHandlers jobHandlers(List<JobHandler> handlers) {
+    return new JobHandlers(handlers);
   }
 
   @Bean
   JobRunner jobRunner(
       JobRepository jobs,
-      WebhookInboxService inbox,
-      ExpirationService expiration,
-      RefundPollingService polling,
-      BoletoPollingService boletoPolling,
-      RefundService refunds,
-      ReconciliationService reconciliation,
-      PaymentsProperties props,
+      JobHandlers handlers,
+      PaymentsProperties properties,
       TransactionTemplate paymentsTransactionTemplate,
       Clock clock) {
-    return new JobRunner(
-        jobs,
-        inbox,
-        expiration,
-        polling,
-        boletoPolling,
-        refunds,
-        reconciliation,
-        props,
-        paymentsTransactionTemplate,
-        clock);
+    return new JobRunner(jobs, handlers, properties, paymentsTransactionTemplate, clock);
   }
 }

@@ -93,8 +93,8 @@ public class ItauPixProvider implements PixMethodProvider {
    * PROVIDER_CREDENTIALS_MISSING before any row exists, which is what a merchant can act on.
    */
   @Override
-  public void requireIssueCredentials(ProviderCredentials c) {
-    requirePixCredentials(c);
+  public void requireIssueCredentials(ProviderCredentials providerCredentials) {
+    requirePixCredentials(providerCredentials);
   }
 
   /**
@@ -102,9 +102,9 @@ public class ItauPixProvider implements PixMethodProvider {
    * IllegalArgumentException, which would surface as a 500. Only this entry point translates it:
    * the other operations keep failing the way they already did.
    */
-  private static ItauCredentials requirePixCredentials(ProviderCredentials c) {
+  private static ItauCredentials requirePixCredentials(ProviderCredentials providerCredentials) {
     try {
-      return creds(c);
+      return creds(providerCredentials);
     } catch (IllegalArgumentException e) {
       String field =
           e.getMessage() == null ? null : e.getMessage().replace("missing required field: ", "");
@@ -113,17 +113,17 @@ public class ItauPixProvider implements PixMethodProvider {
     }
   }
 
-  private PixApiClient client(ProviderCredentials c) {
-    return c.environment() == ProviderEnvironment.LIVE ? live : test;
+  private PixApiClient client(ProviderCredentials providerCredentials) {
+    return providerCredentials.environment() == ProviderEnvironment.LIVE ? live : test;
   }
 
-  private static ItauCredentials creds(ProviderCredentials c) {
-    return ItauCredentials.parse(c.payload());
+  private static ItauCredentials creds(ProviderCredentials providerCredentials) {
+    return ItauCredentials.parse(providerCredentials.payload());
   }
 
   @Override
-  public Charge issue(ProviderCredentials c, PixIssueRequest request) {
-    ItauCredentials credentials = creds(c);
+  public Charge issue(ProviderCredentials providerCredentials, PixIssueRequest request) {
+    ItauCredentials credentials = creds(providerCredentials);
     CobRequest cob =
         CobRequest.forCharge(
             request.amount(),
@@ -133,45 +133,54 @@ public class ItauPixProvider implements PixMethodProvider {
             request.payerName(),
             request.description());
 
-    return toCharge(client(c).putCob(credentials, request.txid(), cob));
+    return toCharge(client(providerCredentials).putCob(credentials, request.txid(), cob));
   }
 
   @Override
-  public Optional<Charge> find(ProviderCredentials c, String txid) {
-    return client(c).getCob(creds(c), txid).map(ItauPixProvider::toCharge);
+  public Optional<Charge> find(ProviderCredentials providerCredentials, String txid) {
+    return client(providerCredentials)
+        .getCob(creds(providerCredentials), txid)
+        .map(ItauPixProvider::toCharge);
   }
 
   @Override
-  public void cancel(ProviderCredentials c, String txid) {
-    client(c).patchCob(creds(c), txid, Map.of("status", "REMOVIDA_PELO_USUARIO_RECEBEDOR"));
+  public void cancel(ProviderCredentials providerCredentials, String txid) {
+    client(providerCredentials)
+        .patchCob(
+            creds(providerCredentials), txid, Map.of("status", "REMOVIDA_PELO_USUARIO_RECEBEDOR"));
   }
 
   @Override
-  public RefundResult requestRefund(ProviderCredentials c, RefundRequest r) {
+  public RefundResult requestRefund(
+      ProviderCredentials providerCredentials, RefundRequest request) {
     return toRefund(
-        client(c)
+        client(providerCredentials)
             .putDevolucao(
-                creds(c),
-                r.endToEndId(),
-                r.refundId(),
-                new DevolucaoRequest(PixAmounts.toItau(r.amount()))));
+                creds(providerCredentials),
+                request.endToEndId(),
+                request.refundId(),
+                new DevolucaoRequest(PixAmounts.toItau(request.amount()))));
   }
 
   @Override
-  public Optional<RefundResult> findRefund(ProviderCredentials c, String e2eid, String refundId) {
-    return client(c).getDevolucao(creds(c), e2eid, refundId).map(ItauPixProvider::toRefund);
+  public Optional<RefundResult> findRefund(
+      ProviderCredentials providerCredentials, String e2eid, String refundId) {
+    return client(providerCredentials)
+        .getDevolucao(creds(providerCredentials), e2eid, refundId)
+        .map(ItauPixProvider::toRefund);
   }
 
   /**
    * Walks every page: reconciliation that silently stops at page 0 would call paid charges unpaid.
    */
   @Override
-  public List<Charge> listCharges(ProviderCredentials c, Instant from, Instant to) {
-    ItauCredentials credentials = creds(c);
+  public List<Charge> listCharges(
+      ProviderCredentials providerCredentials, Instant from, Instant to) {
+    ItauCredentials credentials = creds(providerCredentials);
     List<Charge> out = new ArrayList<>();
     int page = 0;
     while (true) {
-      CobList cobList = client(c).listCob(credentials, from, to, page, PAGE_SIZE);
+      CobList cobList = client(providerCredentials).listCob(credentials, from, to, page, PAGE_SIZE);
       if (cobList.cobs() != null) {
         cobList.cobs().forEach(cob -> out.add(toCharge(cob)));
       }
@@ -203,29 +212,29 @@ public class ItauPixProvider implements PixMethodProvider {
     Map<String, String> txids = new HashMap<>();
     Map<String, String> refundE2e = new HashMap<>();
 
-    for (PixItem it : webhookPayload.pix()) {
+    for (PixItem item : webhookPayload.pix()) {
 
-      if (it == null || it.endToEndId() == null) {
+      if (item == null || item.endToEndId() == null) {
         // endToEndId is the dedup key; an item without it cannot be recorded or matched.
         LOG.warn(
             "Itaú webhook item without endToEndId skipped (txid={})",
-            it == null ? null : it.txid());
+            item == null ? null : item.txid());
         continue;
       }
 
-      received.add(toReceived(it));
+      received.add(toReceived(item));
 
-      if (it.txid() != null) {
-        txids.put(it.endToEndId(), it.txid());
+      if (item.txid() != null) {
+        txids.put(item.endToEndId(), item.txid());
       }
 
-      if (it.devolucoes() != null) {
-        it.devolucoes()
+      if (item.devolucoes() != null) {
+        item.devolucoes()
             .forEach(
                 devolucao -> {
                   refunds.add(toRefund(devolucao));
                   if (devolucao.id() != null) {
-                    refundE2e.put(devolucao.id(), it.endToEndId());
+                    refundE2e.put(devolucao.id(), item.endToEndId());
                   }
                 });
       }
@@ -233,56 +242,60 @@ public class ItauPixProvider implements PixMethodProvider {
     return new ProviderWebhookEvent(received, refunds, txids, refundE2e);
   }
 
-  static Charge toCharge(CobResponse r) {
-    if (r.valor() == null || r.valor().original() == null) {
+  static Charge toCharge(CobResponse response) {
+    if (response.valor() == null || response.valor().original() == null) {
       throw new ProviderException(
           ProviderException.Code.UNKNOWN,
           200,
           null,
-          "Itaú cob without valor.original: " + r.txid());
+          "Itaú cob without valor.original: " + response.txid());
     }
 
     List<ReceivedPix> pix =
-        r.pix() == null ? List.of() : r.pix().stream().map(ItauPixProvider::toReceived).toList();
-    Instant created = r.calendario() == null ? null : r.calendario().criacao();
+        response.pix() == null
+            ? List.of()
+            : response.pix().stream().map(ItauPixProvider::toReceived).toList();
+    Instant created = response.calendario() == null ? null : response.calendario().criacao();
     int exp =
-        r.calendario() == null || r.calendario().expiracao() == null
+        response.calendario() == null || response.calendario().expiracao() == null
             ? 0
-            : r.calendario().expiracao();
+            : response.calendario().expiracao();
 
     return new Charge(
-        r.txid(),
-        toStatus(r.status()),
-        PixAmounts.fromItau(r.valor().original()),
-        r.pixCopiaECola(),
-        r.location(),
+        response.txid(),
+        toStatus(response.status()),
+        PixAmounts.fromItau(response.valor().original()),
+        response.pixCopiaECola(),
+        response.location(),
         created,
         exp,
         pix);
   }
 
-  static ReceivedPix toReceived(PixItem i) {
+  static ReceivedPix toReceived(PixItem item) {
     return new ReceivedPix(
-        i.endToEndId(), PixAmounts.fromItau(i.valor()), i.horario(), i.infoPagador());
+        item.endToEndId(), PixAmounts.fromItau(item.valor()), item.horario(), item.infoPagador());
   }
 
-  static RefundResult toRefund(DevolucaoResponse d) {
+  static RefundResult toRefund(DevolucaoResponse devolucaoResponse) {
     RefundStatus refundStatus =
-        switch (d.status() == null ? "" : d.status()) {
+        switch (devolucaoResponse.status() == null ? "" : devolucaoResponse.status()) {
           case "DEVOLVIDO" -> RefundStatus.COMPLETED;
           case "NAO_REALIZADO" -> RefundStatus.FAILED;
           default -> RefundStatus.PROCESSING;
         };
 
-    Instant requested = d.horario() == null ? null : d.horario().solicitacao();
-    Instant settled = d.horario() == null ? null : d.horario().liquidacao();
+    Instant requested =
+        devolucaoResponse.horario() == null ? null : devolucaoResponse.horario().solicitacao();
+    Instant settled =
+        devolucaoResponse.horario() == null ? null : devolucaoResponse.horario().liquidacao();
     // motivo is only a failure reason when the refund failed; on DEVOLVIDO the bank fills it with
     // prose.
     return new RefundResult(
-        d.id(),
+        devolucaoResponse.id(),
         refundStatus,
-        PixAmounts.fromItau(d.valor()),
-        refundStatus == RefundStatus.FAILED ? d.motivo() : null,
+        PixAmounts.fromItau(devolucaoResponse.valor()),
+        refundStatus == RefundStatus.FAILED ? devolucaoResponse.motivo() : null,
         requested,
         settled);
   }

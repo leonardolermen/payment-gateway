@@ -275,3 +275,36 @@ acompanham (`MeController`/`Me` → `MerchantController`/`Merchant`); o corpo n�
 as duas com a antiga redirecionando — não há cliente em produção, e uma rota viva "por enquanto" nunca
 morre. Custo se errado: quem chamava `/v1/me` recebe 404 sem aviso; a autenticação não muda, porque
 `ProtectedRoutes.requiresApiKey` casa pelo prefixo `/v1/` e não pelo caminho exato.
+
+## 2026-09-28 — Fase 2: dividir por responsabilidade, e o que fica grande de propósito
+A regra: arquivo passando de ~300 linhas ou classe com mais de ~7 dependências no construtor está fazendo
+mais de uma coisa. `PaymentService` tinha 627 linhas e 11 dependências; saíram dele `PaymentQueries`
+(leitura), `PaymentCancellation` (cancelar, o banco primeiro), `PixSettlement` (settle e o webhook
+confirmado no banco) e `BoletoSettlement` (a consulta do boleto dizendo "pago"), e ele ficou com o create
+e as pontas soltas do create (5 dependências). A divisão deixou `ExpirationService` com 8, e ele virou
+`PaymentExpiration` (expirar PENDING perguntando ao banco antes, 7) e `StuckCreatedSweep` (adotar ou
+falhar CREATED que o banco pode ter aceitado, 6). Seis classes, todas com `UnitOfWork` em vez do
+template, então o ArchUnit não mudou. Corpos de método movidos sem alteração além do campo por onde
+passam; testes só trocaram o bean injetado.
+Ficam grandes de propósito: `Payment` (535 linhas) é o agregado com a tabela de transições, e dividir
+espalharia a invariante que ele existe para guardar; `RefundService` (368) é um conceito só, o
+reembolso de ponta a ponta; `PaymentsConfiguration` (383) é só wiring, um `@Bean` por classe, sem
+lógica. Rejeitado: aplicar o limite de linhas como catraca mecânica (quebrar esses três até caberem) —
+o número é sinal de responsabilidade demais, não a responsabilidade em si. Custo se errado: `Payment`
+ou `RefundService` crescem sem que ninguém reabra a questão; a próxima classe acima do limite tem de
+citar esta entrada ou ser dividida.
+
+## 2026-09-28 — Fase 2: um handler por tipo de job, e a contagem corrigida
+A divisão deixou `JobRunner` com 11 dependências porque ele guardava um colaborador por tipo de job e
+decidia o tipo em dois métodos: um `switch` em `run` e dois `if` em `retry`, além de outros dois no laço
+de claim (o give-up do refund DEAD e o reset do RECONCILE). Agora `JobHandler` é a strategy: um handler
+por `JobType` (`ProcessWebhookJob`, `ExpirePaymentJob`, `PollRefundJob`, `ReconcileJob`, `PollBoletoJob`),
+com `afterFailure` e `notYet` no lugar de um booleano `failed`, e um `finish` default que só o reset do
+RECONCILE e o give-up do refund sobrescrevem. `JobHandlers` exige exatamente um handler por tipo na
+construção, como `PaymentFlows`; o backoff genérico mora uma vez em `JobBackoff`. `JobRunner` ficou com
+claim, lease e save (5 dependências). Rejeitado: manter o `switch` no `JobRunner` decidindo o tipo em dois
+métodos — cada tipo novo exigiria lembrar de todos os lugares. Custo se errado: um `JobType` novo sem
+handler agora derruba o startup em vez de falhar no primeiro job; e um tipo que precise reagir ao próprio
+resultado depende do hook `finish`, que é fácil de esquecer.
+Correção da entrada anterior: `PaymentsConfiguration` tem 412 linhas depois de todos os commits da fase
+(não 383) — continua só wiring, um `@Bean` por classe, e continua grande de propósito.

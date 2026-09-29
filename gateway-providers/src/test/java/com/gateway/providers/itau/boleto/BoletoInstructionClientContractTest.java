@@ -63,10 +63,9 @@ class BoletoInstructionClientContractTest {
 
   static BoletoInstructionClient client() {
     ItauEndpoints e =
-        ItauEndpoints.custom(
+        ItauEndpoints.plain(
             URI.create(server.baseUrl() + "/cash_management/v2"),
-            URI.create(server.baseUrl() + "/api/oauth/token"),
-            false);
+            URI.create(server.baseUrl() + "/api/oauth/token"));
     return new BoletoInstructionClient(
         new ItauTokenClient(Clock.systemUTC(), Duration.ofSeconds(3), Duration.ofSeconds(3)),
         e,

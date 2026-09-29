@@ -35,13 +35,13 @@ public class PaymentEvents {
   }
 
   /** {@code partitionKey} is the payment id, so a consumer sees one payment's events in order. */
-  public void emit(MerchantId merchantId, String type, Payment p) {
-    append(merchantId, p.id(), p.id(), type, paymentJson(p));
+  public void emit(MerchantId merchantId, String type, Payment payment) {
+    append(merchantId, payment.id(), payment.id(), type, paymentJson(payment));
   }
 
   /** Same partition as the payment: a refund's events stay ordered with the payment's own. */
-  public void emitRefund(MerchantId merchantId, String type, Refund r, Payment p) {
-    append(merchantId, r.id(), p.id(), type, refundJson(r));
+  public void emitRefund(MerchantId merchantId, String type, Refund refund, Payment payment) {
+    append(merchantId, refund.id(), payment.id(), type, refundJson(refund));
   }
 
   private void append(
@@ -67,31 +67,31 @@ public class PaymentEvents {
    * Public for the contract test in gateway-app that holds it to the REST {@code PaymentResponse}'s
    * key set.
    */
-  public static Map<String, Object> paymentJson(Payment p) {
-    Map<String, Object> m = new LinkedHashMap<>();
-    m.put("id", p.id());
+  public static Map<String, Object> paymentJson(Payment payment) {
+    Map<String, Object> json = new LinkedHashMap<>();
+    json.put("id", payment.id());
     // Same spelling as the REST API (PaymentResponse): one resource, one vocabulary, whichever way
     // it arrives.
-    m.put("status", p.status().name());
-    m.put("method", p.method().name());
-    m.put("provider", p.provider());
-    m.put("environment", p.environment().name());
-    m.put("amount", p.amount().cents());
-    m.put("currency", p.amount().currency());
-    m.put("reference", p.reference());
-    m.put("description", p.description());
-    PixDetails pix = p.pix();
+    json.put("status", payment.status().name());
+    json.put("method", payment.method().name());
+    json.put("provider", payment.provider());
+    json.put("environment", payment.environment().name());
+    json.put("amount", payment.amount().cents());
+    json.put("currency", payment.amount().currency());
+    json.put("reference", payment.reference());
+    json.put("description", payment.description());
+    PixDetails pix = payment.pix();
     Map<String, Object> pixJson = new LinkedHashMap<>();
-    pixJson.put("txid", pix == null ? p.id() : pix.txid());
+    pixJson.put("txid", pix == null ? payment.id() : pix.txid());
     pixJson.put("copia_e_cola", pix == null ? null : pix.pixCopiaECola());
     pixJson.put("location", pix == null ? null : pix.location());
     pixJson.put("end_to_end_id", pix == null ? null : pix.endToEndId());
-    m.put("pix", pixJson);
+    json.put("pix", pixJson);
     // Same keys as PaymentResponse.Boleto (gateway-app); null for a Pix payment so the key set is
     // stable.
-    BoletoDetails boleto = p.boleto();
+    BoletoDetails boleto = payment.boleto();
     if (boleto == null) {
-      m.put("boleto", null);
+      json.put("boleto", null);
     } else {
       Map<String, Object> boletoJson = new LinkedHashMap<>();
       boletoJson.put("linha_digitavel", boleto.linhaDigitavel());
@@ -101,14 +101,14 @@ public class PaymentEvents {
           "payment_limit_date",
           boleto.paymentLimitDate() == null ? null : boleto.paymentLimitDate().toString());
       boletoJson.put("paid_via", boleto.paidVia() == null ? null : boleto.paidVia().name());
-      m.put("boleto", boletoJson);
+      json.put("boleto", boletoJson);
     }
-    m.put("expires_at", iso(p.expiresAt()));
-    m.put("paid_at", iso(p.paidAt()));
-    m.put("paid_amount", cents(p.paidAmount()));
-    m.put("refunded_amount", cents(p.refundedAmount()));
-    m.put("created_at", iso(p.createdAt()));
-    return m;
+    json.put("expires_at", iso(payment.expiresAt()));
+    json.put("paid_at", iso(payment.paidAt()));
+    json.put("paid_amount", cents(payment.paidAmount()));
+    json.put("refunded_amount", cents(payment.refundedAmount()));
+    json.put("created_at", iso(payment.createdAt()));
+    return json;
   }
 
   /**
@@ -116,25 +116,25 @@ public class PaymentEvents {
    * {@code refund.unknown}) means the bank never settled it within the polling budget: the amount
    * stays reserved and a later {@code refund.completed} or {@code refund.failed} may still follow.
    */
-  static Map<String, Object> refundJson(Refund r) {
-    Map<String, Object> m = new LinkedHashMap<>();
-    m.put("id", r.id());
-    m.put("payment_id", r.paymentId());
-    m.put("amount", r.amount().cents());
-    m.put("state", r.state().name());
-    m.put("reason", r.failureReason());
-    m.put("requested_at", iso(r.createdAt()));
-    m.put("settled_at", iso(r.settledAt()));
-    return m;
+  static Map<String, Object> refundJson(Refund refund) {
+    Map<String, Object> json = new LinkedHashMap<>();
+    json.put("id", refund.id());
+    json.put("payment_id", refund.paymentId());
+    json.put("amount", refund.amount().cents());
+    json.put("state", refund.state().name());
+    json.put("reason", refund.failureReason());
+    json.put("requested_at", iso(refund.createdAt()));
+    json.put("settled_at", iso(refund.settledAt()));
+    return json;
   }
 
   // Instants as ISO-8601 strings explicitly: the default Jackson shape for java.time has changed
   // between major versions, and a merchant parsing webhooks must not see it change under them.
-  private static String iso(Instant i) {
-    return i == null ? null : i.toString();
+  private static String iso(Instant instant) {
+    return instant == null ? null : instant.toString();
   }
 
-  private static Long cents(Money m) {
-    return m == null ? null : m.cents();
+  private static Long cents(Money money) {
+    return money == null ? null : money.cents();
   }
 }

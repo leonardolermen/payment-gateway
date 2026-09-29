@@ -29,7 +29,7 @@ import org.slf4j.LoggerFactory;
  * sweeper and a slow create can race to adopt the same charge, and the loser must not fail on
  * PENDING -> PENDING.
  *
- * <p>Public, not private to a flow: the sweeper ({@code ExpirationService}) and the boleto poll
+ * <p>Public, not private to a flow: the sweeper ({@code StuckCreatedSweep}) and the boleto poll
  * ({@code BoletoPollingService}) adopt too.
  */
 public class PendingAdoption {
@@ -39,7 +39,7 @@ public class PendingAdoption {
   private final JobRepository jobs;
   private final PaymentEvents events;
   private final Divergences divergences;
-  private final PaymentsProperties props;
+  private final PaymentsProperties properties;
   private final UnitOfWork unitOfWork;
   private final Clock clock;
 
@@ -48,14 +48,14 @@ public class PendingAdoption {
       JobRepository jobs,
       PaymentEvents events,
       Divergences divergences,
-      PaymentsProperties props,
+      PaymentsProperties properties,
       UnitOfWork unitOfWork,
       Clock clock) {
     this.payments = payments;
     this.jobs = jobs;
     this.events = events;
     this.divergences = divergences;
-    this.props = props;
+    this.properties = properties;
     this.unitOfWork = unitOfWork;
     this.clock = clock;
   }
@@ -140,7 +140,8 @@ public class PendingAdoption {
 
           enqueueExpiry(saved);
           if (!jobs.enqueue(
-              Job.pollBoleto(saved.id(), clock.instant().plus(props.boletoPollEvery()), clock))) {
+              Job.pollBoleto(
+                  saved.id(), clock.instant().plus(properties.boletoPollEvery()), clock))) {
             log.debug("poll job for payment {} was already queued", saved.id());
           }
 
@@ -156,7 +157,7 @@ public class PendingAdoption {
 
   private void enqueueExpiry(Payment saved) {
     if (!jobs.enqueue(
-        Job.expireAt(saved.id(), saved.expiresAt().plus(props.expirationGrace()), clock))) {
+        Job.expireAt(saved.id(), saved.expiresAt().plus(properties.expirationGrace()), clock))) {
       log.debug("expire job for payment {} was already queued", saved.id());
     }
   }

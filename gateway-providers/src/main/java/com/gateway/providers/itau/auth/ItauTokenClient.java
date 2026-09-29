@@ -84,15 +84,15 @@ public class ItauTokenClient {
             + enc(creds.clientId())
             + "&client_secret="
             + enc(creds.clientSecret().reveal());
-    HttpRequest req =
+    HttpRequest request =
         HttpRequest.newBuilder(tokenUrl)
             .timeout(readTimeout)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .POST(HttpRequest.BodyPublishers.ofString(form))
             .build();
-    HttpResponse<String> res;
+    HttpResponse<String> response;
     try {
-      res = http.send(req, HttpResponse.BodyHandlers.ofString());
+      response = http.send(request, HttpResponse.BodyHandlers.ofString());
     } catch (HttpTimeoutException e) {
       throw new ProviderException(ProviderException.Code.TIMEOUT, "token request timed out", e);
     } catch (IOException | InterruptedException e) {
@@ -102,22 +102,22 @@ public class ItauTokenClient {
       throw new ProviderException(
           ProviderException.Code.UNAVAILABLE, "token request failed: " + e.getMessage(), e);
     }
-    if (res.statusCode() == 401 || res.statusCode() == 403) {
+    if (response.statusCode() == 401 || response.statusCode() == 403) {
       throw new ProviderException(
           ProviderException.Code.UNAUTHENTICATED,
-          res.statusCode(),
+          response.statusCode(),
           null,
           "STS rejected the credentials");
     }
-    if (res.statusCode() >= 500) {
+    if (response.statusCode() >= 500) {
       throw new ProviderException(
-          ProviderException.Code.UNAVAILABLE, res.statusCode(), null, "STS unavailable");
+          ProviderException.Code.UNAVAILABLE, response.statusCode(), null, "STS unavailable");
     }
-    if (res.statusCode() != 200) {
+    if (response.statusCode() != 200) {
       throw new ProviderException(
-          ProviderException.Code.UNKNOWN, res.statusCode(), null, "unexpected STS status");
+          ProviderException.Code.UNKNOWN, response.statusCode(), null, "unexpected STS status");
     }
-    JsonNode body = mapper.readTree(res.body());
+    JsonNode body = mapper.readTree(response.body());
     String token = body.path("access_token").asText(null);
     if (token == null || token.isBlank()) {
       throw new ProviderException(

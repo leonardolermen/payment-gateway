@@ -22,32 +22,32 @@ import org.springframework.stereotype.Component;
 @EnableConfigurationProperties(WebhookMtlsProperties.class)
 public class MtlsWebhookConnector
     implements WebServerFactoryCustomizer<TomcatServletWebServerFactory> {
-  private final WebhookMtlsProperties props;
+  private final WebhookMtlsProperties properties;
 
-  public MtlsWebhookConnector(WebhookMtlsProperties props) {
-    props.requireKeyMaterial();
-    this.props = props;
+  public MtlsWebhookConnector(WebhookMtlsProperties properties) {
+    properties.requireKeyMaterial();
+    this.properties = properties;
   }
 
   @Override
   public void customize(TomcatServletWebServerFactory factory) {
-    if (!props.enabled()) {
+    if (!properties.enabled()) {
       return;
     }
     Connector connector = new Connector(TomcatWebServerFactory.DEFAULT_PROTOCOL);
-    connector.setPort(props.port());
+    connector.setPort(properties.port());
     connector.setScheme("https");
     connector.setSecure(true);
 
     SSLHostConfig ssl = new SSLHostConfig();
     ssl.setCertificateVerification("required");
-    ssl.setTruststoreFile(props.truststore());
-    ssl.setTruststorePassword(props.truststorePassword());
+    ssl.setTruststoreFile(properties.truststore());
+    ssl.setTruststorePassword(properties.truststorePassword());
     ssl.setTruststoreType("PKCS12");
     SSLHostConfigCertificate cert =
         new SSLHostConfigCertificate(ssl, SSLHostConfigCertificate.Type.UNDEFINED);
-    cert.setCertificateKeystoreFile(props.keystore());
-    cert.setCertificateKeystorePassword(props.keystorePassword());
+    cert.setCertificateKeystoreFile(properties.keystore());
+    cert.setCertificateKeystorePassword(properties.keystorePassword());
     cert.setCertificateKeystoreType("PKCS12");
     ssl.addCertificate(cert);
     connector.addSslHostConfig(ssl);
