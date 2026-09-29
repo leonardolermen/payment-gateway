@@ -146,7 +146,11 @@ public class CardCapture {
     }
 
     if (notCapturable) {
-      complete(current.merchantId(), current.id(), atCielo.get(), requested);
+      // The capture that landed was an earlier one (a retry, or made outside the gateway), so the
+      // amount this request asked for says nothing about it: the acquirer's CapturedAmount wins.
+      // Passing the request's amount here understated the refundable total when the sale had been
+      // captured in full elsewhere and this call asked for a part (final re-review, 2026-09-28).
+      complete(current.merchantId(), current.id(), atCielo.get(), Optional.empty());
       throw new DomainException("ALREADY_CAPTURED", "this payment was already captured");
     }
 

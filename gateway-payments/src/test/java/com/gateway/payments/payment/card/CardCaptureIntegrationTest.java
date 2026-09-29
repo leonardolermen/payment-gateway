@@ -95,6 +95,28 @@ class CardCaptureIntegrationTest extends ServiceIntegrationTestBase {
         .containsOnlyOnce("capture:" + payment.card().paymentId());
   }
 
+  /**
+   * The capture that landed was not this request's: the acquirer's CapturedAmount is what was paid.
+   * Storing the requested 5000 here would understate the refundable total by half.
+   */
+  @Test
+  void aCaptureDoneOutsideTheGatewayKeepsTheAcquirersAmountNotTheRequestedOne() {
+    Payment payment = authorized(10000);
+    cards.setStatus(payment.card().paymentId(), CardStatus.PAID);
+    cards.failNextCaptureWith(
+        new ProviderException(
+            ProviderException.Code.INVALID,
+            400,
+            "308",
+            "308 Transaction not available to capture"));
+
+    assertCode(() -> capture.capture(merchant, payment.id(), Money.brl(5000)), "ALREADY_CAPTURED");
+
+    Payment after = paymentQueries.get(merchant, payment.id());
+    assertThat(after.status()).isEqualTo(PaymentStatus.COMPLETED);
+    assertThat(after.paidAmount()).isEqualTo(Money.brl(10000));
+  }
+
   @Test
   void anAutomaticallyCapturedPaymentIsAlreadyCaptured() {
     Payment payment = newCard(10000, APPROVES);
