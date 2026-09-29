@@ -8,6 +8,7 @@ import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
 import com.gateway.kernel.provider.boleto.BoletoStatus;
 import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.payments.UnitOfWork;
+import com.gateway.payments.payment.card.CardVoid;
 import com.gateway.payments.payment.persistence.PaymentRepository;
 import com.gateway.payments.provider.ProviderErrors;
 import com.gateway.payments.provider.ProviderGateway;
@@ -31,6 +32,7 @@ public class PaymentCancellation {
   private final ProviderGateway providers;
   private final UnitOfWork unitOfWork;
   private final BoletoSettlement boletoSettlement;
+  private final CardVoid cardVoid;
 
   public PaymentCancellation(
       PaymentQueries queries,
@@ -38,17 +40,24 @@ public class PaymentCancellation {
       PaymentEvents events,
       ProviderGateway providers,
       UnitOfWork unitOfWork,
-      BoletoSettlement boletoSettlement) {
+      BoletoSettlement boletoSettlement,
+      CardVoid cardVoid) {
     this.queries = queries;
     this.payments = payments;
     this.events = events;
     this.providers = providers;
     this.unitOfWork = unitOfWork;
     this.boletoSettlement = boletoSettlement;
+    this.cardVoid = cardVoid;
   }
 
   public Payment cancel(MerchantId merchantId, String id) {
     Payment current = queries.get(merchantId, id);
+    // A card is canceled from AUTHORIZED, by the acquirer's void; Pix and Bolecode from PENDING.
+    // Dispatched here, once, because the two paths share nothing but the name.
+    if (current.method() == PaymentMethod.CARD) {
+      return cardVoid.cancel(current);
+    }
     if (current.status() != PaymentStatus.PENDING) {
       throw new DomainException(
           "INVALID_STATE",

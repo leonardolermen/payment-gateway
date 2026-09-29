@@ -6,6 +6,7 @@ import com.gateway.kernel.money.Money;
 import com.gateway.payments.outbox.OutboxMessage;
 import com.gateway.payments.outbox.persistence.OutboxRepository;
 import com.gateway.payments.payment.boleto.BoletoDetails;
+import com.gateway.payments.payment.card.CardDetails;
 import com.gateway.payments.payment.pix.PixDetails;
 import com.gateway.payments.refund.Refund;
 import java.time.Clock;
@@ -80,13 +81,20 @@ public class PaymentEvents {
     json.put("currency", payment.amount().currency());
     json.put("reference", payment.reference());
     json.put("description", payment.description());
+    // Null for a card payment, which has no Pix side (spec 2026-09-28 §9); same spelling as the
+    // REST
+    // PaymentResponse.
     PixDetails pix = payment.pix();
-    Map<String, Object> pixJson = new LinkedHashMap<>();
-    pixJson.put("txid", pix == null ? payment.id() : pix.txid());
-    pixJson.put("copia_e_cola", pix == null ? null : pix.pixCopiaECola());
-    pixJson.put("location", pix == null ? null : pix.location());
-    pixJson.put("end_to_end_id", pix == null ? null : pix.endToEndId());
-    json.put("pix", pixJson);
+    if (pix == null) {
+      json.put("pix", null);
+    } else {
+      Map<String, Object> pixJson = new LinkedHashMap<>();
+      pixJson.put("txid", pix.txid());
+      pixJson.put("copia_e_cola", pix.pixCopiaECola());
+      pixJson.put("location", pix.location());
+      pixJson.put("end_to_end_id", pix.endToEndId());
+      json.put("pix", pixJson);
+    }
     // Same keys as PaymentResponse.Boleto (gateway-app); null for a Pix payment so the key set is
     // stable.
     BoletoDetails boleto = payment.boleto();
@@ -102,6 +110,21 @@ public class PaymentEvents {
           boleto.paymentLimitDate() == null ? null : boleto.paymentLimitDate().toString());
       boletoJson.put("paid_via", boleto.paidVia() == null ? null : boleto.paidVia().name());
       json.put("boleto", boletoJson);
+    }
+    // Spec §9: never a number, an expiry or a CVV — CardDetails has none to give.
+    CardDetails card = payment.card();
+    if (card == null) {
+      json.put("card", null);
+    } else {
+      Map<String, Object> cardJson = new LinkedHashMap<>();
+      cardJson.put("brand", card.brand());
+      cardJson.put("last4", card.last4());
+      cardJson.put("installments", card.installments());
+      cardJson.put("authorization_code", card.authorizationCode());
+      cardJson.put("tid", card.tid());
+      cardJson.put("captured_amount", card.capturedAmount());
+      cardJson.put("card_id", card.cardId());
+      json.put("card", cardJson);
     }
     json.put("expires_at", iso(payment.expiresAt()));
     json.put("paid_at", iso(payment.paidAt()));

@@ -54,14 +54,30 @@ class PaymentFlowsTest {
     assertThatThrownBy(() -> new PaymentFlows(List.of())).isInstanceOf(IllegalStateException.class);
   }
 
+  /**
+   * CARD exists from this task on, so a registry without its flow no longer starts: the guard that
+   * turns a forgotten method into a startup failure instead of a merchant's 500.
+   */
+  @Test
+  void aRegistryWithoutTheCardFlowFailsAtConstruction() {
+    assertThatThrownBy(
+            () ->
+                new PaymentFlows(
+                    List.of(flowFor(PaymentMethod.PIX), flowFor(PaymentMethod.BOLECODE))))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("no payment flow for CARD");
+  }
+
   @Test
   void resolvesTheFlowOfTheMethodAsked() {
     PaymentFlow pix = flowFor(PaymentMethod.PIX);
     PaymentFlow bolecode = flowFor(PaymentMethod.BOLECODE);
+    PaymentFlow card = flowFor(PaymentMethod.CARD);
 
-    PaymentFlows flows = new PaymentFlows(List.of(pix, bolecode));
+    PaymentFlows flows = new PaymentFlows(List.of(pix, bolecode, card));
 
     assertThat(flows.forMethod(PaymentMethod.PIX)).isSameAs(pix);
     assertThat(flows.forMethod(PaymentMethod.BOLECODE)).isSameAs(bolecode);
+    assertThat(flows.forMethod(PaymentMethod.CARD)).isSameAs(card);
   }
 }

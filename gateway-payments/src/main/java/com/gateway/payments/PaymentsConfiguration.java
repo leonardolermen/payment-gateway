@@ -2,10 +2,16 @@ package com.gateway.payments;
 
 import com.gateway.kernel.provider.CredentialLookup;
 import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
+import com.gateway.kernel.provider.card.CardMethodProvider;
 import com.gateway.kernel.provider.pix.PixMethodProvider;
+import com.gateway.kernel.security.Sealer;
+import com.gateway.payments.card.SavedCards;
+import com.gateway.payments.card.persistence.SavedCardRepository;
+import com.gateway.payments.card.persistence.SavedCardRepositoryImpl;
 import com.gateway.payments.idempotency.IdempotencyService;
 import com.gateway.payments.idempotency.persistence.IdempotencyRepository;
 import com.gateway.payments.idempotency.persistence.IdempotencyRepositoryImpl;
+import com.gateway.payments.inbox.CardNotifications;
 import com.gateway.payments.inbox.WebhookInboxService;
 import com.gateway.payments.inbox.persistence.WebhookInboxRepository;
 import com.gateway.payments.inbox.persistence.WebhookInboxRepositoryImpl;
@@ -33,8 +39,14 @@ import com.gateway.payments.payment.StuckCreatedSweep;
 import com.gateway.payments.payment.boleto.BoletoPollingService;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepository;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepositoryImpl;
+import com.gateway.payments.payment.card.CardAdoption;
+import com.gateway.payments.payment.card.CardCapture;
+import com.gateway.payments.payment.card.CardStatusSync;
+import com.gateway.payments.payment.card.CardVoid;
 import com.gateway.payments.payment.create.BolecodeFromQuery;
 import com.gateway.payments.payment.create.BolecodePaymentFlow;
+import com.gateway.payments.payment.create.CardAuthorizationRecovery;
+import com.gateway.payments.payment.create.CardPaymentFlow;
 import com.gateway.payments.payment.create.CreateFailures;
 import com.gateway.payments.payment.create.PaymentDraftFactory;
 import com.gateway.payments.payment.create.PaymentFlow;
@@ -46,10 +58,12 @@ import com.gateway.payments.payment.persistence.PaymentRepositoryImpl;
 import com.gateway.payments.provider.ProviderGateway;
 import com.gateway.payments.provider.persistence.ProviderRequestRepository;
 import com.gateway.payments.provider.persistence.ProviderRequestRepositoryImpl;
+import com.gateway.payments.reconciliation.CardReconciliation;
 import com.gateway.payments.reconciliation.Divergences;
 import com.gateway.payments.reconciliation.ReconciliationService;
 import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceRepository;
 import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceRepositoryImpl;
+import com.gateway.payments.refund.CardRefunds;
 import com.gateway.payments.refund.RefundPollingService;
 import com.gateway.payments.refund.RefundService;
 import com.gateway.payments.refund.persistence.RefundRepository;
@@ -84,7 +98,8 @@ import org.springframework.transaction.support.TransactionTemplate;
   WebhookInboxRepositoryImpl.class,
   ProviderRequestRepositoryImpl.class,
   ReconciliationDivergenceRepositoryImpl.class,
-  BoletoNumberRepositoryImpl.class
+  BoletoNumberRepositoryImpl.class,
+  SavedCardRepositoryImpl.class
 })
 @EnableConfigurationProperties(PaymentsProperties.class)
 public class PaymentsConfiguration {
@@ -105,17 +120,22 @@ public class PaymentsConfiguration {
   }
 
   /**
-   * ObjectProvider: a context with no BoletoMethodProvider at all (some payments tests) must still
-   * start.
+   * ObjectProvider: a context with no BoletoMethodProvider or CardMethodProvider at all (some
+   * payments tests) must still start.
    */
   @Bean
   ProviderGateway providerGateway(
       List<PixMethodProvider> providers,
       ObjectProvider<BoletoMethodProvider> boletoProviders,
+      ObjectProvider<CardMethodProvider> cardProviders,
       CredentialLookup credentials,
       ProviderRequestRepository requests) {
     return new ProviderGateway(
-        providers, boletoProviders.orderedStream().toList(), credentials, requests);
+        providers,
+        boletoProviders.orderedStream().toList(),
+        cardProviders.orderedStream().toList(),
+        credentials,
+        requests);
   }
 
   @Bean
@@ -128,6 +148,12 @@ public class PaymentsConfiguration {
   @Bean
   UnitOfWork unitOfWork(TransactionTemplate paymentsTransactionTemplate) {
     return new TransactionalRunner(paymentsTransactionTemplate);
+  }
+
+  /** Sealer comes from the context: merchants' EnvelopeSealer in the app, TestSealer in tests. */
+  @Bean
+  SavedCards savedCards(SavedCardRepository cards, Sealer sealer, Clock clock) {
+    return new SavedCards(cards, sealer, clock);
   }
 
   @Bean
@@ -194,6 +220,33 @@ public class PaymentsConfiguration {
         providers, drafts, adoption, fromQuery, failures, properties, clock);
   }
 
+  @Bean
+  CardAdoption cardAdoption(
+      PaymentRepository payments,
+      PaymentEvents events,
+      SavedCards savedCards,
+      UnitOfWork unitOfWork,
+      Clock clock) {
+    return new CardAdoption(payments, events, savedCards, unitOfWork, clock);
+  }
+
+  @Bean
+  CardAuthorizationRecovery cardAuthorizationRecovery(
+      ProviderGateway providers, CardAdoption adoption, CreateFailures failures) {
+    return new CardAuthorizationRecovery(providers, adoption, failures);
+  }
+
+  @Bean
+  CardPaymentFlow cardPaymentFlow(
+      ProviderGateway providers,
+      PaymentDraftFactory drafts,
+      CardAdoption adoption,
+      CardAuthorizationRecovery recovery,
+      SavedCards savedCards,
+      CreateFailures failures) {
+    return new CardPaymentFlow(providers, drafts, adoption, recovery, savedCards, failures);
+  }
+
   /**
    * A list, so a method added without its flow fails the startup instead of a merchant's first
    * request.
@@ -239,15 +292,77 @@ public class PaymentsConfiguration {
   }
 
   @Bean
+  CardCapture cardCapture(
+      PaymentQueries queries,
+      PaymentRepository payments,
+      PaymentEvents events,
+      ProviderGateway providers,
+      UnitOfWork unitOfWork) {
+    return new CardCapture(queries, payments, events, providers, unitOfWork);
+  }
+
+  @Bean
+  CardStatusSync cardStatusSync(
+      PaymentRepository payments,
+      PaymentEvents events,
+      ProviderGateway providers,
+      Divergences divergences,
+      UnitOfWork unitOfWork) {
+    return new CardStatusSync(payments, events, providers, divergences, unitOfWork);
+  }
+
+  @Bean
+  CardNotifications cardNotifications(
+      PaymentRepository payments,
+      CardStatusSync statusSync,
+      Divergences divergences,
+      RefundRepository refunds,
+      UnitOfWork unitOfWork,
+      Clock clock) {
+    return new CardNotifications(payments, statusSync, divergences, refunds, unitOfWork, clock);
+  }
+
+  @Bean
+  CardReconciliation cardReconciliation(
+      PaymentRepository payments,
+      CardStatusSync statusSync,
+      Divergences divergences,
+      PaymentsProperties properties) {
+    return new CardReconciliation(payments, statusSync, divergences, properties);
+  }
+
+  @Bean
+  CardVoid cardVoid(
+      PaymentRepository payments,
+      PaymentEvents events,
+      ProviderGateway providers,
+      UnitOfWork unitOfWork) {
+    return new CardVoid(payments, events, providers, unitOfWork);
+  }
+
+  @Bean
+  CardRefunds cardRefunds(
+      RefundRepository refunds,
+      PaymentRepository payments,
+      ProviderGateway providers,
+      PaymentEvents events,
+      Divergences divergences,
+      UnitOfWork unitOfWork,
+      Clock clock) {
+    return new CardRefunds(refunds, payments, providers, events, divergences, unitOfWork, clock);
+  }
+
+  @Bean
   PaymentCancellation paymentCancellation(
       PaymentQueries queries,
       PaymentRepository payments,
       PaymentEvents events,
       ProviderGateway providers,
       UnitOfWork unitOfWork,
-      BoletoSettlement boletoSettlement) {
+      BoletoSettlement boletoSettlement,
+      CardVoid cardVoid) {
     return new PaymentCancellation(
-        queries, payments, events, providers, unitOfWork, boletoSettlement);
+        queries, payments, events, providers, unitOfWork, boletoSettlement, cardVoid);
   }
 
   @Bean
@@ -259,7 +374,8 @@ public class PaymentsConfiguration {
       PaymentEvents events,
       PaymentService paymentService,
       TransactionTemplate paymentsTransactionTemplate,
-      Clock clock) {
+      Clock clock,
+      CardRefunds cardRefunds) {
     return new RefundService(
         refunds,
         payments,
@@ -268,7 +384,8 @@ public class PaymentsConfiguration {
         events,
         paymentService,
         paymentsTransactionTemplate,
-        clock);
+        clock,
+        cardRefunds);
   }
 
   @Bean
@@ -290,9 +407,17 @@ public class PaymentsConfiguration {
       PixSettlement pixSettlement,
       RefundService refundService,
       TransactionTemplate paymentsTransactionTemplate,
-      Clock clock) {
+      Clock clock,
+      CardNotifications cardNotifications) {
     return new WebhookInboxService(
-        inbox, jobs, providers, pixSettlement, refundService, paymentsTransactionTemplate, clock);
+        inbox,
+        jobs,
+        providers,
+        pixSettlement,
+        refundService,
+        paymentsTransactionTemplate,
+        clock,
+        cardNotifications);
   }
 
   @Bean
@@ -315,9 +440,16 @@ public class PaymentsConfiguration {
       PaymentService paymentService,
       PixSettlement pixSettlement,
       BoletoSettlement boletoSettlement,
-      PaymentsProperties properties) {
+      PaymentsProperties properties,
+      CardAuthorizationRecovery cardRecovery) {
     return new StuckCreatedSweep(
-        payments, providers, paymentService, pixSettlement, boletoSettlement, properties);
+        payments,
+        providers,
+        paymentService,
+        pixSettlement,
+        boletoSettlement,
+        properties,
+        cardRecovery);
   }
 
   @Bean
@@ -385,8 +517,11 @@ public class PaymentsConfiguration {
 
   @Bean
   ReconcileJob reconcileJob(
-      StuckCreatedSweep sweep, ReconciliationService reconciliation, JobBackoff backoff) {
-    return new ReconcileJob(sweep, reconciliation, backoff);
+      StuckCreatedSweep sweep,
+      ReconciliationService reconciliation,
+      CardReconciliation cardReconciliation,
+      JobBackoff backoff) {
+    return new ReconcileJob(sweep, reconciliation, cardReconciliation, backoff);
   }
 
   @Bean

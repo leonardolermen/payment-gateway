@@ -2,7 +2,11 @@ package com.gateway.providers;
 
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
+import com.gateway.kernel.provider.card.CardMethodProvider;
 import com.gateway.kernel.provider.pix.PixMethodProvider;
+import com.gateway.providers.cielo.CieloCardProvider;
+import com.gateway.providers.cielo.CieloHttp;
+import com.gateway.providers.cielo.auth.CieloEndpoints;
 import com.gateway.providers.itau.auth.ItauEndpoints;
 import com.gateway.providers.itau.auth.ItauTokenClient;
 import com.gateway.providers.itau.boleto.ItauBoletoEndpoints;
@@ -18,7 +22,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(ProvidersConfiguration.ProvidersProperties.class)
+@EnableConfigurationProperties({
+  ProvidersConfiguration.ProvidersProperties.class,
+  ProvidersConfiguration.CieloProperties.class
+})
 // Clock is injected, never defined here: the app owns it (a conditional bean in a plain
 // @Configuration would depend on registration order).
 public class ProvidersConfiguration {
@@ -169,5 +176,48 @@ public class ProvidersConfiguration {
     return properties.trustStorePem() == null || properties.trustStorePem().isBlank()
         ? null
         : ItauPixProvider.trustStoreFromPem(properties.trustStorePem());
+  }
+
+  /**
+   * Every field optional: unset means the hosts of docs/providers/cielo/NOTES.md. The read timeout
+   * is 30 s because an authorization may take that long at the issuer, and the Status 0 answer
+   * covers the rest (spec §5).
+   */
+  @ConfigurationProperties("gateway.providers.cielo")
+  public record CieloProperties(
+      String liveApiBase,
+      String liveQueryApiBase,
+      String testApiBase,
+      String testQueryApiBase,
+      Duration readTimeout) {
+    public CieloProperties {
+      if (readTimeout == null) {
+        readTimeout = Duration.ofSeconds(30);
+      }
+    }
+
+    public CieloEndpoints live() {
+      return merge(
+          CieloEndpoints.forEnvironment(ProviderEnvironment.LIVE), liveApiBase, liveQueryApiBase);
+    }
+
+    public CieloEndpoints test() {
+      return merge(
+          CieloEndpoints.forEnvironment(ProviderEnvironment.TEST), testApiBase, testQueryApiBase);
+    }
+
+    private static CieloEndpoints merge(CieloEndpoints defaults, String api, String query) {
+      return new CieloEndpoints(
+          api == null || api.isBlank() ? defaults.api() : URI.create(api),
+          query == null || query.isBlank() ? defaults.apiQuery() : URI.create(query));
+    }
+  }
+
+  @Bean
+  CardMethodProvider cieloCardProvider(CieloProperties properties) {
+    return new CieloCardProvider(
+        new CieloHttp(Duration.ofSeconds(3), properties.readTimeout()),
+        properties.live(),
+        properties.test());
   }
 }

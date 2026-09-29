@@ -32,6 +32,14 @@ public interface PaymentRepository {
    */
   Optional<Payment> findByMerchantAndTxid(MerchantId merchantId, String provider, String txid);
 
+  /**
+   * By the acquirer's PaymentId, scoped to the merchant whose notification URL was called: the
+   * notification names only the PaymentId, and another merchant's sale must not be reachable
+   * through it.
+   */
+  Optional<Payment> findByMerchantAndCardPaymentId(
+      MerchantId merchantId, String provider, String cardPaymentId);
+
   /** Newest first, capped at {@code limit}. */
   List<Payment> listByMerchantAndReference(MerchantId merchantId, String reference, int limit);
 
@@ -58,6 +66,24 @@ public interface PaymentRepository {
    * concurrent requests must not both see the same "remaining" and together exceed the amount.
    */
   Optional<Payment> findByIdForUpdate(String id);
+
+  /**
+   * Like {@link #findByMethodAndStatusIn} but newest first: the card pass reads one sale per row,
+   * and when the cap bites the newest are the ones most likely to have a missed notification.
+   */
+  List<Payment> findNewestByMethodAndStatusIn(
+      com.gateway.kernel.payment.PaymentMethod method,
+      Set<PaymentStatus> statuses,
+      Instant createdAfter,
+      int limit);
+
+  /**
+   * Oldest first, skipping payments with an OPEN divergence of {@code kind}: an already-flagged row
+   * would otherwise be re-read every run and, once there are {@code limit} of them, starve the
+   * newer ones forever.
+   */
+  List<Payment> findByStatusCreatedBeforeWithoutOpenDivergence(
+      PaymentStatus status, Instant createdBefore, String kind, int limit);
 
   /** Ordered by {@code created_at} ascending, capped at {@code limit}. */
   List<Payment> findByStatusCreatedBefore(PaymentStatus status, Instant createdBefore, int limit);

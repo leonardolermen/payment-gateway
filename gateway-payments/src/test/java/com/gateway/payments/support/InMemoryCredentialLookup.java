@@ -7,7 +7,7 @@ import com.gateway.kernel.provider.ProviderEnvironment;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
-/** Test-only: every merchant has an Itau TEST credential and no LIVE one. */
+/** Test-only: every merchant has an Itau and a Cielo TEST credential and no LIVE one. */
 public class InMemoryCredentialLookup implements CredentialLookup {
   @Override
   public Optional<ProviderCredentials> find(
@@ -16,6 +16,16 @@ public class InMemoryCredentialLookup implements CredentialLookup {
       return Optional.of(
           new ProviderCredentials(
               ("{\"client_id\":\"test\",\"beneficiary_id\":\"" + beneficiaryOf(merchantId) + "\"}")
+                  .getBytes(StandardCharsets.UTF_8),
+              env));
+    }
+    // Every test merchant also has a Cielo TEST credential, in the shape CieloCredentials parses.
+    if ("CIELO".equals(provider) && env == ProviderEnvironment.TEST) {
+      return Optional.of(
+          new ProviderCredentials(
+              ("{\"merchant_id\":\"11111111-2222-3333-4444-555555555555\",\"merchant_key\":\""
+                      + "A".repeat(40)
+                      + "\"}")
                   .getBytes(StandardCharsets.UTF_8),
               env));
     }

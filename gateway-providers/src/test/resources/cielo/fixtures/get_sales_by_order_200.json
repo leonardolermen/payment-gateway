@@ -1,0 +1,22 @@
+{
+  "ReasonCode": 0,
+  "ReasonMessage": "Successful",
+  "Payments": [
+    {
+      "PaymentId": "4b62cc74-bb20-4629-ab2d-002262738481",
+      "ReceveidDate": "2024-11-29T13:36:04.033"
+    },
+    {
+      "PaymentId": "1e7abcb6-39be-4aae-b70b-002889ee15d0",
+      "ReceveidDate": "2025-04-13T02:08:16.467"
+    },
+    {
+      "PaymentId": "6c936046-f8df-4e4a-ba8c-003b28879055",
+      "ReceveidDate": "2025-05-17T07:48:10.677"
+    },
+    {
+      "PaymentId": "55f0a6c8-387e-476b-a6e8-ffef82e9a18e",
+      "ReceveidDate": "2025-02-18T14:10:10.61"
+    }
+  ]
+}

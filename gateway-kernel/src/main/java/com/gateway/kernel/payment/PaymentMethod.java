@@ -10,5 +10,7 @@ package com.gateway.kernel.payment;
  */
 public enum PaymentMethod {
   PIX,
-  BOLECODE
+  BOLECODE,
+  /** Credit card, customer present (spec 2026-09-28). Debit and 3DS are out of this phase. */
+  CARD
 }

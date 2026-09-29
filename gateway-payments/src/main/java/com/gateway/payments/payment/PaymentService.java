@@ -19,9 +19,6 @@ import com.gateway.payments.reconciliation.Divergences;
  * BoletoSettlement}.
  */
 public class PaymentService {
-  /** Plan B has one bank. The provider is resolved by name so a second one is a config change. */
-  public static final String PROVIDER = "ITAU";
-
   private final Divergences divergences;
   private final PaymentFlows flows;
   private final PendingAdoption adoption;

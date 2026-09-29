@@ -21,6 +21,10 @@ public class Divergences {
     this.clock = clock;
   }
 
+  public boolean isOpen(Payment payment, String providerStatus) {
+    return divergences.hasOpen(payment.id(), providerStatus);
+  }
+
   /** Returns whether this call was the one that opened it. */
   public boolean open(Payment payment, String providerStatus, String detail) {
     String trimmed = detail.length() <= MAX_DETAIL ? detail : detail.substring(0, MAX_DETAIL);

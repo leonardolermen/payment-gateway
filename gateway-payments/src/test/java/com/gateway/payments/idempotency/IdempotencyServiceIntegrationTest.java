@@ -12,7 +12,7 @@ class IdempotencyServiceIntegrationTest extends ServiceIntegrationTestBase {
 
   @Test
   void firstProceedsThenInProgressThenReplays() {
-    String hash = IdempotencyKey.hashOf("{\"amount\":100}");
+    String hash = IdempotencyKey.hashOf("{\"amount\":100}", IdempotencyKeyTest.KEY);
 
     IdempotencyService.Outcome first = idempotency.begin(merchant, "key-1", hash);
     assertThat(first).isInstanceOf(IdempotencyService.Outcome.Proceed.class);
@@ -30,9 +30,11 @@ class IdempotencyServiceIntegrationTest extends ServiceIntegrationTestBase {
 
   @Test
   void sameKeyDifferentBodyIsAMismatch() {
-    idempotency.begin(merchant, "key-2", IdempotencyKey.hashOf("a"));
+    idempotency.begin(merchant, "key-2", IdempotencyKey.hashOf("a", IdempotencyKeyTest.KEY));
 
-    assertThat(idempotency.begin(merchant, "key-2", IdempotencyKey.hashOf("b")))
+    assertThat(
+            idempotency.begin(
+                merchant, "key-2", IdempotencyKey.hashOf("b", IdempotencyKeyTest.KEY)))
         .isInstanceOf(IdempotencyService.Outcome.Mismatch.class);
   }
 }

@@ -11,7 +11,6 @@ import com.gateway.kernel.provider.boleto.IssuedBoleto;
 import com.gateway.payments.PaymentsProperties;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
-import com.gateway.payments.payment.PaymentService;
 import com.gateway.payments.payment.boleto.BoletoDates;
 import com.gateway.payments.provider.ProviderErrors;
 import com.gateway.payments.provider.ProviderGateway;
@@ -31,6 +30,12 @@ import org.slf4j.LoggerFactory;
  */
 public class BolecodePaymentFlow implements PaymentFlow {
   private static final Logger log = LoggerFactory.getLogger(BolecodePaymentFlow.class);
+
+  /**
+   * The one bank this method goes to until per-merchant routing exists (spec 2026-09-28 §2). Here
+   * rather than on PaymentService: each method's provider is that method's decision.
+   */
+  public static final String PROVIDER = "ITAU";
 
   /**
    * CONFLICT joins the two network codes: the bank saying "this nosso número already exists"
@@ -78,16 +83,14 @@ public class BolecodePaymentFlow implements PaymentFlow {
     CreateBolecodePayment bolecode = (CreateBolecodePayment) command;
 
     ResolvedProvider<BoletoMethodProvider> resolved =
-        providers.resolveBoleto(
-            bolecode.merchantId(), bolecode.environment(), PaymentService.PROVIDER);
+        providers.resolveBoleto(bolecode.merchantId(), bolecode.environment(), PROVIDER);
     requireIssueCredentials(resolved, bolecode);
 
     Payer payer = PayerFactory.from(bolecode.payer());
     LocalDate dueDate = dueDateOf(bolecode);
     LocalDate paymentLimitDate = dueDate.plusDays(paymentLimitDaysOf(bolecode));
 
-    Payment payment =
-        drafts.bolecode(bolecode, PaymentService.PROVIDER, payer, dueDate, paymentLimitDate);
+    Payment payment = drafts.bolecode(bolecode, PROVIDER, payer, dueDate, paymentLimitDate);
     String nossoNumero = payment.boleto().nossoNumero();
 
     BoletoIssueRequest request =
@@ -127,7 +130,7 @@ public class BolecodePaymentFlow implements PaymentFlow {
         throw new DomainException(
             "PROVIDER_CREDENTIALS_MISSING",
             "the "
-                + PaymentService.PROVIDER
+                + PROVIDER
                 + " "
                 + bolecode.environment()
                 + " credential is missing "

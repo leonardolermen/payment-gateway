@@ -6,6 +6,8 @@ import java.util.Set;
 /** The lifecycle of a payment. Terminal statuses are where the charge stops mattering to us. */
 public enum PaymentStatus {
   CREATED,
+  /** A card authorization waiting for its capture (spec 2026-09-28 §4). Holds the payer's limit. */
+  AUTHORIZED,
   PENDING,
   COMPLETED,
   EXPIRED,

@@ -53,4 +53,39 @@ class PaymentDetailsJsonTest {
         java.util.regex.Pattern.compile("\"([A-Za-z]+)\":").matcher(pixJson);
     while (m.find()) assertThat(boletoJson).doesNotContain("\"" + m.group(1) + "\":");
   }
+
+  @Test
+  void aCardPaymentHasAnEmptyPixAndACardBlock() {
+    com.gateway.payments.payment.card.CardDetails card =
+        com.gateway.payments.payment.card.CardDetails.requested(1, "VISA", "3171", null);
+
+    String json = PaymentDetailsJson.write(null, null, card);
+
+    assertThat(json).startsWith("{\"pix\":{},\"boleto\":null,\"card\":{");
+    assertThat(PaymentDetailsJson.readPix(json)).isNull();
+    assertThat(PaymentDetailsJson.readPix(json.replace("\"pix\":{}", "\"pix\": { }"))).isNull();
+    assertThat(PaymentDetailsJson.readBoleto(json)).isNull();
+    assertThat(PaymentDetailsJson.readCard(json)).isEqualTo(card);
+  }
+
+  /**
+   * Card keys must not collide with pix or boleto keys: the three readers scan the whole document.
+   */
+  @Test
+  void theCardBlockSharesNoKeyWithTheOthers() {
+    String cardJson =
+        com.gateway.payments.payment.card.CardDetailsJson.write(
+            new com.gateway.payments.payment.card.CardDetails(
+                "a", "b", "c", "d", "e", "f", 1, 2L, "g", "h"));
+    String others =
+        com.gateway.payments.payment.pix.PixDetailsJson.write(new PixDetails("a", "b", "c", "d"))
+            + com.gateway.payments.payment.boleto.BoletoDetailsJson.write(
+                new BoletoDetails(
+                    "a", "b", "c", "d", LocalDate.EPOCH, LocalDate.EPOCH, PaidVia.BOLETO));
+    java.util.regex.Matcher m =
+        java.util.regex.Pattern.compile("\"([A-Za-z0-9]+)\":").matcher(cardJson);
+    while (m.find()) {
+      assertThat(others).doesNotContain("\"" + m.group(1) + "\":");
+    }
+  }
 }

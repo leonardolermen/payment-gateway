@@ -14,4 +14,6 @@ public interface ReconciliationDivergenceRepository {
   boolean openIfAbsent(ReconciliationDivergence d);
 
   List<ReconciliationDivergence> open();
+
+  boolean hasOpen(String paymentId, String providerStatus);
 }

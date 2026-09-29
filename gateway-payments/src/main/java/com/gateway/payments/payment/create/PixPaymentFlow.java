@@ -8,7 +8,6 @@ import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.payments.PaymentsProperties;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
-import com.gateway.payments.payment.PaymentService;
 import com.gateway.payments.provider.ProviderGateway;
 import com.gateway.payments.provider.ProviderGateway.ResolvedProvider;
 import java.util.Optional;
@@ -21,6 +20,12 @@ import java.util.Set;
  * 30 s.
  */
 public class PixPaymentFlow implements PaymentFlow {
+
+  /**
+   * The one bank this method goes to until per-merchant routing exists (spec 2026-09-28 §2). Here
+   * rather than on PaymentService: each method's provider is that method's decision.
+   */
+  public static final String PROVIDER = "ITAU";
 
   /**
    * A timeout, and equally a 503/504 from a gateway in front of the bank, says nothing about
@@ -59,13 +64,13 @@ public class PixPaymentFlow implements PaymentFlow {
 
     // Fails fast, before a row exists: a merchant with no credential has nothing to clean up.
     ResolvedProvider<PixMethodProvider> resolved =
-        providers.resolvePix(pix.merchantId(), pix.environment(), PaymentService.PROVIDER);
+        providers.resolvePix(pix.merchantId(), pix.environment(), PROVIDER);
 
     int expires =
         pix.expiresInSeconds() == null
             ? properties.defaultExpiresInSeconds()
             : pix.expiresInSeconds();
-    Payment payment = drafts.pix(pix, PaymentService.PROVIDER, expires);
+    Payment payment = drafts.pix(pix, PROVIDER, expires);
 
     Charge charge = issueOrRecover(payment, pix, expires, resolved);
 

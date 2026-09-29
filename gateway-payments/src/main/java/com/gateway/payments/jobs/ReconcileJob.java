@@ -1,23 +1,32 @@
 package com.gateway.payments.jobs;
 
 import com.gateway.payments.payment.StuckCreatedSweep;
+import com.gateway.payments.reconciliation.CardReconciliation;
 import com.gateway.payments.reconciliation.ReconciliationService;
 import java.time.Duration;
 import java.time.Instant;
 
-/** The periodic pass: the stuck-CREATED sweep, then reconciliation against the bank. */
+/**
+ * The periodic pass: the stuck-CREATED sweep, then reconciliation against the bank and against the
+ * acquirer.
+ */
 public class ReconcileJob implements JobHandler {
   /** RECONCILE is a singleton row that never finishes; this is its period. */
   static final Duration RECONCILE_EVERY = Duration.ofMinutes(15);
 
   private final StuckCreatedSweep sweep;
   private final ReconciliationService reconciliation;
+  private final CardReconciliation cardReconciliation;
   private final JobBackoff backoff;
 
   public ReconcileJob(
-      StuckCreatedSweep sweep, ReconciliationService reconciliation, JobBackoff backoff) {
+      StuckCreatedSweep sweep,
+      ReconciliationService reconciliation,
+      CardReconciliation cardReconciliation,
+      JobBackoff backoff) {
     this.sweep = sweep;
     this.reconciliation = reconciliation;
+    this.cardReconciliation = cardReconciliation;
     this.backoff = backoff;
   }
 
@@ -30,6 +39,7 @@ public class ReconcileJob implements JobHandler {
   public boolean run(String refId, Instant now) {
     sweep.sweepStuckCreated(now);
     reconciliation.reconcileAll(now);
+    cardReconciliation.reconcile(now);
     return true;
   }
 

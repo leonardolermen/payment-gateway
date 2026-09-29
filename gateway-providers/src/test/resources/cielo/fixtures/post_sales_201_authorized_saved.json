@@ -1,0 +1,39 @@
+{
+  "MerchantOrderId": "2017051001",
+  "Customer": {
+    "Name": "Aline de Souza",
+    "Identity": "12345678909",
+    "IdentityType": "CPF",
+    "Email": "aline@email.com",
+    "Birthdate": "1990-01-01"
+  },
+  "Payment": {
+    "ServiceTaxAmount": 0,
+    "Installments": 1,
+    "Interest": 0,
+    "Capture": false,
+    "Authenticate": false,
+    "Recurrent": false,
+    "CreditCard": {
+      "CardNumber": "409168******7641",
+      "Holder": "Aline de Souza",
+      "ExpirationDate": "12/2035",
+      "SaveCard": true,
+      "CardToken": "db62dc71-d07b-4745-9969-42697b988ccb",
+      "Brand": "Visa"
+    },
+    "Tid": "1124060407175",
+    "ProofOfSale": "182738",
+    "AuthorizationCode": "663864",
+    "SoftDescriptor": "LojaTeste",
+    "Amount": 10000,
+    "ReceivedDate": "2025-11-24 18:04:07",
+    "Status": 1,
+    "ReturnMessage": "Operation Successful",
+    "ReturnCode": "4",
+    "PaymentId": "6f8d1753-86bb-4dc0-9ebb-09a29093e1fb",
+    "Type": "CreditCard",
+    "Currency": "BRL",
+    "Country": "BRA"
+  }
+}

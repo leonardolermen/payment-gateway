@@ -3,6 +3,7 @@ package com.gateway.app.api.support;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.gateway.kernel.errors.DomainException;
+import com.gateway.payments.payment.card.CardDeclinedException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ProblemDetail;
 
@@ -28,5 +29,37 @@ class ErrorHandlerTest {
   void otherDomainErrorsStayUnprocessable() {
     assertThat(handler.domainError(new DomainException("INVALID_STATE", "not pending")).getStatus())
         .isEqualTo(422);
+  }
+
+  @Test
+  void cardCodesHaveTheirStatuses() {
+    ErrorHandler handler = new ErrorHandler();
+
+    assertThat(handler.domainError(new DomainException("CAPTURE_NOT_ALLOWED", "x")).getStatus())
+        .isEqualTo(409);
+    assertThat(handler.domainError(new DomainException("ALREADY_CAPTURED", "x")).getStatus())
+        .isEqualTo(409);
+    assertThat(handler.domainError(new DomainException("ALREADY_PAID", "x")).getStatus())
+        .isEqualTo(409);
+    assertThat(handler.domainError(new DomainException("CAPTURE_AMOUNT_INVALID", "x")).getStatus())
+        .isEqualTo(422);
+    assertThat(handler.domainError(new DomainException("CARD_NOT_FOUND", "x")).getStatus())
+        .isEqualTo(422);
+    assertThat(handler.domainError(new DomainException("CARD_INVALID", "x")).getStatus())
+        .isEqualTo(422);
+  }
+
+  /** Spec §9: a decline is 402 with our decline_code; the issuer's text is never there. */
+  @Test
+  void aDeclineIs402WithTheDeclineCodeAndThePayment() {
+    ProblemDetail problem =
+        new ErrorHandler().cardDeclined(new CardDeclinedException("01K0PAY", "INSUFFICIENT_FUNDS"));
+
+    assertThat(problem.getStatus()).isEqualTo(402);
+    assertThat(problem.getType()).hasToString("urn:gateway:CARD_DECLINED");
+    assertThat(problem.getDetail()).isEqualTo("The card was declined.");
+    assertThat(problem.getProperties())
+        .containsEntry("decline_code", "INSUFFICIENT_FUNDS")
+        .containsEntry("payment_id", "01K0PAY");
   }
 }

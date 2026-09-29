@@ -1,0 +1,28 @@
+{
+  "MerchantOrderId": "2017051001",
+  "Customer": {
+    "Name": "Aline de Souza"
+  },
+  "Payment": {
+    "Installments": 1,
+    "Capture": true,
+    "CreditCard": {
+      "CardNumber": "409168******7641",
+      "Holder": "Aline de Souza",
+      "ExpirationDate": "12/2035",
+      "SaveCard": false,
+      "Brand": "Visa"
+    },
+    "Tid": "1124060407175",
+    "ProofOfSale": "182738",
+    "Amount": 10000,
+    "ReceivedDate": "2025-11-24 18:04:07",
+    "Status": 3,
+    "ReturnMessage": "Nao Autorizada",
+    "ReturnCode": "51",
+    "PaymentId": "6f8d1753-86bb-4dc0-9ebb-09a29093e1fb",
+    "Type": "CreditCard",
+    "Currency": "BRL",
+    "Country": "BRA"
+  }
+}

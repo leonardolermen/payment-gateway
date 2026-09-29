@@ -15,6 +15,8 @@ import com.gateway.payments.payment.create.CreatePaymentCommand;
  * by the deserialiser instead of by a chain of string comparisons — and each one validates only its
  * own rules, with no {@code if} asking which method it is.
  *
+ * <p>CARD takes a {@code card} or a {@code card_id} (spec 2026-09-28 §9).
+ *
  * <p>The environment is never a field here: it is the API key's, so a TEST key cannot reach a
  * merchant's LIVE bank credential no matter what the body says.
  */
@@ -27,9 +29,11 @@ import com.gateway.payments.payment.create.CreatePaymentCommand;
     property = "method")
 @JsonSubTypes({
   @JsonSubTypes.Type(value = PixPaymentRequest.class, name = "PIX"),
-  @JsonSubTypes.Type(value = BolecodePaymentRequest.class, name = "BOLECODE")
+  @JsonSubTypes.Type(value = BolecodePaymentRequest.class, name = "BOLECODE"),
+  @JsonSubTypes.Type(value = CardPaymentRequest.class, name = "CARD")
 })
-public sealed interface CreatePaymentRequest permits PixPaymentRequest, BolecodePaymentRequest {
+public sealed interface CreatePaymentRequest
+    permits PixPaymentRequest, BolecodePaymentRequest, CardPaymentRequest {
 
   PaymentMethod method();
 
