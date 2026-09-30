@@ -7,6 +7,7 @@ import com.gateway.kernel.provider.pix.Charge;
 import com.gateway.kernel.provider.pix.ChargeStatus;
 import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.payments.PaymentsProperties;
+import com.gateway.payments.payment.create.CardAuthorizationRecovery;
 import com.gateway.payments.payment.persistence.PaymentRepository;
 import com.gateway.payments.provider.ProviderGateway;
 import com.gateway.payments.provider.ProviderGateway.ResolvedProvider;
@@ -29,6 +30,7 @@ public class StuckCreatedSweep {
   private final PixSettlement pixSettlement;
   private final BoletoSettlement boletoSettlement;
   private final PaymentsProperties properties;
+  private final CardAuthorizationRecovery cardRecovery;
 
   public StuckCreatedSweep(
       PaymentRepository payments,
@@ -36,13 +38,15 @@ public class StuckCreatedSweep {
       PaymentService paymentService,
       PixSettlement pixSettlement,
       BoletoSettlement boletoSettlement,
-      PaymentsProperties properties) {
+      PaymentsProperties properties,
+      CardAuthorizationRecovery cardRecovery) {
     this.payments = payments;
     this.providers = providers;
     this.paymentService = paymentService;
     this.pixSettlement = pixSettlement;
     this.boletoSettlement = boletoSettlement;
     this.properties = properties;
+    this.cardRecovery = cardRecovery;
   }
 
   /**
@@ -58,6 +62,19 @@ public class StuckCreatedSweep {
         payments.findByStatusCreatedBefore(
             PaymentStatus.CREATED, now.minus(properties.stuckCreatedAfter()), BATCH)) {
       try {
+        if (payment.method() == PaymentMethod.CARD) {
+          // The MerchantOrderId is ours, so the Cielo can say what became of the sale; empty or
+          // still in doubt after stuckCreatedAfter is FAILED (spec §6.4). A failed query throws and
+          // is logged below: the next run asks again.
+          cardRecovery.sweep(payment);
+          if (payments
+              .findById(payment.id())
+              .map(reloaded -> reloaded.status() != PaymentStatus.CREATED)
+              .orElse(false)) {
+            changed++;
+          }
+          continue;
+        }
         if (payment.method() == PaymentMethod.BOLECODE) {
           // Same idea as Pix, with the query: the number is ours, so the bank can say whether the
           // issue landed. Empty after stuckCreatedAfter (the bank's 202 long past) is FAILED.

@@ -184,7 +184,8 @@ characters. A repeated key with the same request body and method replays the sto
 still being processed, or one whose first attempt failed with a 5xx and is held open, is `409 IN_PROGRESS`
 — retry with a new key, or `GET` the resource to see what happened. The key is scoped per environment
 (TEST and LIVE never share a key row), so it is safe to script tests against TEST and LIVE with the same
-key values.
+key values. The stored body hash is an HMAC-SHA256 under `GATEWAY_IDEMPOTENCY_HMAC_KEY` (falling back to
+`GATEWAY_API_KEY_PEPPER` when unset), because card request bodies carry PAN and CVV.
 
 ### Background jobs
 
@@ -201,6 +202,58 @@ key values.
   (`gateway.payments.boleto-poll-every`) until the payment limit date plus 2 days; paid completes the payment
   with `paid_via = BOLETO`, anything the gateway cannot act on becomes a divergence. Reconciliation runs the same
   check for every `PENDING` Bolecode older than `reconciliation-min-age`.
+
+### Card (Cielo)
+
+Credit card, customer present, through the Cielo E-commerce API (`method: "CARD"`). The card number
+reaches the gateway and dies in the call to the Cielo: it is never stored, logged or echoed
+(`CardDataNeverLeavesTheRequestTest`). Register the merchant's Cielo credential first:
+
+```bash
+curl -X PUT localhost:8080/v1/admin/merchants/$MERCHANT/providers/CIELO/credentials \
+  -H "X-Admin-Key: $GATEWAY_ADMIN_KEY" -H 'Content-Type: application/json' \
+  -d '{"environment":"TEST","payload":{"merchant_id":"<CIELO_SANDBOX_MERCHANT_ID>","merchant_key":"<CIELO_SANDBOX_MERCHANT_KEY>"}}'
+```
+
+```bash
+curl -X POST localhost:8080/v1/payments -H "Authorization: Bearer $TEST_KEY" \
+  -H 'Idempotency-Key: order-42-1' -H 'Content-Type: application/json' -d '{
+    "method": "CARD", "amount": 12990, "currency": "BRL", "reference": "order-42",
+    "soft_descriptor": "LOJA42", "installments": 3, "capture": true, "save_card": true,
+    "card": {"number": "4024007153763171", "holder": "JOAO DA SILVA", "expiry": "12/2030", "cvv": "123"},
+    "customer": {"name": "Joao da Silva", "document": "12345678901", "email": "joao@example.com"}}'
+```
+
+- `card` **or** `card_id` (a card saved earlier with `save_card`); with `card_id`, `cvv` is required —
+  the Cielo requires the security code with a stored card.
+- `brand` is optional when the number identifies it (Visa, Master, Amex, Elo, Aura, JCB, Diners,
+  Discover). `installments` 1–12, each installment at least R$ 5,00 (the Cielo's minimum for
+  merchant-financed installments). `soft_descriptor` up to 13 letters or digits.
+- `capture: false` stops at `AUTHORIZED`; capture with `POST /v1/payments/{id}/capture` (`{"amount": 5000}`
+  for a partial capture — one capture per payment, at least 20 cents). `POST /v1/payments/{id}/cancel`
+  on an `AUTHORIZED` payment voids it; a captured payment is refunded with `POST …/refunds` (total or
+  partial, answered in the same request).
+- A decline is `402 CARD_DECLINED` with `decline_code` (`INSUFFICIENT_FUNDS`, `EXPIRED_CARD`,
+  `BLOCKED_CARD`, `CANCELED_CARD`, `TIMEOUT`, `DO_NOT_HONOR`, `GENERIC`) and the failed `payment_id`.
+  Do not retry a decline automatically: card brands penalize it.
+- **Always send an `Idempotency-Key`.** A create repeated without one is a second authorization at the
+  Cielo, and a second hold on the payer's limit.
+- An authorization nobody captures is never canceled by the gateway; after 5 days
+  (`gateway.payments.card-capture-deadline`) reconciliation opens a `CAPTURE_OVERDUE` divergence.
+- Saved cards: `GET /v1/cards/{id}` (brand, last four, expiry, holder) and `DELETE /v1/cards/{id}`.
+
+**Cielo notifications.** In the Cielo site, set the notification URL to
+`https://<public-host>/v1/providers/cielo/webhooks/<inbound_webhook_token>` (the token is the merchant's,
+the same one the Itaú URL uses) and add a fixed header `X-Gateway-Notification-Key` with a value of your
+choice; register the same value at the gateway:
+
+```bash
+curl -X PUT localhost:8080/v1/admin/merchants/$MERCHANT/providers/CIELO/notification-key \
+  -H "X-Admin-Key: $GATEWAY_ADMIN_KEY" -H 'Content-Type: application/json' -d '{"key":"<the header value>"}'
+```
+
+The notification is only a hint: the gateway queries the sale and moves the payment on the Cielo's
+answer. See `docs/providers/cielo/NOTES.md`.
 
 ### Sandbox
 

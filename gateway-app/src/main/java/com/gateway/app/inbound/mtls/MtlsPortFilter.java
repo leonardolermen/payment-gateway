@@ -17,10 +17,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
 /**
  * Both connectors share one servlet context, so without this the webhook route would answer on the
  * plain port (with no client certificate at all, since ProtectedRoutes exempts it from API keys)
- * and the whole API would answer on the mTLS port. Closed in both directions: provider paths
- * anywhere but the mTLS port are 404 (indistinguishable from a route that does not exist), anything
- * else on the mTLS port is 403. Runs before PathSanityFilter (0) and classifies on the normalized
- * path the dispatcher routes on, so an encoded variant cannot slip a provider path past it.
+ * and the whole API would answer on the mTLS port. Closed in both directions: the Itaú's provider
+ * paths anywhere but the mTLS port are 404 (indistinguishable from a route that does not exist; the
+ * Cielo's live on the main connector: it offers no client certificate and delivers only on 443),
+ * anything else on the mTLS port is 403. Runs before PathSanityFilter (0) and classifies on the
+ * normalized path the dispatcher routes on, so an encoded variant cannot slip a provider path past
+ * it.
  *
  * <p>Two more checks on the mTLS port, both before any body is read: a declared Content-Length over
  * {@code max-body-bytes} is 413 (the controller caps chunked bodies itself), and when {@code
@@ -50,8 +52,9 @@ public class MtlsPortFilter extends OncePerRequestFilter {
     return false;
   }
 
+  /** Only the bank that authenticates with a client certificate is fenced onto the mTLS port. */
   static boolean isProviderPath(String path) {
-    return path.equals("/v1/providers") || path.startsWith("/v1/providers/");
+    return path.equals("/v1/providers/itau") || path.startsWith("/v1/providers/itau/");
   }
 
   @Override

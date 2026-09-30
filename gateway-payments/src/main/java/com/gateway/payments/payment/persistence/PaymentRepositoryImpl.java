@@ -47,7 +47,7 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   public Payment save(Payment payment, List<PaymentEvent> newEvents) {
     long newVersion = payment.version();
     long expectedVersion = newVersion - newEvents.size();
-    String details = PaymentDetailsJson.write(payment.pix(), payment.boleto());
+    String details = PaymentDetailsJson.write(payment.pix(), payment.boleto(), payment.card());
 
     if (expectedVersion == 0) {
       PaymentEntity entity = new PaymentEntity();
@@ -119,6 +119,13 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   }
 
   @Override
+  public Optional<Payment> findByMerchantAndCardPaymentId(
+      MerchantId merchantId, String provider, String cardPaymentId) {
+    return jpa.findByMerchantAndCardPaymentId(merchantId.value(), provider, cardPaymentId)
+        .map(PaymentRepositoryImpl::toDomain);
+  }
+
+  @Override
   public List<Payment> listByMerchant(MerchantId merchantId, int limit, String cursorId) {
     return jpa.findByMerchant(merchantId.value(), cursorId, Limit.of(limit)).stream()
         .map(PaymentRepositoryImpl::toDomain)
@@ -152,6 +159,31 @@ public class PaymentRepositoryImpl implements PaymentRepository {
     return jpa
         .findByMethodAndStatusInAndCreatedAtAfter(
             method.name(), names, createdAfter, Limit.of(limit))
+        .stream()
+        .map(PaymentRepositoryImpl::toDomain)
+        .toList();
+  }
+
+  @Override
+  public List<Payment> findNewestByMethodAndStatusIn(
+      com.gateway.kernel.payment.PaymentMethod method,
+      Set<PaymentStatus> statuses,
+      Instant createdAfter,
+      int limit) {
+    Set<String> names = statuses.stream().map(Enum::name).collect(Collectors.toSet());
+    return jpa
+        .findByMethodAndStatusInAndCreatedAtAfterNewestFirst(
+            method.name(), names, createdAfter, Limit.of(limit))
+        .stream()
+        .map(PaymentRepositoryImpl::toDomain)
+        .toList();
+  }
+
+  @Override
+  public List<Payment> findByStatusCreatedBeforeWithoutOpenDivergence(
+      PaymentStatus status, Instant createdBefore, String kind, int limit) {
+    return jpa
+        .findByStatusCreatedBeforeWithoutOpenDivergence(status.name(), createdBefore, kind, limit)
         .stream()
         .map(PaymentRepositoryImpl::toDomain)
         .toList();
@@ -232,6 +264,7 @@ public class PaymentRepositoryImpl implements PaymentRepository {
         entity.customerDocumentHash,
         PaymentDetailsJson.readPix(entity.details),
         PaymentDetailsJson.readBoleto(entity.details),
+        PaymentDetailsJson.readCard(entity.details),
         entity.expiresAt,
         entity.paidAt,
         entity.paidAmount == null ? null : new Money(entity.paidAmount, entity.currency),

@@ -3,6 +3,7 @@ package com.gateway.payments.inbox;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.ids.Ulid;
 import com.gateway.kernel.provider.ProviderWebhookEvent;
+import com.gateway.kernel.provider.card.CardNotification;
 import com.gateway.kernel.provider.pix.ReceivedPix;
 import com.gateway.kernel.provider.pix.RefundResult;
 import com.gateway.payments.inbox.persistence.WebhookInboxRepository;
@@ -32,6 +33,7 @@ public class WebhookInboxService {
   private final RefundService refundService;
   private final TransactionTemplate transactionTemplate;
   private final Clock clock;
+  private final CardNotifications cardNotifications;
 
   public WebhookInboxService(
       WebhookInboxRepository inbox,
@@ -40,7 +42,8 @@ public class WebhookInboxService {
       PixSettlement pixSettlement,
       RefundService refundService,
       TransactionTemplate transactionTemplate,
-      Clock clock) {
+      Clock clock,
+      CardNotifications cardNotifications) {
     this.inbox = inbox;
     this.jobs = jobs;
     this.providers = providers;
@@ -48,6 +51,7 @@ public class WebhookInboxService {
     this.refundService = refundService;
     this.transactionTemplate = transactionTemplate;
     this.clock = clock;
+    this.cardNotifications = cardNotifications;
   }
 
   public String accept(String provider, MerchantId merchantId, String rawHeaders, byte[] body) {
@@ -77,6 +81,12 @@ public class WebhookInboxService {
     if (entry == null || !"RECEIVED".equals(entry.status())) {
       return;
     }
+    // The Cielo's notification is a card's, not a Pix body: its own parser and its own handler.
+    // Dispatched here, once, by the provider the URL belonged to.
+    if (providers.hasCardProvider(entry.provider())) {
+      processCard(entry);
+      return;
+    }
     ProviderWebhookEvent event;
     try {
       event = providers.pixProvider(entry.provider()).parseWebhook(entry.rawBody());
@@ -104,6 +114,24 @@ public class WebhookInboxService {
         matched |= refundService.confirmFromWebhook(entry.merchantId(), e2e, update);
       }
     }
+    mark(entry, matched ? "PROCESSED" : "IGNORED", null);
+  }
+
+  /**
+   * An unreadable body is FAILED and never retried; the Cielo being unreachable during the query
+   * propagates, so the job retries — the same split as the Pix path above.
+   */
+  private void processCard(WebhookInboxEntry entry) {
+    CardNotification notification;
+    try {
+      notification = providers.cardProvider(entry.provider()).parseWebhook(entry.rawBody());
+    } catch (RuntimeException e) {
+      log.warn("unreadable {} notification {}", entry.provider(), entry.id(), e);
+      mark(entry, "FAILED", e.getClass().getSimpleName() + ": " + e.getMessage());
+      return;
+    }
+
+    boolean matched = cardNotifications.apply(entry.merchantId(), entry.provider(), notification);
     mark(entry, matched ? "PROCESSED" : "IGNORED", null);
   }
 

@@ -1,0 +1,32 @@
+{
+  "Customer": {
+    "Name": "Aline de Souza",
+    "Identity": "12345678909",
+    "IdentityType": "CPF",
+    "Email": "aline@email.com",
+    "Birthdate": "1990-01-01"
+  },
+  "Payment": {
+    "Type": "CreditCard",
+    "IsCryptocurrencyNegociation": false,
+    "IssuerTransactionId": "580027442382078",
+    "CreditCard": {
+      "CardNumber": "4091688625337641",
+      "Holder": "Aline de Souza",
+      "ExpirationDate": "12/2035",
+      "SecurityCode": "333",
+      "Brand": "Visa",
+      "SaveCard": false
+    },
+    "Amount": 10000,
+    "Currency": "BRL",
+    "Country": "BRA",
+    "SoftDescriptor": "LojaTeste",
+    "Installments": 1,
+    "Interest": "ByMerchant",
+    "Capture": true,
+    "Authenticate": false,
+    "Recurrent": false
+  },
+  "MerchantOrderId": "2017051001"
+}

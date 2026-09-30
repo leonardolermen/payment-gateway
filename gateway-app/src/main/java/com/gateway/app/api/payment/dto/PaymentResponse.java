@@ -3,6 +3,7 @@ package com.gateway.app.api.payment.dto;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.boleto.BoletoDetails;
+import com.gateway.payments.payment.card.CardDetails;
 import com.gateway.payments.payment.pix.PixDetails;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -10,8 +11,8 @@ import java.time.LocalDate;
 /**
  * The merchant's view of a payment, field by field: the aggregate also carries the customer
  * document hash, which must never reach a response. Money is integer cents, like the request.
- * {@code boleto} is null for a Pix payment so the key set is the same for every method
- * (PaymentJsonContractTest holds it to the webhook's).
+ * {@code pix}, {@code boleto} and {@code card} are null for the other methods so the key set is the
+ * same for every method (PaymentJsonContractTest holds it to the webhook's).
  */
 public record PaymentResponse(
     String id,
@@ -25,6 +26,7 @@ public record PaymentResponse(
     String description,
     Pix pix,
     Boleto boleto,
+    Card card,
     Instant expiresAt,
     Instant paidAt,
     Long paidAmount,
@@ -48,9 +50,20 @@ public record PaymentResponse(
       LocalDate paymentLimitDate,
       String paidVia) {}
 
+  /** Spec §9: what the merchant's checkout shows; never a number, an expiry or a CVV. */
+  public record Card(
+      String brand,
+      String last4,
+      int installments,
+      String authorizationCode,
+      String tid,
+      Long capturedAmount,
+      String cardId) {}
+
   public static PaymentResponse from(Payment payment) {
     PixDetails pix = payment.pix();
     BoletoDetails boleto = payment.boleto();
+    CardDetails card = payment.card();
     return new PaymentResponse(
         payment.id(),
         payment.status().name(),
@@ -62,7 +75,7 @@ public record PaymentResponse(
         payment.reference(),
         payment.description(),
         pix == null
-            ? new Pix(payment.id(), null, null, null)
+            ? null
             : new Pix(pix.txid(), pix.pixCopiaECola(), pix.location(), pix.endToEndId()),
         boleto == null
             ? null
@@ -72,6 +85,16 @@ public record PaymentResponse(
                 boleto.dueDate(),
                 boleto.paymentLimitDate(),
                 boleto.paidVia() == null ? null : boleto.paidVia().name()),
+        card == null
+            ? null
+            : new Card(
+                card.brand(),
+                card.last4(),
+                card.installments(),
+                card.authorizationCode(),
+                card.tid(),
+                card.capturedAmount(),
+                card.cardId()),
         payment.expiresAt(),
         payment.paidAt(),
         payment.paidAmount() == null ? null : payment.paidAmount().cents(),

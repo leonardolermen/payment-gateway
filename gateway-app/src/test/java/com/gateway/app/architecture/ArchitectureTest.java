@@ -18,15 +18,12 @@ public class ArchitectureTest {
 
   @ArchTest
   static void importSeesTheModules(JavaClasses classes) {
-    // 202 main classes after Plan C's Bolecode work (`find gateway-*/src/main -name '*.java' | wc
-    // -l`);
-    // the guard sits at roughly half that so a module accidentally dropped from the scan still
-    // trips it
-    // well before the count could coincidentally clear the old `> 60`, which every module alone
-    // already cleared.
+    // 334 main classes after Plan D's card work, measured 2026-09-28 (`find gateway-*/src/main
+    // -name '*.java' | wc -l`); the guard sits at roughly half that so a module accidentally
+    // dropped from the scan still trips it well before the count could coincidentally clear it.
     assertThat(classes.size())
         .as("ArchUnit imported too few classes; the rules would pass vacuously")
-        .isGreaterThan(90);
+        .isGreaterThan(160);
   }
 
   @ArchTest
@@ -104,6 +101,17 @@ public class ArchitectureTest {
           .resideOutsideOfPackage("com.gateway.providers..")
           .should()
           .haveSimpleNameContaining("Itau");
+
+  /**
+   * The Cielo's vocabulary, like the Itaú's, does not leave gateway-providers (spec 2026-09-28).
+   */
+  @ArchTest
+  static final ArchRule cieloVocabularyStaysInProviders =
+      noClasses()
+          .that()
+          .resideOutsideOfPackage("com.gateway.providers..")
+          .should()
+          .haveSimpleNameContaining("Cielo");
 
   @ArchTest
   static final ArchRule jpaEntitiesArePackagePrivate =

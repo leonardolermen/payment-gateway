@@ -1,15 +1,16 @@
 package com.gateway.app.inbound.pix;
 
+import com.gateway.app.inbound.InboundBody;
+import com.gateway.app.inbound.InboundHeaders;
 import com.gateway.app.inbound.mtls.WebhookMtlsProperties;
-import com.gateway.app.security.Problems;
 import com.gateway.merchants.merchant.Merchant;
 import com.gateway.payments.inbox.WebhookInboxService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.security.cert.X509Certificate;
-import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -52,38 +53,23 @@ public class PixWebhookController {
       @PathVariable String token, HttpServletRequest request, HttpServletResponse response)
       throws IOException {
     Merchant merchant = guard.resolve(token);
-    // Read through a bounded stream, not @RequestBody byte[]: MtlsPortFilter refuses an oversized
-    // Content-Length, but a chunked body declares none, and an unbounded read would buffer it all.
-    byte[] body = request.getInputStream().readNBytes(maxBodyBytes + 1);
-    if (body.length > maxBodyBytes) {
-      Problems.write(
-          response, 413, "PAYLOAD_TOO_LARGE", "webhook body exceeds " + maxBodyBytes + " bytes");
+    Optional<byte[]> body = InboundBody.read(request, response, maxBodyBytes);
+    if (body.isEmpty()) {
       return null;
     }
-    inbox.accept("ITAU", merchant.id(), headers(request), body);
+
+    inbox.accept("ITAU", merchant.id(), headers(request), body.get());
     return ResponseEntity.accepted().build();
   }
 
-  /**
-   * What an operator needs to trace a delivery back to the bank; the full header set would be
-   * noise.
-   */
+  /** The shared whitelist plus the client certificate that authenticated the bank. */
   private String headers(HttpServletRequest request) {
-    Map<String, String> h = new LinkedHashMap<>();
-    put(h, "X-Correlation-Id", request.getHeader("X-Correlation-Id"));
-    put(h, "User-Agent", request.getHeader("User-Agent"));
-    put(h, "Content-Type", request.getContentType());
+    Map<String, String> traced = InboundHeaders.traced(request);
     if (request.getAttribute(CLIENT_CERT_ATTRIBUTE) instanceof X509Certificate[] chain
         && chain.length > 0) {
-      put(h, "Client-Cert-Subject", chain[0].getSubjectX500Principal().getName());
-      put(h, "Client-Cert-Issuer", chain[0].getIssuerX500Principal().getName());
+      traced.put("Client-Cert-Subject", chain[0].getSubjectX500Principal().getName());
+      traced.put("Client-Cert-Issuer", chain[0].getIssuerX500Principal().getName());
     }
-    return json.writeValueAsString(h);
-  }
-
-  private static void put(Map<String, String> h, String k, String v) {
-    if (v != null) {
-      h.put(k, v);
-    }
+    return json.writeValueAsString(traced);
   }
 }

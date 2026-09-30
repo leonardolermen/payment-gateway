@@ -12,6 +12,7 @@ import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentEvent;
 import com.gateway.payments.payment.PaymentStatus;
 import com.gateway.payments.payment.boleto.BoletoDetails;
+import com.gateway.payments.payment.card.CardDetails;
 import com.gateway.payments.payment.pix.PixDetails;
 import java.time.Clock;
 import java.time.Instant;
@@ -327,5 +328,60 @@ class PaymentRepositoryIntegrationTest {
                 p.id()))
         .isEqualTo(p.id());
     assertThat(repository.findByMerchantAndTxid(p.merchantId(), "ITAU", p.id())).isPresent();
+  }
+
+  @Test
+  void aCardPaymentRoundTripsAndIsFoundByTheAcquirersPaymentId() {
+    MerchantId merchant = MerchantId.next();
+    Payment draft =
+        Payment.createCard(
+            merchant,
+            ProviderEnvironment.TEST,
+            "CIELO",
+            Money.brl(12990),
+            "order-42",
+            "Pedido 42",
+            null,
+            CardDetails.requested(2, "MASTER", "0634", null),
+            clock);
+    tx().executeWithoutResult(status -> repository.save(draft, List.of(draft.createdEvent())));
+
+    Payment loaded = repository.findById(draft.id()).orElseThrow();
+    // Both transitions bump the in-memory version, so both events must reach save(): the
+    // optimistic-lock's expectedVersion is derived from newEvents.size(), and dropping the
+    // authorized event here made the update's WHERE version=... miss
+    // (ObjectOptimisticLockingFailureException).
+    PaymentEvent authorized =
+        loaded.markAuthorized(
+            new CardDetails(
+                "5cd9ccaf-e3b2-430c-b5dd-2b674cfd656a",
+                "t",
+                "a",
+                "p",
+                "MASTER",
+                "0634",
+                2,
+                null,
+                null,
+                null),
+            EventSource.API);
+    PaymentEvent captured = loaded.markCaptured(Money.brl(12990), clock.instant(), EventSource.API);
+    tx().executeWithoutResult(status -> repository.save(loaded, List.of(authorized, captured)));
+
+    Payment found =
+        repository
+            .findByMerchantAndCardPaymentId(
+                merchant, "CIELO", "5cd9ccaf-e3b2-430c-b5dd-2b674cfd656a")
+            .orElseThrow();
+    assertThat(found.id()).isEqualTo(draft.id());
+    assertThat(found.method()).isEqualTo(PaymentMethod.CARD);
+    assertThat(found.status()).isEqualTo(PaymentStatus.COMPLETED);
+    assertThat(found.pix()).isNull();
+    assertThat(found.card().capturedAmount()).isEqualTo(12990L);
+    assertThat(found.paidAmount()).isEqualTo(Money.brl(12990));
+    assertThat(
+            repository.findByMerchantAndCardPaymentId(
+                MerchantId.next(), "CIELO", "5cd9ccaf-e3b2-430c-b5dd-2b674cfd656a"))
+        .isEmpty();
   }
 }

@@ -14,12 +14,14 @@ import com.gateway.payments.payment.PaymentService;
 import com.gateway.payments.payment.PaymentStatus;
 import com.gateway.payments.payment.PixSettlement;
 import com.gateway.payments.payment.boleto.BoletoPollingService;
+import com.gateway.payments.payment.create.PixPaymentFlow;
 import com.gateway.payments.payment.persistence.PaymentRepository;
 import com.gateway.payments.provider.ProviderGateway;
 import com.gateway.payments.provider.ProviderGateway.ResolvedProvider;
 import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceRepository;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -112,16 +114,23 @@ public class ReconciliationService {
       }
     }
     Map<Scope, Instant> scopes = new LinkedHashMap<>();
-    for (Payment payment :
-        payments.findByStatusIn(
-            EnumSet.of(
-                PaymentStatus.PENDING,
-                PaymentStatus.EXPIRED,
-                PaymentStatus.COMPLETED,
-                PaymentStatus.FAILED,
-                PaymentStatus.CANCELED),
-            from,
-            CANDIDATES)) {
+    // Pix and Bolecode only (the Bolecode's Pix side is listed by /cob too); card payments have
+    // their own pass, CardReconciliation. One query per method, so card rows cannot fill the cap.
+    List<Payment> pixSide = new ArrayList<>();
+    for (PaymentMethod method : EnumSet.of(PaymentMethod.PIX, PaymentMethod.BOLECODE)) {
+      pixSide.addAll(
+          payments.findByMethodAndStatusIn(
+              method,
+              EnumSet.of(
+                  PaymentStatus.PENDING,
+                  PaymentStatus.EXPIRED,
+                  PaymentStatus.COMPLETED,
+                  PaymentStatus.FAILED,
+                  PaymentStatus.CANCELED),
+              from,
+              CANDIDATES));
+    }
+    for (Payment payment : pixSide) {
       if (payment.status() == PaymentStatus.PENDING && payment.createdAt().isAfter(youngCutoff)) {
         continue;
       }
@@ -148,7 +157,7 @@ public class ReconciliationService {
   /** Returns how many payments were completed or got a new divergence. */
   public int reconcile(MerchantId merchantId, ProviderEnvironment env, Instant from, Instant to) {
     ResolvedProvider<PixMethodProvider> resolved =
-        providers.resolvePix(merchantId, env, PaymentService.PROVIDER);
+        providers.resolvePix(merchantId, env, PixPaymentFlow.PROVIDER);
     List<Charge> charges =
         providers.call(
             null,
@@ -158,7 +167,7 @@ public class ReconciliationService {
     int changed = 0;
     for (Charge charge : charges) {
       Optional<Payment> found =
-          payments.findByMerchantAndTxid(merchantId, PaymentService.PROVIDER, charge.txid());
+          payments.findByMerchantAndTxid(merchantId, PixPaymentFlow.PROVIDER, charge.txid());
       if (found.isEmpty()) {
         continue; // not ours, or another merchant's with the same bank account
       }

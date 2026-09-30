@@ -27,7 +27,10 @@ public record PaymentsProperties(
     Duration boletoPollGraceAfterLimit,
     int boletoDefaultDueInDays,
     int boletoDefaultPaymentLimitDays,
-    int boletoMaxPaymentLimitDays) {
+    int boletoMaxPaymentLimitDays,
+    Duration cardCaptureDeadline,
+    Duration cardReconciliationLookback,
+    int cardReconciliationCap) {
 
   public PaymentsProperties {
     if (defaultExpiresInSeconds <= 0) {
@@ -97,10 +100,23 @@ public record PaymentsProperties(
     if (boletoMaxPaymentLimitDays <= 0) {
       boletoMaxPaymentLimitDays = 3650;
     }
+    // The Cielo does not expire an authorization and the payer's limit stays held (spec §8, §11):
+    // five days is when a human hears about it.
+    if (cardCaptureDeadline == null) {
+      cardCaptureDeadline = Duration.ofDays(5);
+    }
+    // One GET per card payment per run (spec §8): the same two days as the Pix listing, capped.
+    if (cardReconciliationLookback == null) {
+      cardReconciliationLookback = Duration.ofHours(48);
+    }
+    if (cardReconciliationCap <= 0) {
+      cardReconciliationCap = 200;
+    }
   }
 
   public static PaymentsProperties defaults() {
     return new PaymentsProperties(
-        0, null, null, null, null, 0, null, null, null, 0, null, null, null, 0, null, 0, 0, 0);
+        0, null, null, null, null, 0, null, null, null, 0, null, null, null, 0, null, 0, 0, 0, null,
+        null, 0);
   }
 }

@@ -1,0 +1,27 @@
+{
+  "MerchantOrderId": "Loja123456",
+  "Customer": {
+    "Name": "Comprador crédito completo"
+  },
+  "Payment": {
+    "Installments": 1,
+    "Interest": "ByMerchant",
+    "Capture": false,
+    "CreditCard": {
+      "CardNumber": "123412******1234",
+      "Holder": "Teste Holder",
+      "ExpirationDate": "12/2030",
+      "Brand": "Visa"
+    },
+    "ProofOfSale": "553486",
+    "Tid": "1212092931654",
+    "AuthorizationCode": "520520",
+    "PaymentId": "2352fc91-f9a4-4ca2-aedb-31488b9658c9",
+    "Type": "CreditCard",
+    "Amount": 15700,
+    "ReceivedDate": "2024-12-12 09:29:31",
+    "Currency": "BRL",
+    "Country": "BRA",
+    "Status": 1
+  }
+}

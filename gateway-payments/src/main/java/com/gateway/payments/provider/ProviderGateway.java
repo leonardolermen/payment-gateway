@@ -8,6 +8,7 @@ import com.gateway.kernel.provider.ProviderCredentials;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
+import com.gateway.kernel.provider.card.CardMethodProvider;
 import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.payments.provider.persistence.ProviderRequestRepository;
 import java.util.List;
@@ -32,8 +33,12 @@ import org.slf4j.LoggerFactory;
 public class ProviderGateway {
   private static final Logger log = LoggerFactory.getLogger(ProviderGateway.class);
 
-  /** The operations that create a resource at the bank answer 201 (PUT /cob, PUT /devolucao). */
-  private static final Set<String> CREATING = Set.of("createCharge", "requestRefund");
+  /**
+   * The operations that create a resource at the bank answer 201 (PUT /cob, PUT /devolucao, POST
+   * /1/sales).
+   */
+  private static final Set<String> CREATING =
+      Set.of("createCharge", "requestRefund", "authorizeCard");
 
   /**
    * A provider resolved together with the credential of the merchant and environment that asked.
@@ -43,16 +48,19 @@ public class ProviderGateway {
 
   private final List<PixMethodProvider> pixProviders;
   private final List<BoletoMethodProvider> boletoProviders;
+  private final List<CardMethodProvider> cardProviders;
   private final CredentialLookup credentials;
   private final ProviderRequestRepository requests;
 
   public ProviderGateway(
       List<PixMethodProvider> pixProviders,
       List<BoletoMethodProvider> boletoProviders,
+      List<CardMethodProvider> cardProviders,
       CredentialLookup credentials,
       ProviderRequestRepository requests) {
     this.pixProviders = pixProviders;
     this.boletoProviders = boletoProviders;
+    this.cardProviders = cardProviders;
     this.credentials = credentials;
     this.requests = requests;
   }
@@ -80,6 +88,36 @@ public class ProviderGateway {
                         "METHOD_NOT_SUPPORTED", providerId + " has no boleto product"));
 
     return new ResolvedProvider<>(provider, credential(merchantId, environment, providerId));
+  }
+
+  /** Same door as the boleto: an acquirer without a card product is METHOD_NOT_SUPPORTED, once. */
+  public ResolvedProvider<CardMethodProvider> resolveCard(
+      MerchantId merchantId, ProviderEnvironment environment, String providerId) {
+    CardMethodProvider provider =
+        cardProviders.stream()
+            .filter(candidate -> candidate.id().equalsIgnoreCase(providerId))
+            .findFirst()
+            .orElseThrow(
+                () ->
+                    new DomainException(
+                        "METHOD_NOT_SUPPORTED", providerId + " has no card product"));
+
+    return new ResolvedProvider<>(provider, credential(merchantId, environment, providerId));
+  }
+
+  /** Parsing a notification needs no credential, like {@link #pixProvider}. */
+  public CardMethodProvider cardProvider(String providerId) {
+    return cardProviders.stream()
+        .filter(candidate -> candidate.id().equalsIgnoreCase(providerId))
+        .findFirst()
+        .orElseThrow(
+            () -> new DomainException("PROVIDER_UNKNOWN", "no card provider named " + providerId));
+  }
+
+  /** The inbox asks this to route a stored notification to the card side. */
+  public boolean hasCardProvider(String providerId) {
+    return cardProviders.stream()
+        .anyMatch(candidate -> candidate.id().equalsIgnoreCase(providerId));
   }
 
   /** Parsing a webhook needs no credential — the inbox must not fail because one was rotated. */

@@ -55,4 +55,36 @@ class MtlsPortFilterTest {
   void emptyListAcceptsAnyCertificateTheCaSigned() throws Exception {
     assertThat(run(List.of(), "CN=anyone").getStatus()).isEqualTo(202);
   }
+
+  /**
+   * The Cielo offers no mTLS and delivers only on 443 (docs/webhook): its path is on the main port.
+   */
+  @Test
+  void aCieloNotificationPassesOnTheMainPortAndIsFencedOffTheMtlsOne() throws Exception {
+    MtlsPortFilter filter =
+        new MtlsPortFilter(
+            new WebhookMtlsProperties(PORT, "ks", "", "ts", "", null, 1024, List.of()));
+
+    MockHttpServletRequest onMain =
+        new MockHttpServletRequest("POST", "/v1/providers/cielo/webhooks/T");
+    onMain.setLocalPort(8080);
+    MockFilterChain mainChain = new MockFilterChain();
+    filter.doFilter(onMain, new MockHttpServletResponse(), mainChain);
+
+    MockHttpServletRequest onMtls =
+        new MockHttpServletRequest("POST", "/v1/providers/cielo/webhooks/T");
+    onMtls.setLocalPort(PORT);
+    MockHttpServletResponse mtlsResponse = new MockHttpServletResponse();
+    filter.doFilter(onMtls, mtlsResponse, new MockFilterChain());
+
+    MockHttpServletRequest itauOnMain =
+        new MockHttpServletRequest("POST", "/v1/providers/itau/webhooks/T");
+    itauOnMain.setLocalPort(8080);
+    MockHttpServletResponse itauResponse = new MockHttpServletResponse();
+    filter.doFilter(itauOnMain, itauResponse, new MockFilterChain());
+
+    assertThat(mainChain.getRequest()).isNotNull();
+    assertThat(mtlsResponse.getStatus()).isEqualTo(403);
+    assertThat(itauResponse.getStatus()).isEqualTo(404);
+  }
 }
