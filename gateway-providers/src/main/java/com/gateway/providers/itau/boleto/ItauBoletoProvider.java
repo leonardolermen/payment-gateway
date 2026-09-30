@@ -179,7 +179,8 @@ public class ItauBoletoProvider implements BoletoMethodProvider {
     return new BoletoStatus(
         BoletoSituations.parse(individual.situacaoGeralBoleto()),
         last.filter(pagamento -> pagamento.valorPagoTotalCobranca() != null)
-            .map(pagamento -> BoletoAmounts.fromItau(pagamento.valorPagoTotalCobranca())).orElse(null),
+            .map(pagamento -> BoletoAmounts.fromItau(pagamento.valorPagoTotalCobranca()))
+            .orElse(null),
         last.map(
                 pagamento ->
                     ItauDates.paidAt(
