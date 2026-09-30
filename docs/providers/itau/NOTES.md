@@ -171,8 +171,16 @@ Never paste credential values anywhere but the running request. `<...>` stays `<
    returned for a paid boleto (needed by `settleBoleto`'s double-payment check), and whether `x-itau-apikey` was required
    (sent when present per the query/instruction OpenAPIs, but the sandbox issues none as of this writing).
 
-**Not yet run.** This smoke needs real sandbox credentials and has not been executed as part of this task; the steps above
-are the procedure, not a result. Run it before relying on Bolecode against production.
+**Run on 2026-09-30, and the sandbox cannot issue a boleto.** With the portal credentials (token issued at
+`/api/oauth/jwt` as for Pix), `POST /boletos-pix` answers `500 {"error":{"codigo":"500","mensagem":"Erro inesperado,
+Cenário de teste não mapeado no ambiente sandbox favor entrar em contato com a equipe itau"}}` for every body tried:
+the gateway's own request (`scripts/e2e_sandbox.py`, beneficiary `150000052061`), the documentation's example
+`post_boletos_pix_request_min.json` verbatim, and the same example with `etapa_processo_boleto: simulacao`. The
+gateway booked it as `422 PROVIDER_UNAVAILABLE` after its recovery query (`GET /boletos`) also came back unreadable,
+and nothing was written for the payment beyond the FAILED row — the right outcome for a bank that says "try later".
+Steps 4–6 above therefore have no answer yet: echo of nosso número/txid, channel codes of a paid boleto and the
+`x-itau-apikey` requirement stay open until the Itaú maps the scenario (their message asks to contact the team) or
+until production. The WireMock integration tests remain the only exercise of the Bolecode contract.
 
 ### Open follow-up (outside this plan)
 
