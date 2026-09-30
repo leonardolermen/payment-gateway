@@ -93,8 +93,8 @@ key, `$MERCHANT` a merchant id, `$KEY` its TEST API key.
    as the merchant's CIELO TEST credential (README, "Card (Cielo)").
 2. Card ending 1, `capture: true` → 201 `COMPLETED`. Record `ReturnCode` from `provider_requests`/log.
 3. Card ending 2 → 402 `CARD_DECLINED`; record the `decline_code` (expected `GENERIC`, sandbox 05).
-4. Card ending 6 → the Cielo answers a timeout code (99): expected 402 `TIMEOUT` decline, not a
-   gateway timeout. Record what came back.
+4. Card ending 6 → the Cielo answers ReturnCode 99. Record how it arrives (a decline, or a Status 0
+   in doubt) and what the gateway books; see "Smoke results".
 5. Card ending 9, five times → a mix of approved and 402.
 6. Card ending 1, `capture: false` → `AUTHORIZED`; `POST …/capture {"amount": 5000}` → `COMPLETED`,
    `paid_amount` 5000; a second capture → 409 `ALREADY_CAPTURED`. **Record** whether the Cielo's second
@@ -118,4 +118,29 @@ questions of spec §1.
 
 ## Smoke results
 
-(none yet)
+Run on 2026-09-30 against the sandbox, gateway at commit `8036bc7` (branch `feat/plano-d-cartao-cielo`),
+fresh database, merchant "Cielo Smoke" with a TEST key. The sandbox answers as `Provider: "Simulado"`.
+
+| step | what the sandbox answered | gateway outcome |
+|---|---|---|
+| 2 | `Status 2`, `ReturnCode "6"`, `ReturnMessage "Operation Successful"`, `CapturedAmount` = amount | 201 `COMPLETED`, `paid_amount` 10000 |
+| 3 | declined (ReturnCode 05) | 402 `CARD_DECLINED`, `decline_code: GENERIC`, `payment_id` in the body |
+| 4 | **201 with `Status 0` (NotFinished), `ReturnCode "99"`** — a synchronous in-doubt answer, not a slow one; the recovery's `GET /1/sales?merchantOrderId=` answered 200 and the sale was still in doubt | 422 `PROVIDER_TIMEOUT`, payment `FAILED` (spec §6.4), `payment.failed` event. The 402 `TIMEOUT` decline this procedure expected does not happen: 99 arrives as Status 0, and Status 0 is doubt, not a decline |
+| 5 | card ending 9, three sales: approved, approved, `Status 0`/99 | 201, 201, 422 `PROVIDER_TIMEOUT` |
+| 6 | authorization `Status 1`; `PUT …/capture?amount=5000` → sale shows `Status 2`, `CapturedAmount 5000` | `COMPLETED`, `paid_amount` 5000, `captured_amount` 5000. The second capture was refused by the gateway itself (409 `ALREADY_CAPTURED`) before any call to the Cielo, so **whether the Cielo answers 308 on a second capture is still unrecorded** |
+| 7 | `PUT …/void` → sale shows `Status 10`, `VoidedAmount 10000`, `VoidedDate` set | `CANCELED` |
+| 8 | two partial voids (1000, 2000) → sale keeps `Status 2` with `VoidedAmount 3000`; both voids were booked `COMPLETED`, so each answered `ReturnCode` 0 or 9 (the ledger keeps no bodies for card calls) | both refunds 201 `COMPLETED` |
+| 9 | **the sandbox does not tokenize**: a sale with `SaveCard: true` comes back `Status 2` without `Payment.CreditCard.CardToken` (only `PaymentAccountReference`), and `POST /1/card/` answers 400 `CP900: Merchant was not found` — the tokenization API is enabled per merchant by the Cielo and this sandbox merchant does not have it | 201 `COMPLETED` with `card_id: null`, no warning logged (no token → nothing to save, by design). Charging by `card_id` and the `SecurityCode`-optional question could not be exercised; they need a merchant with tokenization enabled |
+| 10 | `GET /1/sales?merchantOrderId=<26-char payment id>` → 200 `{ReasonCode 0, Payments:[{PaymentId, ReceveidDate}]}` (the field is misspelt by the Cielo); `GET /1/sales/{PaymentId}` then shows `MerchantOrderId` equal to our id and no `SentOrderId` | the recovery path works: step 4 used it live |
+| 11 | `GET /1/sales/<random GUID>` → **404 with an empty body**, not 400/307 | — |
+| 12 | not run: needs a public host registered by the Cielo support | — |
+
+Consequences:
+
+- Step 4 of the procedure above is wrong about the 402: the sandbox's timeout card produces doubt
+  (Status 0), which the gateway resolves through the order query and books `FAILED` / 422 when the
+  sale stays in doubt. That is spec §6.4 behaviour, kept.
+- `card_id` comes back null silently when the acquirer returns no token. Follow-up in DECISOES: whether
+  the API should say so (a `card_saved: false` reason) instead of leaving the merchant to notice.
+- Sandbox facts to carry into production checks: the second capture's 308, the refund's 10 vs 11, the
+  notification (step 12) and everything about tokens remain open until a merchant with tokenization.

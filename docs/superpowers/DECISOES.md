@@ -416,3 +416,14 @@ Fecha o follow-up da entrada "A notificação da Cielo": se o pagamento tem reem
 explicação disponível. Rejeitado: comparar valores (não há valor na notificação nem em
 `CardAuthorization`). Custo se errado: um reembolso feito direto na Cielo dentro dessa janela passa sem
 divergência; a conciliação de totais ainda o vê.
+
+## 2026-09-30 — Smoke no sandbox da Cielo: o cartão de timeout é dúvida, e o sandbox não tokeniza
+Resultados em `docs/providers/cielo/NOTES.md`, "Smoke results". Dois fatos mudam o que se esperava:
+o cartão terminado em 6 responde 201 com `Status 0` e `ReturnCode 99` — dúvida síncrona, resolvida
+pela consulta por `MerchantOrderId` (que funcionou ao vivo) e registrada como `FAILED`/422
+`PROVIDER_TIMEOUT`, não como decline 402; e o merchant de sandbox não tem tokenização (`SaveCard`
+volta sem `CardToken`, `POST /1/card/` responde `CP900`), então `card_id` saiu `null` sem aviso.
+Decisão: nada muda no código; o comportamento é o da spec §6.4 e "sem token, nada a guardar".
+Follow-up: a resposta da API dizer por que o cartão não foi guardado (hoje o merchant só vê o `null`).
+Custo se errado: um merchant em produção que pediu `save_card` e recebeu `null` cobra a segunda vez com
+PAN de novo — funciona, mas ele não sabe se foi ele ou nós.
