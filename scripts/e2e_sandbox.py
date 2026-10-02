@@ -7,6 +7,8 @@ created per run, with a TEST key and both provider credentials; then one happy p
   PIX       create -> get -> events -> cancel
   BOLECODE  create -> get -> events -> cancel
   CARD      authorize -> capture -> partial refund -> refunds -> events, plus a direct capture
+  ORDER     customer -> order -> Pix attempt -> second attempt refused -> cancel Pix -> card pays -> PAID
+  SUBSCRIPTION  plan -> subscription by stored card (Pix when the sandbox kept no card) -> first invoice
 
 The Itau sandbox is a static mock (docs/providers/itau/NOTES.md): it issues charges but nothing pays
 them, so the Pix and Bolecode paths end at cancel. The Cielo sandbox simulates the whole card life.
@@ -21,6 +23,7 @@ import os
 import pathlib
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -201,6 +204,54 @@ def card(gateway):
     gateway.merchant("Sale in 3 installments, captured at once", "POST", "/v1/payments", body, expect={201}, idempotency="e2e-card-2")
 
 
+def order_and_subscription(gateway):
+    gateway.report.heading(2, "ORDER: Pix attempt canceled, then card pays; SUBSCRIPTION by stored card")
+    customer_body = {"name": "Ana Silva", "document": "529.982.247-25", "email": "ana@example.com"}
+    _, customer = gateway.merchant("Create a customer", "POST", "/v1/customers", customer_body, expect={201}, idempotency="e2e-cust-1")
+    customer_id = customer.get("id", "missing")
+
+    order_body = {"amount": 4990, "currency": "BRL", "reference": "e2e-order-1", "customer_id": customer_id}
+    _, order = gateway.merchant("Create an order for her", "POST", "/v1/orders", order_body, expect={201}, idempotency="e2e-order-1")
+    order_id = order.get("id", "missing")
+
+    # An attempt carries no amount, currency or customer: the order owns them.
+    pix_body = {"method": "PIX", "expires_in": 600}
+    _, pix_attempt = gateway.merchant("First attempt: Pix", "POST", f"/v1/orders/{order_id}/payments", pix_body, expect={201}, idempotency="e2e-order-1-pix")
+    gateway.merchant("A second attempt while the Pix is open is refused", "POST", f"/v1/orders/{order_id}/payments", pix_body, expect={409}, idempotency="e2e-order-1-pix2")
+    gateway.merchant("Cancel the Pix attempt", "POST", f"/v1/payments/{pix_attempt.get('id', 'missing')}/cancel", expect={200}, idempotency="e2e-order-1-pixcancel")
+
+    card_data = {"number": "4024007153763171", "holder": "ANA SILVA", "expiry": "12/2030", "cvv": "123"}
+    card_body = {"method": "CARD", "card": card_data, "installments": 1, "capture": True, "save_card": True, "soft_descriptor": "E2E"}
+    gateway.merchant("Second attempt: card, saved for later", "POST", f"/v1/orders/{order_id}/payments", card_body, expect={201}, idempotency="e2e-order-1-card")
+
+    # The order turns PAID through the outbox relay, which runs on its own schedule.
+    time.sleep(3)
+    gateway.merchant("The order is PAID once the relay ran", "GET", f"/v1/orders/{order_id}", expect={200})
+
+    _, cards = gateway.merchant("Her saved cards", "GET", f"/v1/customers/{customer_id}/cards", expect={200})
+    card_id = cards[0].get("id") if isinstance(cards, list) and cards else "missing"
+    plan_body = {"name": "E2E Monthly", "amount": 2990, "currency": "BRL", "interval": "MONTH"}
+    _, plan = gateway.merchant("A monthly plan", "POST", "/v1/plans", plan_body, expect={201}, idempotency="e2e-plan-1")
+
+    subscription_body = {"customer_id": customer_id, "plan_id": plan.get("id", "missing"), "method": "CARD", "card_id": card_id}
+    if card_id == "missing":
+        gateway.report.text(
+            "The customer has no saved card: the Cielo sandbox merchant does not tokenize (`SaveCard` comes back "
+            "without `CardToken`, docs/providers/cielo/NOTES.md), so the card above was charged but not kept. "
+            "The subscription is therefore created with `method: PIX` instead of the stored card; its first invoice "
+            "is a Pix charge the Itaú sandbox can issue but never settle."
+        )
+        subscription_body = {"customer_id": customer_id, "plan_id": plan.get("id", "missing"), "method": "PIX"}
+    _, subscription = gateway.merchant("Subscribe her", "POST", "/v1/subscriptions", subscription_body, expect={201}, idempotency="e2e-sub-1")
+    subscription_id = subscription.get("id", "missing")
+
+    # The first invoice is billed by the job runner, not inside the request.
+    time.sleep(5)
+    gateway.merchant("The first invoice was billed by the job", "GET", f"/v1/subscriptions/{subscription_id}", expect={200})
+    gateway.merchant("Its invoices", "GET", f"/v1/subscriptions/{subscription_id}/orders", expect={200})
+    gateway.merchant("Cancel at period end", "POST", f"/v1/subscriptions/{subscription_id}/cancel", {"at_period_end": True}, expect={200}, idempotency="e2e-sub-1-cancel")
+
+
 def main():
     env = load_env()
     report = Report()
@@ -218,6 +269,7 @@ def main():
         pix(gateway)
         bolecode(gateway)
         card(gateway)
+        order_and_subscription(gateway)
     finally:
         report.heading(2, "Outcome")
         if report.failures:
