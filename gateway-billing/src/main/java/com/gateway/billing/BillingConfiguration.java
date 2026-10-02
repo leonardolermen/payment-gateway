@@ -16,6 +16,14 @@ import com.gateway.billing.order.persistence.OrderRepositoryImpl;
 import com.gateway.billing.plan.PlanService;
 import com.gateway.billing.plan.persistence.PlanRepository;
 import com.gateway.billing.plan.persistence.PlanRepositoryImpl;
+import com.gateway.billing.subscription.ActiveSubscriptions;
+import com.gateway.billing.subscription.SubscriptionQueries;
+import com.gateway.billing.subscription.SubscriptionService;
+import com.gateway.billing.subscription.billing.BillSubscriptionJob;
+import com.gateway.billing.subscription.persistence.DunningAttemptRepository;
+import com.gateway.billing.subscription.persistence.DunningAttemptRepositoryImpl;
+import com.gateway.billing.subscription.persistence.SubscriptionRepository;
+import com.gateway.billing.subscription.persistence.SubscriptionRepositoryImpl;
 import com.gateway.kernel.security.Sealer;
 import com.gateway.payments.UnitOfWork;
 import com.gateway.payments.card.SavedCards;
@@ -43,7 +51,13 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @EntityScan("com.gateway.billing")
 @EnableJpaRepositories("com.gateway.billing")
 @EnableConfigurationProperties(BillingProperties.class)
-@Import({CustomerRepositoryImpl.class, OrderRepositoryImpl.class, PlanRepositoryImpl.class})
+@Import({
+  CustomerRepositoryImpl.class,
+  OrderRepositoryImpl.class,
+  PlanRepositoryImpl.class,
+  SubscriptionRepositoryImpl.class,
+  DunningAttemptRepositoryImpl.class
+})
 public class BillingConfiguration {
 
   @Bean
@@ -51,10 +65,9 @@ public class BillingConfiguration {
     return new BillingEvents(outbox, clock);
   }
 
-  /** Task 8 replaces this with the real check against subscriptions; until then none can exist. */
   @Bean
-  ActiveSubscriptionsCheck noActiveSubscriptionsYet() {
-    return (merchantId, customerId) -> false;
+  ActiveSubscriptionsCheck activeSubscriptions(SubscriptionRepository subscriptions) {
+    return new ActiveSubscriptions(subscriptions);
   }
 
   @Bean
@@ -134,5 +147,32 @@ public class BillingConfiguration {
       UnitOfWork unitOfWork,
       Clock clock) {
     return new OrderSettlement(orders, payments, divergences, invoices, events, unitOfWork, clock);
+  }
+
+  @Bean
+  SubscriptionService subscriptionService(
+      SubscriptionRepository subscriptions,
+      SavedCards savedCards,
+      JobRepository jobs,
+      BillingEvents events,
+      BillingProperties properties,
+      UnitOfWork unitOfWork,
+      Clock clock) {
+    return new SubscriptionService(
+        subscriptions, savedCards, jobs, events, properties, unitOfWork, clock);
+  }
+
+  @Bean
+  SubscriptionQueries subscriptionQueries(
+      SubscriptionRepository subscriptions,
+      OrderRepository orders,
+      DunningAttemptRepository dunning) {
+    return new SubscriptionQueries(subscriptions, orders, dunning);
+  }
+
+  /** Owns BILL_SUBSCRIPTION so the registry starts; it refuses to run until task 9. */
+  @Bean
+  BillSubscriptionJob billSubscriptionJob(JobBackoff backoff) {
+    return new BillSubscriptionJob(backoff);
   }
 }

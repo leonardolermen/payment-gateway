@@ -78,6 +78,19 @@ public record Job(
         clock.instant());
   }
 
+  public static Job billSubscription(String subscriptionId, Instant when, Clock clock) {
+    return new Job(
+        Ulid.next(),
+        JobType.BILL_SUBSCRIPTION,
+        subscriptionId,
+        when,
+        0,
+        "PENDING",
+        null,
+        null,
+        clock.instant());
+  }
+
   public static Job reconcile(Clock clock) {
     Instant now = clock.instant();
     return new Job(Ulid.next(), JobType.RECONCILE, "all", now, 0, "PENDING", null, null, now);

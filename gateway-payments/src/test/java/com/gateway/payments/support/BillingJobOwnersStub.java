@@ -33,4 +33,24 @@ public class BillingJobOwnersStub {
       }
     };
   }
+
+  @Bean
+  JobHandler billSubscriptionStub() {
+    return new JobHandler() {
+      @Override
+      public JobType type() {
+        return JobType.BILL_SUBSCRIPTION;
+      }
+
+      @Override
+      public boolean run(String refId, Instant now) {
+        return true;
+      }
+
+      @Override
+      public Job afterFailure(Job job, Instant now, String error) {
+        return job;
+      }
+    };
+  }
 }

@@ -8,5 +8,8 @@ public enum JobType {
   POLL_BOLETO,
 
   /** Billing's; the handler lives in gateway-billing, the runner does not care. */
-  EXPIRE_ORDER
+  EXPIRE_ORDER,
+
+  /** Billing's: one cycle of a subscription; the handler lives in gateway-billing. */
+  BILL_SUBSCRIPTION
 }
