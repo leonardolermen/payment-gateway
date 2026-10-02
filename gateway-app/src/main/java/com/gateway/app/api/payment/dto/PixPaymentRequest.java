@@ -46,6 +46,7 @@ public record PixPaymentRequest(
         reference,
         description,
         customer == null ? null : customer.document(),
-        expiresIn);
+        expiresIn,
+        null);
   }
 }

@@ -39,6 +39,7 @@ class CardPaymentJsonContractTest {
             "Pedido 42",
             null,
             CardDetails.requested(3, "VISA", "3171", null),
+            null,
             clock);
     payment.markCompletedByCard(
         new CardDetails("pid", "tid", "auth", "pos", "VISA", "3171", 3, null, "card-1", null),

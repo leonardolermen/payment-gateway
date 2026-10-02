@@ -56,6 +56,7 @@ class PaymentJsonContractTest {
         3,
         now,
         now,
+        null,
         Clock.systemUTC());
   }
 
@@ -87,6 +88,7 @@ class PaymentJsonContractTest {
         3,
         now,
         now,
+        null,
         Clock.systemUTC());
   }
 

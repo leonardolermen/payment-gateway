@@ -78,11 +78,15 @@ public final class SaleRequestFactory {
             ? new SaleRequest.CardOnFile(usage(token.usage()), "Unscheduled")
             : null;
 
+    // A subscription cycle has nobody to type a CVV: the field is omitted (NON_NULL), not sent
+    // empty.
+    String securityCode = token.securityCode() == null ? null : token.securityCode().reveal();
+
     return new SaleRequest.CreditCard(
         null,
         null,
         null,
-        token.securityCode().reveal(),
+        securityCode,
         CieloBrands.nameOf(token.brand()),
         null,
         token.value(),

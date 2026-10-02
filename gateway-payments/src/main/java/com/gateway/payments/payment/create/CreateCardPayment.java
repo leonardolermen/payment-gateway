@@ -20,7 +20,8 @@ public record CreateCardPayment(
     Integer installments,
     Boolean capture,
     String softDescriptor,
-    CardCustomerData customer)
+    CardCustomerData customer,
+    String orderId)
     implements CreatePaymentCommand {
 
   @Override

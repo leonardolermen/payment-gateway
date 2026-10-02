@@ -60,6 +60,7 @@ public class PaymentRepositoryImpl implements PaymentRepository {
       entity.amount = payment.amount().cents();
       entity.currency = payment.amount().currency();
       entity.reference = payment.reference();
+      entity.orderId = payment.orderId();
       entity.description = payment.description();
       entity.customerDocumentHash = payment.customerDocumentHash();
       entity.details = details;
@@ -272,6 +273,7 @@ public class PaymentRepositoryImpl implements PaymentRepository {
         entity.version,
         entity.createdAt,
         entity.updatedAt,
+        entity.orderId,
         Clock.systemUTC());
   }
 }

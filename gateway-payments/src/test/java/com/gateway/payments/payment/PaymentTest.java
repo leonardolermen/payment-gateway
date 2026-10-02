@@ -25,6 +25,7 @@ class PaymentTest {
         "Order 8812",
         null,
         3600,
+        null,
         clock);
   }
 
@@ -149,6 +150,7 @@ class PaymentTest {
         null,
         b,
         BoletoDates.endOfDay(LocalDate.of(2026, 10, 31)),
+        null,
         clock);
   }
 
@@ -231,6 +233,7 @@ class PaymentTest {
         "Order 42",
         null,
         CardDetails.requested(3, "VISA", "3171", null),
+        null,
         clock);
   }
 

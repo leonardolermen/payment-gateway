@@ -50,6 +50,7 @@ public class PaymentDraftFactory {
                   command.description(),
                   CustomerDocumentHash.of(command.customerDocument()),
                   expiresInSeconds,
+                  command.orderId(),
                   clock);
 
           return payments.save(draft, List.of(draft.createdEvent()));
@@ -79,6 +80,7 @@ public class PaymentDraftFactory {
                   CustomerDocumentHash.of(payer.document().digits()),
                   details,
                   BoletoDates.endOfDay(paymentLimitDate),
+                  command.orderId(),
                   clock);
 
           return payments.save(draft, List.of(draft.createdEvent()));
@@ -103,6 +105,7 @@ public class PaymentDraftFactory {
                   command.description(),
                   customerDocumentHash,
                   requested,
+                  command.orderId(),
                   clock);
 
           return payments.save(draft, List.of(draft.createdEvent()));

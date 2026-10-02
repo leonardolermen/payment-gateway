@@ -166,7 +166,8 @@ class BolecodeLifecycleIntegrationTest extends ServiceIntegrationTestBase {
             null,
             payer(),
             BoletoDates.today(clock),
-            0));
+            0,
+            null));
   }
 
   @Test
@@ -181,7 +182,8 @@ class BolecodeLifecycleIntegrationTest extends ServiceIntegrationTestBase {
                 null,
                 payer(),
                 BoletoDates.today(clock),
-                5));
+                5,
+                null));
     clock.advance(Duration.ofDays(2));
     assertThat(expiration.expireOne(p.id(), clock.instant())).isFalse();
     assertThat(payments.findById(p.id()).orElseThrow().status()).isEqualTo(PaymentStatus.PENDING);

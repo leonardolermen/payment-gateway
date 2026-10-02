@@ -19,7 +19,8 @@ public record CreateBolecodePayment(
     String description,
     PayerData payer,
     LocalDate dueDate,
-    Integer paymentLimitDays)
+    Integer paymentLimitDays,
+    String orderId)
     implements CreatePaymentCommand {
 
   @Override
