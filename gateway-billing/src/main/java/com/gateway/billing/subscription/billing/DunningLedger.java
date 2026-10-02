@@ -5,7 +5,6 @@ import com.gateway.billing.subscription.DunningAttempt;
 import com.gateway.billing.subscription.DunningOutcome;
 import com.gateway.billing.subscription.Subscription;
 import com.gateway.billing.subscription.persistence.DunningAttemptRepository;
-import com.gateway.kernel.ids.Ulid;
 import com.gateway.payments.jobs.Job;
 import com.gateway.payments.jobs.persistence.JobRepository;
 import java.time.Clock;
@@ -50,6 +49,11 @@ public class DunningLedger {
         .toList();
   }
 
+  /** Whether a retry is still scheduled for another invoice of the same subscription. */
+  public boolean isChasingAnotherInvoice(Order invoice) {
+    return attempts.hasPendingForOtherOrder(invoice.subscriptionId(), invoice.id());
+  }
+
   /** Attempt 1; false when the schedule has no retry day at all. Requires a transaction. */
   public boolean start(Subscription subscription, Order invoice, Instant now) {
     return scheduleNext(subscription, invoice, 0, now);
@@ -64,15 +68,7 @@ public class DunningLedger {
     }
 
     DunningAttempt attempt =
-        new DunningAttempt(
-            Ulid.next(),
-            subscription.id(),
-            invoice.id(),
-            attemptsSoFar + 1,
-            next.get(),
-            null,
-            null,
-            null);
+        DunningAttempt.scheduled(subscription.id(), invoice.id(), attemptsSoFar + 1, next.get());
     attempts.insert(attempt);
     jobs.enqueue(Job.dunningRetry(attempt.id(), next.get(), clock));
 
@@ -85,15 +81,6 @@ public class DunningLedger {
   }
 
   public void close(DunningAttempt attempt, DunningOutcome outcome, String paymentId, Instant now) {
-    attempts.update(
-        new DunningAttempt(
-            attempt.id(),
-            attempt.subscriptionId(),
-            attempt.orderId(),
-            attempt.attempt(),
-            attempt.scheduledAt(),
-            now,
-            outcome,
-            paymentId));
+    attempts.update(attempt.closed(outcome, paymentId, now));
   }
 }

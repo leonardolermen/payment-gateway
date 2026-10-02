@@ -18,4 +18,7 @@ public interface DunningAttemptRepository {
 
   /** The attempt scheduled for this order that has not run yet. */
   Optional<DunningAttempt> findPendingByOrder(String orderId);
+
+  /** Whether another invoice of the subscription still has a retry scheduled. */
+  boolean hasPendingForOtherOrder(String subscriptionId, String orderId);
 }

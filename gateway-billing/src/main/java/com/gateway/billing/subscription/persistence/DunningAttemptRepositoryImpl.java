@@ -55,6 +55,11 @@ public class DunningAttemptRepositoryImpl implements DunningAttemptRepository {
     return jpa.findByOrderIdAndOutcomeIsNull(orderId).map(DunningAttemptRepositoryImpl::toDomain);
   }
 
+  @Override
+  public boolean hasPendingForOtherOrder(String subscriptionId, String orderId) {
+    return jpa.existsBySubscriptionIdAndOutcomeIsNullAndOrderIdNot(subscriptionId, orderId);
+  }
+
   private static DunningAttemptEntity toEntity(DunningAttempt attempt) {
     DunningAttemptEntity entity = new DunningAttemptEntity();
     entity.id = attempt.id();

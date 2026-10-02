@@ -60,6 +60,8 @@ public class Dunning implements DunningStarter, InvoiceSettlementHook {
    * no second subscription.past_due. Re-reads the subscription: the caller's copy may predate a
    * cancel or a method change, and update() accepts exactly one version bump since the read.
    */
+  // paymentId is not needed: the attempt rows name the payments of retries, and the cycle's own
+  // attempt is already on the invoice.
   @Override
   public void firstFailure(
       Subscription subscription, Order invoice, String paymentId, Instant now) {
@@ -81,20 +83,27 @@ public class Dunning implements DunningStarter, InvoiceSettlementHook {
     }
   }
 
-  /** Same transaction as order.paid. */
+  /**
+   * Same transaction as order.paid. Recovers only when no other invoice is still being chased:
+   * ACTIVE with an older invoice unpaid would tell the merchant the customer is current when the
+   * dunning of that invoice is still running.
+   */
   @Override
   public void invoicePaid(Order invoice, Instant at) {
-    Subscription subscription = reload(invoice.subscriptionId());
+    ledger
+        .pendingFor(invoice.id())
+        .ifPresent(pending -> ledger.close(pending, DunningOutcome.SKIPPED, null, at));
 
+    if (ledger.isChasingAnotherInvoice(invoice)) {
+      return;
+    }
+
+    Subscription subscription = reload(invoice.subscriptionId());
     if (subscription.status() == SubscriptionStatus.PAST_DUE) {
       subscription.recover(at);
       update(subscription);
       emit(subscription, "subscription.recovered", null);
     }
-
-    ledger
-        .pendingFor(invoice.id())
-        .ifPresent(pending -> ledger.close(pending, DunningOutcome.SKIPPED, null, at));
   }
 
   /**
@@ -106,6 +115,7 @@ public class Dunning implements DunningStarter, InvoiceSettlementHook {
    * "any attempt", not "a pending one": after the final retry nothing is pending, and starting over
    * at attempt 1 would chase the invoice forever.
    */
+  // eventType is not needed: failed, expired and canceled all leave the invoice unpaid alike.
   @Override
   public void invoiceAttemptFailed(Order invoice, String paymentId, String eventType, Instant at) {
     List<DunningAttempt> attempts = ledger.attemptsFor(invoice);

@@ -9,4 +9,7 @@ interface DunningAttemptJpaRepository extends JpaRepository<DunningAttemptEntity
 
   /** At most one: {@code uq_dunning_pending_order} allows a single pending row per order. */
   Optional<DunningAttemptEntity> findByOrderIdAndOutcomeIsNull(String orderId);
+
+  boolean existsBySubscriptionIdAndOutcomeIsNullAndOrderIdNot(
+      String subscriptionId, String orderId);
 }

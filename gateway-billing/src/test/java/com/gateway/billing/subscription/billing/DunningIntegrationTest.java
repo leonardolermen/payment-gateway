@@ -27,6 +27,7 @@ import com.gateway.kernel.money.Money;
 import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.provider.card.CardStatus;
+import com.gateway.payments.UnitOfWork;
 import com.gateway.payments.outbox.OutboxMessage;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentStatus;
@@ -38,6 +39,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.Comparator;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,6 +53,7 @@ class DunningIntegrationTest extends BillingIntegrationTestBase {
   @Autowired CustomerService customers;
   @Autowired PlanService plans;
   @Autowired DunningAttemptRepository attempts;
+  @Autowired UnitOfWork unitOfWork;
 
   @Test
   void aDeclinedCycleSchedulesTheFirstRetryForTheNextDayAtTheBillingHour() {
@@ -169,6 +172,160 @@ class DunningIntegrationTest extends BillingIntegrationTestBase {
     assertThat(attemptsOf(subscription)).hasSize(2);
     assertThat(attemptsOf(subscription).get(1).outcome()).isNull();
     assertThat(outboxTypes(subscription.id())).doesNotContain("subscription.dunning_exhausted");
+  }
+
+  @Test
+  void aRetryOfAnExpiredPixIssuesAFreshOneAndSchedulesTheNextRetry() {
+    Subscription subscription = subscribe(ana(), PaymentMethod.PIX, null);
+    billing.billOne(subscription.id(), clock.instant());
+    Order invoice = invoiceOf(subscription);
+    expire(invoice, latestPayment(invoice));
+    DunningAttempt first = attemptsOf(subscription).get(0);
+
+    clock.advance(Duration.ofDays(1));
+    assertThat(dunning.retryOne(first.id(), clock.instant())).isTrue();
+
+    DunningAttempt issued = attemptsOf(subscription).get(0);
+    assertThat(issued.outcome()).isEqualTo(DunningOutcome.ISSUED);
+    Payment fresh = paymentQueries.get(merchant, issued.paymentId());
+    assertThat(fresh.status().isActive()).isTrue();
+    assertThat(paymentQueries.activeAttempt(invoice.id())).map(Payment::id).contains(fresh.id());
+    assertThat(outboxTypes(invoice.id())).containsOnlyOnce("invoice.updated");
+    assertThat(outboxPayload(invoice.id(), "invoice.updated"))
+        .contains("copia_e_cola")
+        .contains("\"attempt\":1");
+    assertThat(attemptsOf(subscription)).hasSize(2);
+    assertThat(attemptsOf(subscription).get(1).outcome()).isNull();
+  }
+
+  @Test
+  void theExpiryOfTheLastReissuedPixExhaustsTheInvoiceOnce() {
+    Subscription subscription = subscribe(ana(), PaymentMethod.PIX, null);
+    billing.billOne(subscription.id(), clock.instant());
+    Order invoice = invoiceOf(subscription);
+    expire(invoice, latestPayment(invoice));
+
+    for (int retry = 0; retry < 3; retry++) {
+      DunningAttempt pending = attempts.findPendingByOrder(invoice.id()).get();
+      clock.advance(Duration.ofDays(1));
+      dunning.retryOne(pending.id(), clock.instant());
+      // Before the last retry, this expiry finds the next one pending and does nothing.
+      expire(invoice, latestPayment(invoice));
+    }
+
+    assertThat(attemptsOf(subscription))
+        .extracting(DunningAttempt::outcome)
+        .containsExactly(DunningOutcome.ISSUED, DunningOutcome.ISSUED, DunningOutcome.ISSUED);
+    assertThat(outboxTypes(subscription.id())).containsOnlyOnce("subscription.dunning_exhausted");
+    assertThat(queries.get(merchant, subscription.id()).status())
+        .isEqualTo(SubscriptionStatus.PAST_DUE);
+  }
+
+  @Test
+  void payingOneOfTwoChasedInvoicesRecoversOnlyWhenTheOtherIsPaidToo() {
+    Subscription subscription = cardSubscription();
+    cards.nextAuthorizeStatus(CardStatus.DENIED);
+    billing.billOne(subscription.id(), clock.instant());
+    Instant secondCycle = queries.get(merchant, subscription.id()).nextBillingAt();
+    clock.advance(Duration.between(clock.instant(), secondCycle));
+    cards.nextAuthorizeStatus(CardStatus.DENIED);
+    billing.billOne(subscription.id(), clock.instant());
+    Order firstInvoice = invoiceNumbered(subscription, 1);
+    Order secondInvoice = invoiceNumbered(subscription, 2);
+    assertThat(attempts.findPendingByOrder(secondInvoice.id())).isPresent();
+
+    payByRetry(firstInvoice);
+
+    assertThat(queries.get(merchant, subscription.id()).status())
+        .isEqualTo(SubscriptionStatus.PAST_DUE);
+    assertThat(outboxTypes(subscription.id())).doesNotContain("subscription.recovered");
+
+    payByRetry(secondInvoice);
+
+    assertThat(queries.get(merchant, subscription.id()).status())
+        .isEqualTo(SubscriptionStatus.ACTIVE);
+    assertThat(outboxTypes(subscription.id())).containsOnlyOnce("subscription.recovered");
+  }
+
+  @Test
+  void aPaidInvoiceSkipsItsPendingRetry() {
+    Subscription subscription = cardSubscription();
+    cards.nextAuthorizeStatus(CardStatus.DENIED);
+    billing.billOne(subscription.id(), clock.instant());
+    Order invoice = invoiceOf(subscription);
+
+    unitOfWork.run(() -> dunning.invoicePaid(invoice, clock.instant()));
+
+    assertThat(attemptsOf(subscription))
+        .singleElement()
+        .extracting(DunningAttempt::outcome)
+        .isEqualTo(DunningOutcome.SKIPPED);
+    assertThat(queries.get(merchant, subscription.id()).status())
+        .isEqualTo(SubscriptionStatus.ACTIVE);
+  }
+
+  @Test
+  void aSecondRunOfAClosedAttemptDoesNothing() {
+    Subscription subscription = cardSubscription();
+    cards.nextAuthorizeStatus(CardStatus.DENIED);
+    billing.billOne(subscription.id(), clock.instant());
+    Order invoice = invoiceOf(subscription);
+    DunningAttempt first = attemptsOf(subscription).get(0);
+    clock.advance(Duration.ofDays(1));
+    cards.nextAuthorizeStatus(CardStatus.DENIED);
+    dunning.retryOne(first.id(), clock.instant());
+    int paymentsBefore = paymentQueries.listByOrder(merchant, invoice.id()).size();
+    int eventsBefore = outboxCount(subscription, invoice);
+
+    boolean done = dunning.retryOne(first.id(), clock.instant());
+
+    assertThat(done).isTrue();
+    assertThat(paymentQueries.listByOrder(merchant, invoice.id())).hasSize(paymentsBefore);
+    assertThat(outboxCount(subscription, invoice)).isEqualTo(eventsBefore);
+    assertThat(attemptsOf(subscription)).hasSize(2);
+  }
+
+  /** Approves the pending retry of the invoice and relays its payment.completed. */
+  private void payByRetry(Order invoice) {
+    DunningAttempt pending = attempts.findPendingByOrder(invoice.id()).get();
+    dunning.retryOne(pending.id(), clock.instant());
+    String paymentId = attempts.findById(pending.id()).get().paymentId();
+    settlement.on(event("payment.completed", invoice, paymentQueries.get(merchant, paymentId)));
+  }
+
+  /** The bank expired the payment, and its payment.expired reached the settlement. */
+  private void expire(Order invoice, Payment payment) {
+    jdbc.update("UPDATE payments.payments SET status = 'EXPIRED' WHERE id = ?", payment.id());
+    settlement.on(event("payment.expired", invoice, payment));
+  }
+
+  private Payment latestPayment(Order invoice) {
+    return paymentQueries.listByOrder(merchant, invoice.id()).stream()
+        .max(Comparator.comparing(Payment::id))
+        .orElseThrow();
+  }
+
+  private Order invoiceNumbered(Subscription subscription, int number) {
+    return queries.invoicesOf(merchant, subscription.id()).stream()
+        .filter(invoice -> invoice.invoiceNumber() == number)
+        .findFirst()
+        .orElseThrow();
+  }
+
+  private int outboxCount(Subscription subscription, Order invoice) {
+    return jdbc.queryForObject(
+        "SELECT count(*) FROM payments.outbox WHERE aggregate_id IN (?, ?)",
+        Integer.class,
+        subscription.id(),
+        invoice.id());
+  }
+
+  private String outboxPayload(String aggregateId, String type) {
+    return jdbc.queryForObject(
+        "SELECT payload FROM payments.outbox WHERE aggregate_id = ? AND event_type = ?",
+        String.class,
+        aggregateId,
+        type);
   }
 
   private static Instant retryDay(Instant failedAt, int days) {
