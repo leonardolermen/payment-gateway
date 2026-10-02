@@ -171,8 +171,25 @@ Never paste credential values anywhere but the running request. `<...>` stays `<
    returned for a paid boleto (needed by `settleBoleto`'s double-payment check), and whether `x-itau-apikey` was required
    (sent when present per the query/instruction OpenAPIs, but the sandbox issues none as of this writing).
 
-**Not yet run.** This smoke needs real sandbox credentials and has not been executed as part of this task; the steps above
-are the procedure, not a result. Run it before relying on Bolecode against production.
+**Run on 2026-09-30, and the sandbox cannot issue a boleto.** With the portal credentials (token issued at
+`/api/oauth/jwt` as for Pix), `POST /boletos-pix` answers `500 {"error":{"codigo":"500","mensagem":"Erro inesperado,
+Cenário de teste não mapeado no ambiente sandbox favor entrar em contato com a equipe itau"}}` for every body tried:
+the gateway's own request (`scripts/e2e_sandbox.py`, beneficiary `150000052061`), the documentation's example
+`post_boletos_pix_request_min.json` verbatim, and the same example with `etapa_processo_boleto: simulacao`. The
+gateway booked it as `422 PROVIDER_UNAVAILABLE` after its recovery query (`GET /boletos`) also came back unreadable,
+and nothing was written for the payment beyond the FAILED row — the right outcome for a bank that says "try later".
+Steps 4–6 above therefore have no answer yet: echo of nosso número/txid, channel codes of a paid boleto and the
+`x-itau-apikey` requirement stay open until the Itaú maps the scenario (their message asks to contact the team) or
+until production. The WireMock integration tests remain the only exercise of the Bolecode contract.
+
+Confirmed from the portal on 2026-10-02: the API reference tab of "Boleto com Pix" (version 1.0.7) has its own
+"Habilitar teste" console that sends the portal's sample (identical to `requestPostBoletosPix`) with a token the portal
+itself generates for the app, and that console answers `500 Internal Server Error` with the same `Cenário de teste não
+mapeado` body. Nothing on our side can change this: the sandbox mock of this product has no scenario for anyone. The
+other sandbox products do not fill the gap either — `cash_management POST /boletos` and `boletoscash GET /boletos`
+answer 200 but their bodies carry no `dados_qrcode`, txid or EMV. The way forward is the Itaú side: a ticket through
+the portal ("Abrir um chamado") asking for the scenario, or a real credential with the dynamic certificate against
+`pix-pj.api.hom.itau.com` (the STS rejects the portal credentials and the hom host drops connections without mTLS).
 
 ### Open follow-up (outside this plan)
 

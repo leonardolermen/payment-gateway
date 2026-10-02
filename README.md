@@ -350,6 +350,13 @@ With sandbox credentials from the Itaú for Developers portal stored as a mercha
 `POST /v1/payments` with a `gk_test_` API key hits the real Itaú sandbox — there is no local stand-in for
 the provider, so a TEST-environment run is a real (if non-production) integration.
 
+### End-to-end against the sandboxes
+
+`python scripts/e2e_sandbox.py` runs one happy path per method (PIX, BOLECODE, CARD) through a gateway
+already up, using the sandbox credentials in `.env`, and writes the requests and answers to
+`docs/e2e/<date>-sandbox-happy-paths.md` with every secret, key, card number and CVV removed. What each
+sandbox can and cannot prove is written at the top of that report and in `docs/providers/*/NOTES.md`.
+
 ## Build
 
 `./mvnw verify` (Testcontainers; needs Docker). The `com.barrier:webhook-delivery` library comes from GitHub
