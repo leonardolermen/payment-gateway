@@ -72,6 +72,25 @@ public class OrderRepositoryImpl implements OrderRepository {
     entityManager.persist(entity);
   }
 
+  /**
+   * Read-then-persist, not persist-and-catch: a unique violation inside the caller's transaction
+   * marks it rollback-only, and that transaction also holds the subscription update.
+   */
+  @Override
+  @Transactional(propagation = Propagation.MANDATORY)
+  public Optional<Order> insertInvoiceIfAbsent(Order invoice) {
+    Optional<Order> existing =
+        jpa.findBySubscriptionIdAndInvoiceNumber(invoice.subscriptionId(), invoice.invoiceNumber())
+            .map(this::toDomain);
+    if (existing.isPresent()) {
+      return existing;
+    }
+
+    insert(invoice);
+
+    return Optional.empty();
+  }
+
   @Override
   @Transactional
   public boolean update(Order order) {

@@ -10,6 +10,13 @@ public interface OrderRepository {
   /** Requires a transaction. */
   void insert(Order order);
 
+  /**
+   * Inserts a subscription's invoice unless that subscription already has one with the same number,
+   * and then returns the existing one instead. Requires a transaction holding the subscription's
+   * row lock: under it the read cannot race, and uq_orders_invoice stays the backstop.
+   */
+  Optional<Order> insertInvoiceIfAbsent(Order invoice);
+
   /** Optimistic: writes only when the stored version is {@code order.version() - 1}. */
   boolean update(Order order);
 

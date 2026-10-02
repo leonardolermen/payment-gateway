@@ -16,7 +16,14 @@ public enum PaymentStatus {
 
   private static final Set<PaymentStatus> TERMINAL = EnumSet.of(COMPLETED, CANCELED, FAILED);
 
+  /** The statuses of uq_payments_order_active (V206): an attempt that still holds its order. */
+  private static final Set<PaymentStatus> ACTIVE = EnumSet.of(CREATED, PENDING, AUTHORIZED);
+
   public boolean terminal() {
     return TERMINAL.contains(this);
+  }
+
+  public boolean isActive() {
+    return ACTIVE.contains(this);
   }
 }

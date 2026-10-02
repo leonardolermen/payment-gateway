@@ -20,6 +20,10 @@ import com.gateway.billing.subscription.ActiveSubscriptions;
 import com.gateway.billing.subscription.SubscriptionQueries;
 import com.gateway.billing.subscription.SubscriptionService;
 import com.gateway.billing.subscription.billing.BillSubscriptionJob;
+import com.gateway.billing.subscription.billing.CycleOpener;
+import com.gateway.billing.subscription.billing.DunningStarter;
+import com.gateway.billing.subscription.billing.InvoiceIssuer;
+import com.gateway.billing.subscription.billing.SubscriptionBilling;
 import com.gateway.billing.subscription.persistence.DunningAttemptRepository;
 import com.gateway.billing.subscription.persistence.DunningAttemptRepositoryImpl;
 import com.gateway.billing.subscription.persistence.SubscriptionRepository;
@@ -170,9 +174,47 @@ public class BillingConfiguration {
     return new SubscriptionQueries(subscriptions, orders, dunning);
   }
 
-  /** Owns BILL_SUBSCRIPTION so the registry starts; it refuses to run until task 9. */
   @Bean
-  BillSubscriptionJob billSubscriptionJob(JobBackoff backoff) {
-    return new BillSubscriptionJob(backoff);
+  CycleOpener cycleOpener(
+      SubscriptionRepository subscriptions,
+      OrderRepository orders,
+      PlanService plans,
+      JobRepository jobs,
+      BillingEvents events,
+      BillingProperties properties,
+      Clock clock) {
+    return new CycleOpener(
+        subscriptions, orders, plans, jobs, events, properties.billingHour(), clock);
+  }
+
+  @Bean
+  InvoiceIssuer invoiceIssuer(OrderAttemptService attempts, PaymentQueries payments) {
+    return new InvoiceIssuer(attempts, payments);
+  }
+
+  /** Task 10 replaces this with the dunning schedule; until then PAST_DUE is the whole reaction. */
+  @Bean
+  DunningStarter noDunningYet() {
+    return (subscription, invoice, paymentId, now) -> {};
+  }
+
+  @Bean
+  SubscriptionBilling subscriptionBilling(
+      CycleOpener opener,
+      InvoiceIssuer issuer,
+      PaymentQueries payments,
+      SubscriptionRepository subscriptions,
+      DunningStarter dunning,
+      BillingEvents events,
+      BillingProperties properties,
+      UnitOfWork unitOfWork) {
+    return new SubscriptionBilling(
+        opener, issuer, payments, subscriptions, dunning, events, properties, unitOfWork);
+  }
+
+  @Bean
+  BillSubscriptionJob billSubscriptionJob(
+      SubscriptionBilling billing, SubscriptionRepository subscriptions, JobBackoff backoff) {
+    return new BillSubscriptionJob(billing, subscriptions, backoff);
   }
 }

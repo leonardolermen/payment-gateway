@@ -17,6 +17,9 @@ interface OrderJpaRepository extends JpaRepository<OrderEntity, String> {
   List<OrderEntity> findBySubscriptionIdOrderByInvoiceNumberDesc(
       String subscriptionId, Pageable page);
 
+  Optional<OrderEntity> findBySubscriptionIdAndInvoiceNumber(
+      String subscriptionId, Integer invoiceNumber);
+
   List<OrderEntity> findByStatusAndExpiresAtBefore(String status, Instant before, Pageable page);
 
   /**

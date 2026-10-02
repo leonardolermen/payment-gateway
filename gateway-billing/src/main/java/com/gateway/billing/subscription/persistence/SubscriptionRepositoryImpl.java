@@ -7,6 +7,7 @@ import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceContext;
 import java.time.LocalDate;
 import java.util.List;
@@ -81,6 +82,15 @@ public class SubscriptionRepositoryImpl implements SubscriptionRepository {
   @Override
   public Optional<Subscription> find(MerchantId merchantId, String id) {
     return jpa.findByIdAndMerchantId(id, merchantId.value()).map(this::toDomain);
+  }
+
+  @Override
+  @Transactional(propagation = Propagation.MANDATORY)
+  public Optional<Subscription> lock(String id) {
+    SubscriptionEntity entity =
+        entityManager.find(SubscriptionEntity.class, id, LockModeType.PESSIMISTIC_WRITE);
+
+    return Optional.ofNullable(entity).map(this::toDomain);
   }
 
   @Override

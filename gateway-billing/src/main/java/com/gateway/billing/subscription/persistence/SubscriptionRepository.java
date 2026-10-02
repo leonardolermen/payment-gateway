@@ -14,6 +14,12 @@ public interface SubscriptionRepository {
 
   Optional<Subscription> find(MerchantId merchantId, String id);
 
+  /**
+   * {@code SELECT ... FOR UPDATE}, requires a transaction: two billing runs for the same
+   * subscription would otherwise both open a period from the same row.
+   */
+  Optional<Subscription> lock(String id);
+
   /** Without the merchant: a job knows only the subscription id. */
   Optional<Subscription> findById(String id);
 

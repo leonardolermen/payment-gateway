@@ -11,8 +11,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param dunningRetryDays days after a failed invoice on which to retry (spec §7); ascending
  * @param billingHour São Paulo hour at which a cycle is billed, after the day turns and outside the
  *     bank's boleto windows (spec §6.1)
- * @param cardRecurringEnabled whether a subscription may charge a stored card without a CVV; false
- *     until the Cielo sandbox proves the token works without SecurityCode (spec §6 step 2)
+ * @param cardRecurringEnabled whether a subscription may charge a stored card without a CVV; true
+ *     by default; set false when the acquirer refuses token charges without a CVV (the sandbox
+ *     could not prove either way, docs/providers/cielo/NOTES.md)
  * @param orderExpiryRecheck how often an expired order with a still-active attempt is looked at
  *     again: an attempt outlives the order's expiry by up to its own payment limit, so polling
  *     hourly is cheap and, unlike a retry, never runs out
