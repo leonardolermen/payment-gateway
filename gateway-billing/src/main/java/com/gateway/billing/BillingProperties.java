@@ -1,0 +1,46 @@
+package com.gateway.billing;
+
+import java.util.List;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+/**
+ * Tunables of billing. Every field has a default so the module runs with no {@code
+ * gateway.billing.*} keys: a missing key must never become "retry forever" or "bill at midnight".
+ *
+ * @param dunningRetryDays days after a failed invoice on which to retry (spec §7); ascending
+ * @param billingHour São Paulo hour at which a cycle is billed, after the day turns and outside the
+ *     bank's boleto windows (spec §6.1)
+ * @param cardRecurringEnabled whether a subscription may charge a stored card without a CVV; false
+ *     until the Cielo sandbox proves the token works without SecurityCode (spec §6 step 2)
+ */
+@ConfigurationProperties("gateway.billing")
+public record BillingProperties(
+    List<Integer> dunningRetryDays, int billingHour, Boolean cardRecurringEnabled) {
+
+  public BillingProperties {
+    if (dunningRetryDays == null || dunningRetryDays.isEmpty()) {
+      dunningRetryDays = List.of(1, 3, 7);
+    }
+    requireAscendingPositive(dunningRetryDays);
+    if (billingHour <= 0 || billingHour > 23) {
+      billingHour = 3;
+    }
+    if (cardRecurringEnabled == null) {
+      cardRecurringEnabled = true;
+    }
+  }
+
+  private static void requireAscendingPositive(List<Integer> days) {
+    int previous = 0;
+    for (Integer day : days) {
+      if (day == null || day <= previous) {
+        throw new IllegalArgumentException("dunning.retry-days must be ascending positive days");
+      }
+      previous = day;
+    }
+  }
+
+  public static BillingProperties defaults() {
+    return new BillingProperties(null, 0, null);
+  }
+}

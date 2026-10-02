@@ -35,7 +35,7 @@ public class ArchitectureTest {
           .dependOnClassesThat()
           .resideInAnyPackage(
               "com.gateway.merchants..",
-              "com.gateway.orders..",
+              "com.gateway.billing..",
               "com.gateway.payments..",
               "com.gateway.providers..",
               "com.gateway.app..",
@@ -60,7 +60,7 @@ public class ArchitectureTest {
           .should()
           .dependOnClassesThat()
           .resideInAnyPackage(
-              "com.gateway.orders..", "com.gateway.payments..", "com.gateway.providers..");
+              "com.gateway.billing..", "com.gateway.payments..", "com.gateway.providers..");
 
   @ArchTest
   static final ArchRule onlyPaymentsKnowsProviders =
@@ -91,7 +91,7 @@ public class ArchitectureTest {
           .resideInAnyPackage(
               "com.gateway.merchants..",
               "com.gateway.payments..",
-              "com.gateway.orders..",
+              "com.gateway.billing..",
               "com.gateway.app..");
 
   @ArchTest
@@ -140,7 +140,10 @@ public class ArchitectureTest {
       noClasses()
           .that()
           .resideInAnyPackage(
-              "com.gateway.kernel..", "com.gateway.payments..", "com.gateway.merchants..")
+              "com.gateway.kernel..",
+              "com.gateway.payments..",
+              "com.gateway.merchants..",
+              "com.gateway.billing..")
           .and()
           .resideOutsideOfPackages("..persistence..", "..support..")
           .and()
@@ -148,4 +151,22 @@ public class ArchitectureTest {
           .should()
           .dependOnClassesThat()
           .resideInAPackage("org.springframework..");
+
+  @ArchTest
+  static final ArchRule paymentsDoesNotImportBilling =
+      noClasses()
+          .that()
+          .resideInAPackage("com.gateway.payments..")
+          .should()
+          .dependOnClassesThat()
+          .resideInAPackage("com.gateway.billing..");
+
+  @ArchTest
+  static final ArchRule billingOnlyKnowsKernelPaymentsMerchants =
+      noClasses()
+          .that()
+          .resideInAPackage("com.gateway.billing..")
+          .should()
+          .dependOnClassesThat()
+          .resideInAnyPackage("com.gateway.providers..", "com.gateway.app..", "com.barrier..");
 }

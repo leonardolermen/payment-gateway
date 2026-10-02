@@ -3,12 +3,14 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent><groupId>com.gateway</groupId><artifactId>payment-gateway-parent</artifactId><version>0.1.0-SNAPSHOT</version></parent>
-    <artifactId>gateway-payments</artifactId>
+    <artifactId>gateway-billing</artifactId>
     <dependencies>
         <dependency><groupId>com.gateway</groupId><artifactId>gateway-kernel</artifactId></dependency>
+        <dependency><groupId>com.gateway</groupId><artifactId>gateway-payments</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-jpa</artifactId></dependency>
         <dependency><groupId>tools.jackson.core</groupId><artifactId>jackson-databind</artifactId></dependency>
         <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId><scope>runtime</scope></dependency>
+        <dependency><groupId>com.gateway</groupId><artifactId>gateway-payments</artifactId><type>test-jar</type><scope>test</scope></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-testcontainers</artifactId><scope>test</scope></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-flyway</artifactId><scope>test</scope></dependency>
@@ -16,15 +18,4 @@
         <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>
         <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
     </dependencies>
-    <build>
-        <plugins>
-            <!-- gateway-billing's tests reuse ServiceTestConfig and the recording providers; publishing the
-                 test classes keeps one set of fakes instead of a copy that drifts. -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <executions><execution><goals><goal>test-jar</goal></goals></execution></executions>
-            </plugin>
-        </plugins>
-    </build>
 </project>

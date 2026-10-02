@@ -25,9 +25,9 @@ spring:
   flyway:
     enabled: true
     # One schema per module; Flyway creates the listed schemas. Versions are prefixed per module
-    # (1xx merchants, 2xx payments, 3xx orders) because a single history table needs unique versions.
-    schemas: merchants,payments
-    locations: classpath:db/migration/merchants,classpath:db/migration/payments
+    # (1xx merchants, 2xx payments, 3xx billing) because a single history table needs unique versions.
+    schemas: merchants,payments,billing
+    locations: classpath:db/migration/merchants,classpath:db/migration/payments,classpath:db/migration/billing
 
 webhook-delivery:
   headers:
