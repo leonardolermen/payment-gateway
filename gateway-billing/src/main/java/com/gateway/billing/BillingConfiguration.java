@@ -98,8 +98,9 @@ public class BillingConfiguration {
   }
 
   @Bean
-  ExpireOrderJob expireOrderJob(OrderExpiration expiration, JobBackoff backoff) {
-    return new ExpireOrderJob(expiration, backoff);
+  ExpireOrderJob expireOrderJob(
+      OrderExpiration expiration, JobBackoff backoff, BillingProperties properties) {
+    return new ExpireOrderJob(expiration, backoff, properties);
   }
 
   /** Task 10 replaces this with the subscription's reaction; until then no invoice exists. */

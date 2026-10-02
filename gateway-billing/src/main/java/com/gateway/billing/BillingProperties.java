@@ -1,5 +1,6 @@
 package com.gateway.billing;
 
+import java.time.Duration;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -12,10 +13,16 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     bank's boleto windows (spec §6.1)
  * @param cardRecurringEnabled whether a subscription may charge a stored card without a CVV; false
  *     until the Cielo sandbox proves the token works without SecurityCode (spec §6 step 2)
+ * @param orderExpiryRecheck how often an expired order with a still-active attempt is looked at
+ *     again: an attempt outlives the order's expiry by up to its own payment limit, so polling
+ *     hourly is cheap and, unlike a retry, never runs out
  */
 @ConfigurationProperties("gateway.billing")
 public record BillingProperties(
-    List<Integer> dunningRetryDays, int billingHour, Boolean cardRecurringEnabled) {
+    List<Integer> dunningRetryDays,
+    int billingHour,
+    Boolean cardRecurringEnabled,
+    Duration orderExpiryRecheck) {
 
   public BillingProperties {
     if (dunningRetryDays == null || dunningRetryDays.isEmpty()) {
@@ -27,6 +34,11 @@ public record BillingProperties(
     }
     if (cardRecurringEnabled == null) {
       cardRecurringEnabled = true;
+    }
+    if (orderExpiryRecheck == null
+        || orderExpiryRecheck.isZero()
+        || orderExpiryRecheck.isNegative()) {
+      orderExpiryRecheck = Duration.ofHours(1);
     }
   }
 
@@ -41,6 +53,6 @@ public record BillingProperties(
   }
 
   public static BillingProperties defaults() {
-    return new BillingProperties(null, 0, null);
+    return new BillingProperties(null, 0, null, null);
   }
 }
