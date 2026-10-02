@@ -64,14 +64,28 @@ public class OrderAttemptService {
     Payer payer = payerOf(order);
     CreatePaymentCommand command = commandFor(order, payer, request);
 
+    Payment payment;
     try {
-      return flows.forMethod(command.method()).create(command);
+      payment = flows.forMethod(command.method()).create(command);
     } catch (DataIntegrityViolationException refused) {
       // Only the partial unique index is a 409: with no active attempt to name, the violation was
       // something else, and dressing it as ORDER_HAS_ACTIVE_PAYMENT would hide a real fault.
       Payment active = payments.activeAttempt(order.id()).orElseThrow(() -> refused);
       throw new OrderHasActivePaymentException(order.id(), active.id());
     }
+
+    // Spec §5: a card saved on a customer's order is born his. The card flow saved it by document
+    // hash only; without this, the card could not pay his subscription
+    // (CARD_NOT_OWNED_BY_CUSTOMER).
+    if (order.customerId() != null && savedACard(payment)) {
+      customers.adoptSavedCards(customers.get(order.merchantId(), order.customerId()));
+    }
+
+    return payment;
+  }
+
+  private static boolean savedACard(Payment payment) {
+    return payment.card() != null && payment.card().cardId() != null;
   }
 
   /** The dispatch point: the one switch over the attempt kinds. */

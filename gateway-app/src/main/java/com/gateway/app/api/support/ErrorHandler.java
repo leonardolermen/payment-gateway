@@ -2,6 +2,8 @@ package com.gateway.app.api.support;
 
 import com.gateway.app.observability.Masker;
 import com.gateway.app.security.UnauthenticatedException;
+import com.gateway.billing.customer.CustomerExistsException;
+import com.gateway.billing.order.OrderHasActivePaymentException;
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.kernel.provider.ProviderException;
@@ -34,13 +36,21 @@ public class ErrorHandler {
   /**
    * The domain codes that are not a 422. ALREADY_PAID and the two capture conflicts are 409: the
    * resource is in a state the call cannot change (the cancel lost to the payer; the sale was
-   * captured already, or is not an authorization). CARD_DECLINED has its own handler (402).
+   * captured already, or is not an authorization). CARD_DECLINED has its own handler (402). The
+   * billing codes are 409 for the same reason: a customer, order or subscription whose state the
+   * call cannot change, or a concurrent write that won (CONFLICT).
    */
   private static final Map<String, HttpStatus> STATUS_BY_CODE =
       Map.of(
           "ALREADY_PAID", HttpStatus.CONFLICT,
           "CAPTURE_NOT_ALLOWED", HttpStatus.CONFLICT,
-          "ALREADY_CAPTURED", HttpStatus.CONFLICT);
+          "ALREADY_CAPTURED", HttpStatus.CONFLICT,
+          "CUSTOMER_EXISTS", HttpStatus.CONFLICT,
+          "CUSTOMER_HAS_ACTIVE_SUBSCRIPTION", HttpStatus.CONFLICT,
+          "ORDER_CLOSED", HttpStatus.CONFLICT,
+          "ORDER_HAS_ACTIVE_PAYMENT", HttpStatus.CONFLICT,
+          "SUBSCRIPTION_NOT_ACTIVE", HttpStatus.CONFLICT,
+          "CONFLICT", HttpStatus.CONFLICT);
 
   @ExceptionHandler(DomainException.class)
   public ProblemDetail domainError(DomainException e) {
@@ -56,6 +66,22 @@ public class ErrorHandler {
   public ProblemDetail cardDeclined(CardDeclinedException e) {
     ProblemDetail problem = problem(HttpStatus.PAYMENT_REQUIRED, e.code(), e.getMessage());
     problem.setProperty("decline_code", e.declineCode());
+    problem.setProperty("payment_id", e.paymentId());
+    return problem;
+  }
+
+  /** The existing id, so the merchant uses it instead of retrying the create. */
+  @ExceptionHandler(CustomerExistsException.class)
+  public ProblemDetail customerExists(CustomerExistsException e) {
+    ProblemDetail problem = problem(HttpStatus.CONFLICT, e.code(), e.getMessage());
+    problem.setProperty("customer_id", e.customerId());
+    return problem;
+  }
+
+  /** The attempt still open, so the merchant can cancel it or wait for it instead of guessing. */
+  @ExceptionHandler(OrderHasActivePaymentException.class)
+  public ProblemDetail orderHasActivePayment(OrderHasActivePaymentException e) {
+    ProblemDetail problem = problem(HttpStatus.CONFLICT, e.code(), e.getMessage());
     problem.setProperty("payment_id", e.paymentId());
     return problem;
   }

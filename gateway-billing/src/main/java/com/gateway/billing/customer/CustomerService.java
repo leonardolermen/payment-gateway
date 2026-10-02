@@ -137,6 +137,20 @@ public class CustomerService {
     return savedCards.listByCustomer(merchantId, id);
   }
 
+  /**
+   * Cards saved under this customer's document and not yet anyone's become his: what {@link
+   * #create} does in its transaction, run again after an order attempt for the card it just saved,
+   * because the card flow knows only the document hash, never the customer.
+   */
+  public void adoptSavedCards(Customer customer) {
+    String hash = documentHash(customer.document());
+
+    unitOfWork.run(
+        () ->
+            savedCards.adoptByDocumentHash(
+                customer.merchantId(), customer.environment(), hash, customer.id()));
+  }
+
   static String documentHash(Document document) {
     return Sha256.hex(document.digits());
   }

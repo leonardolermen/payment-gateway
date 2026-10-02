@@ -136,6 +136,39 @@ class OrderAttemptServiceIntegrationTest extends BillingIntegrationTestBase {
     assertThat(card.status()).isEqualTo(PaymentStatus.COMPLETED);
   }
 
+  /**
+   * Spec §5: a card saved by an attempt on a customer's order is born that customer's. Without it,
+   * the card a customer just saved could not pay his subscription (CARD_NOT_OWNED_BY_CUSTOMER):
+   * adoption by document ran only when the customer was created, before this card existed.
+   */
+  @Test
+  void aCardSavedOnACustomersOrderBelongsToTheCustomer() {
+    Order order = orderWithAddress();
+
+    Payment card =
+        attempts.attempt(
+            order,
+            new AttemptRequest.CardAttempt(
+                new CardChoice.NewCard(
+                    CardDataFactory.from(
+                        "4024007153763171",
+                        "ANA SILVA",
+                        "12/2030",
+                        "123",
+                        null,
+                        YearMonth.of(2026, 9)),
+                    true),
+                1,
+                true,
+                "LOJA"),
+            EventSource.API);
+
+    assertThat(card.card().cardId()).isNotNull();
+    assertThat(customers.cardsOf(merchant, order.customerId()))
+        .extracting(saved -> saved.id())
+        .containsExactly(card.card().cardId());
+  }
+
   @Test
   void aStaleOrderObjectCannotOpenAnAttemptAfterTheOrderWasCanceled() {
     Order stale = orderWithAddress();

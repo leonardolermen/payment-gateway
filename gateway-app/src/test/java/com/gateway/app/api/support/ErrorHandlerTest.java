@@ -2,6 +2,8 @@ package com.gateway.app.api.support;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.gateway.billing.customer.CustomerExistsException;
+import com.gateway.billing.order.OrderHasActivePaymentException;
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.payments.payment.card.CardDeclinedException;
 import org.junit.jupiter.api.Test;
@@ -61,5 +63,49 @@ class ErrorHandlerTest {
     assertThat(problem.getProperties())
         .containsEntry("decline_code", "INSUFFICIENT_FUNDS")
         .containsEntry("payment_id", "01K0PAY");
+  }
+
+  @Test
+  void billingConflictsAre409() {
+    for (String code :
+        new String[] {
+          "CUSTOMER_EXISTS",
+          "CUSTOMER_HAS_ACTIVE_SUBSCRIPTION",
+          "ORDER_CLOSED",
+          "ORDER_HAS_ACTIVE_PAYMENT",
+          "SUBSCRIPTION_NOT_ACTIVE",
+          "CONFLICT"
+        }) {
+      assertThat(handler.domainError(new DomainException(code, "x")).getStatus())
+          .as(code)
+          .isEqualTo(409);
+    }
+  }
+
+  @Test
+  void billingValidationStays422() {
+    for (String code : new String[] {"PLAN_INACTIVE", "PLAN_IMMUTABLE", "CARD_REQUIRED"}) {
+      assertThat(handler.domainError(new DomainException(code, "x")).getStatus())
+          .as(code)
+          .isEqualTo(422);
+    }
+  }
+
+  @Test
+  void anExistingCustomerNamesItsId() {
+    ProblemDetail problem = handler.customerExists(new CustomerExistsException("cus_1"));
+
+    assertThat(problem.getStatus()).isEqualTo(409);
+    assertThat(problem.getProperties()).containsEntry("customer_id", "cus_1");
+  }
+
+  @Test
+  void anActiveAttemptNamesItsPayment() {
+    ProblemDetail problem =
+        handler.orderHasActivePayment(new OrderHasActivePaymentException("ord_1", "pay_1"));
+
+    assertThat(problem.getStatus()).isEqualTo(409);
+    assertThat(problem.getType()).hasToString("urn:gateway:ORDER_HAS_ACTIVE_PAYMENT");
+    assertThat(problem.getProperties()).containsEntry("payment_id", "pay_1");
   }
 }
