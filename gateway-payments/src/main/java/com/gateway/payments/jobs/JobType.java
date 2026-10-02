@@ -11,5 +11,8 @@ public enum JobType {
   EXPIRE_ORDER,
 
   /** Billing's: one cycle of a subscription; the handler lives in gateway-billing. */
-  BILL_SUBSCRIPTION
+  BILL_SUBSCRIPTION,
+
+  /** Billing's: one scheduled retry of a failed invoice; the handler lives in gateway-billing. */
+  DUNNING_RETRY
 }

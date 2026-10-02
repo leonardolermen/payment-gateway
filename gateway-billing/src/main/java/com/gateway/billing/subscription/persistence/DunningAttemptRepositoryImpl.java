@@ -27,10 +27,15 @@ public class DunningAttemptRepositoryImpl implements DunningAttemptRepository {
     entityManager.persist(toEntity(attempt));
   }
 
+  /**
+   * Flushed at once: closing an attempt and scheduling the next share a transaction, and Hibernate
+   * flushes inserts before updates, so the new pending row would meet the old one still pending and
+   * break uq_dunning_pending_order.
+   */
   @Override
   @Transactional
   public void update(DunningAttempt attempt) {
-    jpa.save(toEntity(attempt));
+    jpa.saveAndFlush(toEntity(attempt));
   }
 
   @Override

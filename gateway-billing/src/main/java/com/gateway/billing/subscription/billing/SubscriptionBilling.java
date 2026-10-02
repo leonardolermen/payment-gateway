@@ -4,10 +4,7 @@ import com.gateway.billing.BillingEvents;
 import com.gateway.billing.BillingProperties;
 import com.gateway.billing.order.Order;
 import com.gateway.billing.subscription.Subscription;
-import com.gateway.billing.subscription.SubscriptionService;
 import com.gateway.billing.subscription.SubscriptionStatus;
-import com.gateway.billing.subscription.persistence.SubscriptionRepository;
-import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.payments.UnitOfWork;
 import com.gateway.payments.payment.Payment;
@@ -29,10 +26,8 @@ import java.util.Optional;
  * not attempted again. That is the idempotency, not a header; spec §6's "synthetic key" is amended
  * to this.
  *
- * <p>Eight dependencies, one over the house limit: {@link CycleOpener} already took transaction 1's
- * collaborators, and what is left (the attempt, the attempt check, transaction 2's write, its event
- * and dunning hand-off, the recurring switch, the transaction) is one sequence that splitting would
- * only scatter.
+ * <p>Seven dependencies: {@link CycleOpener} took transaction 1's collaborators, and {@link
+ * Dunning} took the PAST_DUE write that transaction 2 used to make itself.
  */
 public class SubscriptionBilling {
   static final String CARD_RECURRING_UNSUPPORTED = "CARD_RECURRING_UNSUPPORTED";
@@ -40,7 +35,6 @@ public class SubscriptionBilling {
   private final CycleOpener opener;
   private final InvoiceIssuer issuer;
   private final PaymentQueries payments;
-  private final SubscriptionRepository subscriptions;
   private final DunningStarter dunning;
   private final BillingEvents events;
   private final BillingProperties properties;
@@ -50,7 +44,6 @@ public class SubscriptionBilling {
       CycleOpener opener,
       InvoiceIssuer issuer,
       PaymentQueries payments,
-      SubscriptionRepository subscriptions,
       DunningStarter dunning,
       BillingEvents events,
       BillingProperties properties,
@@ -58,7 +51,6 @@ public class SubscriptionBilling {
     this.opener = opener;
     this.issuer = issuer;
     this.payments = payments;
-    this.subscriptions = subscriptions;
     this.dunning = dunning;
     this.events = events;
     this.properties = properties;
@@ -142,27 +134,9 @@ public class SubscriptionBilling {
       return;
     }
 
-    // Re-read, not transaction 1's copy: a cancel or a method change may have landed while the bank
-    // was answering, and update() accepts exactly one version bump since the row was read.
-    Subscription current =
-        subscriptions
-            .findById(opened.id())
-            .orElseThrow(() -> new IllegalStateException("subscription " + opened.id() + " gone"));
-    if (current.status() == SubscriptionStatus.ACTIVE) {
-      current.markPastDue(now);
-      if (!subscriptions.update(current)) {
-        throw new DomainException(
-            "CONFLICT", "subscription " + current.id() + " changed concurrently");
-      }
-      events.emit(
-          current.merchantId(),
-          "subscription.past_due",
-          current.id(),
-          current.id(),
-          SubscriptionService.json(current));
-    }
-
-    dunning.firstFailure(current, invoice, issued.paymentId(), now);
+    // Dunning owns PAST_DUE, its event and the schedule, so an expired Pix reaching it through
+    // the settlement books exactly what a declined card booked here.
+    dunning.firstFailure(opened, invoice, issued.paymentId(), now);
   }
 
   private static Map<String, Object> invoiceCreated(
@@ -185,32 +159,9 @@ public class SubscriptionBilling {
     body.put("charged", issued.charged());
     body.put("decline_code", issued.declineCode());
     body.put("reason", reason);
-    body.put("pix", pixOf(payment));
-    body.put("boleto", boletoOf(payment));
+    body.put("pix", InvoicePayloads.pixOf(payment));
+    body.put("boleto", InvoicePayloads.boletoOf(payment));
 
     return body;
-  }
-
-  private static Map<String, Object> pixOf(Payment payment) {
-    if (payment == null || payment.pix() == null) {
-      return null;
-    }
-
-    Map<String, Object> pix = new LinkedHashMap<>();
-    pix.put("copia_e_cola", payment.pix().pixCopiaECola());
-
-    return pix;
-  }
-
-  private static Map<String, Object> boletoOf(Payment payment) {
-    if (payment == null || payment.boleto() == null) {
-      return null;
-    }
-
-    Map<String, Object> boleto = new LinkedHashMap<>();
-    boleto.put("linha_digitavel", payment.boleto().linhaDigitavel());
-    boleto.put("due_date", String.valueOf(payment.boleto().dueDate()));
-
-    return boleto;
   }
 }

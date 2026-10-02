@@ -6,7 +6,6 @@ import com.gateway.billing.customer.persistence.CustomerRepository;
 import com.gateway.billing.customer.persistence.CustomerRepositoryImpl;
 import com.gateway.billing.order.ExpireOrderJob;
 import com.gateway.billing.order.InvoiceSettlementHook;
-import com.gateway.billing.order.Order;
 import com.gateway.billing.order.OrderAttemptService;
 import com.gateway.billing.order.OrderExpiration;
 import com.gateway.billing.order.OrderService;
@@ -21,6 +20,10 @@ import com.gateway.billing.subscription.SubscriptionQueries;
 import com.gateway.billing.subscription.SubscriptionService;
 import com.gateway.billing.subscription.billing.BillSubscriptionJob;
 import com.gateway.billing.subscription.billing.CycleOpener;
+import com.gateway.billing.subscription.billing.Dunning;
+import com.gateway.billing.subscription.billing.DunningLedger;
+import com.gateway.billing.subscription.billing.DunningRetryJob;
+import com.gateway.billing.subscription.billing.DunningSchedule;
 import com.gateway.billing.subscription.billing.DunningStarter;
 import com.gateway.billing.subscription.billing.InvoiceIssuer;
 import com.gateway.billing.subscription.billing.SubscriptionBilling;
@@ -39,7 +42,6 @@ import com.gateway.payments.payment.PaymentQueries;
 import com.gateway.payments.payment.create.PaymentFlows;
 import com.gateway.payments.reconciliation.Divergences;
 import java.time.Clock;
-import java.time.Instant;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.context.annotation.Bean;
@@ -128,19 +130,6 @@ public class BillingConfiguration {
     return new ExpireOrderJob(expiration, backoff, properties);
   }
 
-  /** Task 10 replaces this with the subscription's reaction; until then no invoice exists. */
-  @Bean
-  InvoiceSettlementHook noInvoiceHookYet() {
-    return new InvoiceSettlementHook() {
-      @Override
-      public void invoicePaid(Order order, Instant at) {}
-
-      @Override
-      public void invoiceAttemptFailed(
-          Order order, String paymentId, String eventType, Instant at) {}
-    };
-  }
-
   @Bean
   OrderSettlement orderSettlement(
       OrderRepository orders,
@@ -192,10 +181,42 @@ public class BillingConfiguration {
     return new InvoiceIssuer(attempts, payments);
   }
 
-  /** Task 10 replaces this with the dunning schedule; until then PAST_DUE is the whole reaction. */
   @Bean
-  DunningStarter noDunningYet() {
-    return (subscription, invoice, paymentId, now) -> {};
+  DunningSchedule dunningSchedule(BillingProperties properties) {
+    return new DunningSchedule(properties);
+  }
+
+  @Bean
+  DunningLedger dunningLedger(
+      DunningAttemptRepository attempts,
+      JobRepository jobs,
+      DunningSchedule schedule,
+      Clock clock) {
+    return new DunningLedger(attempts, jobs, schedule, clock);
+  }
+
+  /**
+   * One bean, and it is both ports: SubscriptionBilling takes it as DunningStarter, OrderSettlement
+   * as InvoiceSettlementHook. Not two more {@code @Bean} methods returning it typed as each port:
+   * by type, each port would then have two candidates (this bean and its alias) and the context
+   * would refuse to start.
+   */
+  @Bean
+  Dunning dunning(
+      DunningLedger ledger,
+      SubscriptionRepository subscriptions,
+      OrderRepository orders,
+      PaymentQueries payments,
+      InvoiceIssuer issuer,
+      BillingEvents events,
+      UnitOfWork unitOfWork) {
+    return new Dunning(ledger, subscriptions, orders, payments, issuer, events, unitOfWork);
+  }
+
+  @Bean
+  DunningRetryJob dunningRetryJob(
+      Dunning dunning, JobBackoff backoff, BillingProperties properties) {
+    return new DunningRetryJob(dunning, backoff, properties);
   }
 
   @Bean
@@ -203,13 +224,12 @@ public class BillingConfiguration {
       CycleOpener opener,
       InvoiceIssuer issuer,
       PaymentQueries payments,
-      SubscriptionRepository subscriptions,
       DunningStarter dunning,
       BillingEvents events,
       BillingProperties properties,
       UnitOfWork unitOfWork) {
     return new SubscriptionBilling(
-        opener, issuer, payments, subscriptions, dunning, events, properties, unitOfWork);
+        opener, issuer, payments, dunning, events, properties, unitOfWork);
   }
 
   @Bean

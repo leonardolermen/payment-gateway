@@ -20,7 +20,6 @@ import com.gateway.billing.subscription.SubscriptionFactory;
 import com.gateway.billing.subscription.SubscriptionQueries;
 import com.gateway.billing.subscription.SubscriptionService;
 import com.gateway.billing.subscription.SubscriptionStatus;
-import com.gateway.billing.subscription.persistence.SubscriptionRepository;
 import com.gateway.billing.support.BillingIntegrationTestBase;
 import com.gateway.kernel.money.Money;
 import com.gateway.kernel.payment.PaymentMethod;
@@ -53,7 +52,7 @@ class SubscriptionBillingIntegrationTest extends BillingIntegrationTestBase {
 
   @Autowired CycleOpener opener;
   @Autowired InvoiceIssuer issuer;
-  @Autowired SubscriptionRepository subscriptions;
+  @Autowired DunningStarter dunning;
   @Autowired BillingEvents events;
   @Autowired UnitOfWork unitOfWork;
 
@@ -181,13 +180,16 @@ class SubscriptionBillingIntegrationTest extends BillingIntegrationTestBase {
   void withRecurringDisabledACardCycleIsNotAttempted() {
     Subscription subscription = cardSubscription();
     List<String> firstFailures = new ArrayList<>();
-    DunningStarter recording = (failed, invoice, paymentId, now) -> firstFailures.add(invoice.id());
+    DunningStarter recording =
+        (failed, invoice, paymentId, now) -> {
+          firstFailures.add(invoice.id());
+          dunning.firstFailure(failed, invoice, paymentId, now);
+        };
     SubscriptionBilling withoutRecurring =
         new SubscriptionBilling(
             opener,
             issuer,
             paymentQueries,
-            subscriptions,
             recording,
             events,
             new BillingProperties(null, 0, false, null),

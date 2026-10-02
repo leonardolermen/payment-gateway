@@ -53,4 +53,24 @@ public class BillingJobOwnersStub {
       }
     };
   }
+
+  @Bean
+  JobHandler dunningRetryStub() {
+    return new JobHandler() {
+      @Override
+      public JobType type() {
+        return JobType.DUNNING_RETRY;
+      }
+
+      @Override
+      public boolean run(String refId, Instant now) {
+        return true;
+      }
+
+      @Override
+      public Job afterFailure(Job job, Instant now, String error) {
+        return job;
+      }
+    };
+  }
 }
