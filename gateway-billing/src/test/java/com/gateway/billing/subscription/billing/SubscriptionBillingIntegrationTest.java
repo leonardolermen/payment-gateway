@@ -1,6 +1,7 @@
 package com.gateway.billing.subscription.billing;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.gateway.billing.BillingEvents;
 import com.gateway.billing.BillingProperties;
@@ -24,6 +25,7 @@ import com.gateway.billing.support.BillingIntegrationTestBase;
 import com.gateway.kernel.money.Money;
 import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.kernel.provider.ProviderEnvironment;
+import com.gateway.kernel.provider.ProviderException;
 import com.gateway.kernel.provider.card.CardStatus;
 import com.gateway.payments.UnitOfWork;
 import com.gateway.payments.jobs.Job;
@@ -116,6 +118,49 @@ class SubscriptionBillingIntegrationTest extends BillingIntegrationTestBase {
     assertThat(invoicesOf(subscription)).hasSize(1);
     assertThat(paymentQueries.listByOrder(merchant, invoicesOf(subscription).get(0).id()))
         .hasSize(1);
+  }
+
+  @Test
+  void aCycleWhoseBankCallFailedIsChargedOnTheRetry() {
+    Subscription subscription = cardSubscription();
+    cards.failNextAuthorizeWith(
+        new ProviderException(ProviderException.Code.UNAVAILABLE, 503, "CIELO", "down"));
+    assertThatThrownBy(() -> billing.billOne(subscription.id(), clock.instant()))
+        .isInstanceOf(RuntimeException.class);
+
+    billing.billOne(subscription.id(), clock.instant());
+
+    assertThat(invoicesOf(subscription)).hasSize(1);
+    // The unreachable bank left its FAILED row; the retry is the one charge.
+    assertThat(paymentQueries.listByOrder(merchant, invoicesOf(subscription).get(0).id()))
+        .extracting(Payment::status)
+        .containsOnlyOnce(PaymentStatus.COMPLETED)
+        .doesNotContain(PaymentStatus.CREATED, PaymentStatus.PENDING, PaymentStatus.AUTHORIZED);
+  }
+
+  @Test
+  void aDeclineWhoseBookingWasLostIsBookedOnTheRetryWithoutChargingAgain() {
+    Subscription subscription = cardSubscription();
+    cards.nextAuthorizeStatus(CardStatus.DENIED);
+    billing.billOne(subscription.id(), clock.instant());
+    String invoiceId = invoicesOf(subscription).get(0).id();
+    // Undo exactly what transaction 2 wrote: the status and its two events.
+    jdbc.update(
+        "UPDATE billing.subscriptions SET status = 'ACTIVE' WHERE id = ?", subscription.id());
+    jdbc.update(
+        "DELETE FROM payments.outbox WHERE event_type IN ('invoice.created',"
+            + " 'subscription.past_due') AND aggregate_id IN (?, ?)",
+        invoiceId,
+        subscription.id());
+
+    billing.billOne(subscription.id(), clock.instant());
+    billing.billOne(subscription.id(), clock.instant());
+
+    assertThat(queries.get(merchant, subscription.id()).status())
+        .isEqualTo(SubscriptionStatus.PAST_DUE);
+    assertThat(paymentQueries.listByOrder(merchant, invoiceId)).hasSize(1);
+    assertThat(outboxTypes(subscription.id())).containsOnlyOnce("subscription.past_due");
+    assertThat(outboxTypes(invoiceId)).containsOnlyOnce("invoice.created");
   }
 
   @Test

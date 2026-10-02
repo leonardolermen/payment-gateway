@@ -56,6 +56,20 @@ public class InvoiceIssuer {
     }
   }
 
+  /**
+   * A FAILED card attempt that the acquirer answered: an outcome to book, not an error to retry.
+   */
+  public static boolean isDecline(Payment payment) {
+    return payment.status() == PaymentStatus.FAILED
+        && payment.card() != null
+        && payment.card().declineCode() != null;
+  }
+
+  /** The outcome of an attempt declined on an earlier run, rebuilt from its committed row. */
+  public static IssuedInvoice declinedBy(Payment payment) {
+    return new IssuedInvoice(payment, false, payment.card().declineCode());
+  }
+
   /** The dispatch point: the one switch over the subscription's method. */
   private static AttemptRequest requestFor(
       Subscription subscription, Order invoice, Instant now, Instant until) {

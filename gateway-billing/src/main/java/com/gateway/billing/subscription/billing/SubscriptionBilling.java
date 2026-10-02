@@ -15,6 +15,7 @@ import com.gateway.payments.payment.PaymentQueries;
 import com.gateway.payments.payment.PaymentStatus;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -71,20 +72,44 @@ public class SubscriptionBilling {
       return true;
     }
 
-    Subscription subscription = opened.get().subscription();
-    Order invoice = opened.get().invoice();
+    OpenedCycle cycle = opened.get();
+    Subscription subscription = cycle.subscription();
+    Order invoice = cycle.invoice();
+    List<Payment> attempts = payments.listByOrder(invoice.merchantId(), invoice.id());
 
-    if (alreadyAttempted(invoice)) {
+    // Never a second active attempt, never a second charge, nothing on a closed invoice.
+    if (!invoice.isOpen() || hasLiveOrPaidAttempt(attempts)) {
+      return true;
+    }
+
+    // A resumed cycle whose failure was already booked has nothing left: PAST_DUE is only
+    // written by that booking, and dunning owns the invoice from there.
+    boolean failureAlreadyBooked =
+        cycle.resumed() && subscription.status() != SubscriptionStatus.ACTIVE;
+
+    Optional<Payment> declined = attempts.stream().filter(InvoiceIssuer::isDecline).findFirst();
+    if (declined.isPresent()) {
+      // The card was declined and transaction 2 never committed: book it, do not charge again.
+      if (!failureAlreadyBooked) {
+        IssuedInvoice issued = InvoiceIssuer.declinedBy(declined.get());
+        unitOfWork.run(() -> record(subscription, invoice, issued, null, now));
+      }
+
       return true;
     }
 
     if (subscription.method() == PaymentMethod.CARD && !properties.cardRecurringEnabled()) {
-      IssuedInvoice nothing = IssuedInvoice.notAttempted();
-      unitOfWork.run(() -> record(subscription, invoice, nothing, CARD_RECURRING_UNSUPPORTED, now));
+      if (!failureAlreadyBooked) {
+        IssuedInvoice nothing = IssuedInvoice.notAttempted();
+        unitOfWork.run(
+            () -> record(subscription, invoice, nothing, CARD_RECURRING_UNSUPPORTED, now));
+      }
 
       return true;
     }
 
+    // No attempt yet, or only ones that failed without an answer (the bank unreachable): the
+    // exception went to the job, and this retry is the attempt that run never got to make.
     IssuedInvoice issued = issuer.issue(subscription, invoice, now, invoice.expiresAt());
 
     unitOfWork.run(() -> record(subscription, invoice, issued, null, now));
@@ -92,8 +117,8 @@ public class SubscriptionBilling {
     return true;
   }
 
-  private boolean alreadyAttempted(Order invoice) {
-    return payments.listByOrder(invoice.merchantId(), invoice.id()).stream()
+  private static boolean hasLiveOrPaidAttempt(List<Payment> attempts) {
+    return attempts.stream()
         .map(Payment::status)
         .anyMatch(status -> status == PaymentStatus.COMPLETED || status.isActive());
   }

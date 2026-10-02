@@ -51,16 +51,23 @@ public class CycleOpener {
     this.clock = clock;
   }
 
-  /** Empty when there is nothing to charge: not billable, not due yet, or just ended. */
+  /**
+   * Empty when there is nothing to charge: not billable, no cycle yet, or just ended. When the
+   * subscription is not due, the current invoice comes back as resumed: a run that committed
+   * transaction 1 and then failed (the bank call, transaction 2) moved nextBillingAt a period
+   * ahead, and its retry must still finish that invoice instead of finding nothing due.
+   */
   public Optional<OpenedCycle> open(String subscriptionId, Instant now) {
     Optional<Subscription> locked = subscriptions.lock(subscriptionId);
-    if (locked.isEmpty()) {
+    if (locked.isEmpty() || !locked.get().isBillable()) {
       return Optional.empty();
     }
 
     Subscription subscription = locked.get();
-    if (!isDue(subscription, now)) {
-      return Optional.empty();
+    boolean isNewCycleDue = isDue(subscription, now) && !isCurrentCycleAgain(subscription, now);
+    if (!isNewCycleDue) {
+      return currentInvoice(subscription)
+          .map(invoice -> OpenedCycle.resumed(subscription, invoice));
     }
 
     if (subscription.cancelAtPeriodEnd()) {
@@ -75,10 +82,6 @@ public class CycleOpener {
           SubscriptionService.json(subscription));
 
       return Optional.empty();
-    }
-
-    if (isCurrentCycleAgain(subscription, now)) {
-      return currentInvoice(subscription).map(invoice -> new OpenedCycle(subscription, invoice));
     }
 
     return Optional.of(openNext(subscription, now));
@@ -113,7 +116,7 @@ public class CycleOpener {
     jobs.enqueue(Job.billSubscription(subscription.id(), nextBillingAt, clock));
 
     if (existing.isPresent()) {
-      return new OpenedCycle(subscription, existing.get());
+      return OpenedCycle.opened(subscription, existing.get());
     }
 
     // Not OrderService.create: an invoice is born here, inside this transaction, yet it must
@@ -122,7 +125,7 @@ public class CycleOpener {
         draft.merchantId(), "order.created", draft.id(), draft.id(), OrderService.json(draft));
     jobs.enqueue(Job.expireOrder(draft.id(), expiresAt, clock));
 
-    return new OpenedCycle(subscription, draft);
+    return OpenedCycle.opened(subscription, draft);
   }
 
   private static boolean isDue(Subscription subscription, Instant now) {
@@ -132,16 +135,16 @@ public class CycleOpener {
   }
 
   /**
-   * Due, yet the current period has not reached its billing instant: the row was billed for this
-   * period and runs again (a retried job, a rewound next_billing_at). Opening another period here
-   * would bill the customer twice for one month; the current invoice is retried instead, and
-   * SubscriptionBilling skips it if its attempt already happened.
+   * Due, yet São Paulo has not reached the current period's last day: the row was billed for this
+   * period and next_billing_at was rewound, so opening another period would bill one month twice.
+   * Compared by day, not against billingInstant(end, billingHour): with the hour raised between
+   * cycles, the recomputed instant lies after the stored next_billing_at, every run on that day
+   * would call it a rerun, and the job would spin on its own past next_billing_at until the hour.
    */
-  private boolean isCurrentCycleAgain(Subscription subscription, Instant now) {
+  private static boolean isCurrentCycleAgain(Subscription subscription, Instant now) {
     BillingPeriod current = subscription.currentPeriod();
 
-    return current != null
-        && BillingCalendar.billingInstant(current.end(), billingHour).isAfter(now);
+    return current != null && BillingCalendar.today(now).isBefore(current.end());
   }
 
   private Optional<Order> currentInvoice(Subscription subscription) {
