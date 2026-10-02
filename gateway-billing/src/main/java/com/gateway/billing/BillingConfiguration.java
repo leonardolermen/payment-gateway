@@ -60,8 +60,11 @@ public class BillingConfiguration {
 
   @Bean
   OrderAttemptService orderAttemptService(
-      PaymentFlows flows, PaymentQueries payments, CustomerService customers) {
-    return new OrderAttemptService(flows, payments, customers);
+      PaymentFlows flows,
+      PaymentQueries payments,
+      CustomerService customers,
+      OrderRepository orders) {
+    return new OrderAttemptService(flows, payments, customers, orders);
   }
 
   @Bean

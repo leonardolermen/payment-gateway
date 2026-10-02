@@ -14,8 +14,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class OrderService {
+  private static final Logger log = LoggerFactory.getLogger(OrderService.class);
+
   private final OrderRepository orders;
   private final PaymentQueries payments;
   private final PaymentCancellation cancellation;
@@ -76,20 +80,55 @@ public class OrderService {
     Optional<Payment> active = payments.activeAttempt(order.id());
     active.ifPresent(payment -> cancellation.cancel(merchantId, payment.id()));
 
-    return unitOfWork.inTransaction(
-        () -> {
-          Order current = orders.find(merchantId, id).orElseThrow();
-          requireOpen(current);
+    Order canceled =
+        unitOfWork.inTransaction(
+            () -> {
+              Order current = orders.find(merchantId, id).orElseThrow();
+              requireOpen(current);
 
-          current.markCanceled(clock.instant());
-          if (!orders.update(current)) {
-            throw new DomainException("CONFLICT", "order " + id + " changed concurrently");
-          }
+              current.markCanceled(clock.instant());
+              if (!orders.update(current)) {
+                throw new DomainException("CONFLICT", "order " + id + " changed concurrently");
+              }
 
-          events.emit(merchantId, "order.canceled", id, id, json(current));
+              events.emit(merchantId, "order.canceled", id, id, json(current));
 
-          return current;
-        });
+              return current;
+            });
+
+    cancelLateAttempt(merchantId, id);
+
+    return canceled;
+  }
+
+  /**
+   * An attempt that re-read the order just before the close above can still have opened a charge:
+   * the attempt checks OPEN, then the bank call runs outside any lock. Asked once more, after the
+   * close, so no payable charge outlives a CANCELED order. Never thrown back: the order is already
+   * CANCELED and committed, so an error would tell the merchant the opposite of what happened. A
+   * late ALREADY_PAID is money on a canceled order; the settlement listener books it as a
+   * divergence, and anything else left PENDING dies with the payment's own expiration.
+   */
+  private void cancelLateAttempt(MerchantId merchantId, String orderId) {
+    Optional<Payment> late = payments.activeAttempt(orderId);
+    if (late.isEmpty()) {
+      return;
+    }
+
+    log.warn(
+        "attempt {} started while order {} was being canceled; cancelling it at the bank",
+        late.get().id(),
+        orderId);
+
+    try {
+      cancellation.cancel(merchantId, late.get().id());
+    } catch (DomainException e) {
+      log.warn(
+          "late cancel of attempt {} on canceled order {} refused: {}",
+          late.get().id(),
+          orderId,
+          e.code());
+    }
   }
 
   private static void requireOpen(Order order) {

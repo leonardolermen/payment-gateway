@@ -8,13 +8,19 @@ import com.gateway.billing.customer.CustomerAddress;
 import com.gateway.billing.customer.CustomerFactory;
 import com.gateway.billing.customer.CustomerService;
 import com.gateway.billing.support.BillingIntegrationTestBase;
+import com.gateway.kernel.address.Uf;
+import com.gateway.kernel.address.ZipCode;
+import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.money.Money;
+import com.gateway.kernel.party.Document;
+import com.gateway.kernel.party.PersonName;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentStatus;
 import com.gateway.payments.payment.create.CardChoice;
 import com.gateway.payments.payment.create.CardDataFactory;
+import com.gateway.payments.payment.create.CustomerDocumentHash;
 import java.time.YearMonth;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -128,5 +134,73 @@ class OrderAttemptServiceIntegrationTest extends BillingIntegrationTestBase {
             EventSource.API);
 
     assertThat(card.status()).isEqualTo(PaymentStatus.COMPLETED);
+  }
+
+  @Test
+  void aStaleOrderObjectCannotOpenAnAttemptAfterTheOrderWasCanceled() {
+    Order stale = orderWithAddress();
+    orders.cancel(merchant, stale.id());
+
+    assertThatThrownBy(
+            () -> attempts.attempt(stale, new AttemptRequest.PixAttempt(600), EventSource.API))
+        .isInstanceOf(DomainException.class)
+        .extracting(e -> ((DomainException) e).code())
+        .isEqualTo("ORDER_CLOSED");
+    assertThat(paymentQueries.listByOrder(merchant, stale.id())).isEmpty();
+  }
+
+  @Test
+  void aBolecodeForACustomerWithoutAddressIsRefused() {
+    Customer customer =
+        customers.create(
+            CustomerFactory.fromRequest(
+                merchant, ProviderEnvironment.TEST, "Ana Silva", "52998224725", null, null, clock));
+    Order order =
+        orders.create(
+            OrderFactory.standalone(
+                merchant,
+                ProviderEnvironment.TEST,
+                Money.brl(5000),
+                "order-44",
+                null,
+                customer.id(),
+                null,
+                null,
+                clock));
+
+    assertThatThrownBy(
+            () ->
+                attempts.attempt(
+                    order, new AttemptRequest.BolecodeAttempt(null, null), EventSource.API))
+        .isInstanceOf(DomainException.class)
+        .extracting(e -> ((DomainException) e).code())
+        .isEqualTo("CUSTOMER_ADDRESS_REQUIRED");
+  }
+
+  @Test
+  void anAttemptOnAnInlinePayerUsesTheOpenedDocument() {
+    OrderPayer payer =
+        new OrderPayer(
+            PersonName.of("Ana Silva"),
+            Document.of("52998224725"),
+            null,
+            new CustomerAddress(
+                "Rua A 1", "Centro", "Sao Paulo", Uf.of("SP"), ZipCode.of("01310100")));
+    Order order =
+        orders.create(
+            OrderFactory.standalone(
+                merchant,
+                ProviderEnvironment.TEST,
+                Money.brl(5000),
+                "order-45",
+                null,
+                null,
+                payer,
+                null,
+                clock));
+
+    Payment pix = attempts.attempt(order, new AttemptRequest.PixAttempt(600), EventSource.API);
+
+    assertThat(pix.customerDocumentHash()).isEqualTo(CustomerDocumentHash.of("52998224725"));
   }
 }

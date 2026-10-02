@@ -3,7 +3,9 @@ package com.gateway.billing.order;
 import com.gateway.billing.customer.Customer;
 import com.gateway.billing.customer.CustomerAddress;
 import com.gateway.billing.customer.CustomerService;
+import com.gateway.billing.order.persistence.OrderRepository;
 import com.gateway.kernel.errors.DomainException;
+import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.kernel.party.Document;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
@@ -32,16 +34,29 @@ public class OrderAttemptService {
   private final PaymentFlows flows;
   private final PaymentQueries payments;
   private final CustomerService customers;
+  private final OrderRepository orders;
 
   public OrderAttemptService(
-      PaymentFlows flows, PaymentQueries payments, CustomerService customers) {
+      PaymentFlows flows,
+      PaymentQueries payments,
+      CustomerService customers,
+      OrderRepository orders) {
     this.flows = flows;
     this.payments = payments;
     this.customers = customers;
+    this.orders = orders;
   }
 
-  /** {@code by} is kept for the callers' audit trail; the flows record API themselves today. */
-  public Payment attempt(Order order, AttemptRequest request, EventSource by) {
+  /**
+   * {@code requested} is a key, not the truth: a caller holding an Order read before a cancel would
+   * otherwise open a payable charge on a CANCELED order. The row is re-read here and that row's
+   * status decides. {@code by} is kept for the callers' audit trail; the flows record API today.
+   */
+  public Payment attempt(Order requested, AttemptRequest request, EventSource by) {
+    Order order =
+        orders
+            .find(requested.merchantId(), requested.id())
+            .orElseThrow(() -> new NotFoundException("order", requested.id()));
     if (!order.isOpen()) {
       throw new DomainException("ORDER_CLOSED", "order " + order.id() + " is " + order.status());
     }
@@ -52,9 +67,10 @@ public class OrderAttemptService {
     try {
       return flows.forMethod(command.method()).create(command);
     } catch (DataIntegrityViolationException refused) {
-      // The partial unique index spoke: name the attempt that holds the slot.
-      String active = payments.activeAttempt(order.id()).map(Payment::id).orElse("unknown");
-      throw new OrderHasActivePaymentException(order.id(), active);
+      // Only the partial unique index is a 409: with no active attempt to name, the violation was
+      // something else, and dressing it as ORDER_HAS_ACTIVE_PAYMENT would hide a real fault.
+      Payment active = payments.activeAttempt(order.id()).orElseThrow(() -> refused);
+      throw new OrderHasActivePaymentException(order.id(), active.id());
     }
   }
 
