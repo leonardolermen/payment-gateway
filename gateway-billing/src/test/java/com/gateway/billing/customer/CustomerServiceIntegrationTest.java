@@ -3,10 +3,15 @@ package com.gateway.billing.customer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.gateway.billing.BillingEvents;
+import com.gateway.billing.customer.persistence.CustomerRepository;
 import com.gateway.billing.support.BillingIntegrationTestBase;
 import com.gateway.kernel.errors.DomainException;
+import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.money.Money;
 import com.gateway.kernel.provider.ProviderEnvironment;
+import com.gateway.kernel.security.Sealer;
+import com.gateway.payments.UnitOfWork;
 import com.gateway.payments.card.SavedCards;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.create.CardChoice;
@@ -14,12 +19,18 @@ import com.gateway.payments.payment.create.CardCustomerData;
 import com.gateway.payments.payment.create.CardDataFactory;
 import com.gateway.payments.payment.create.CreateCardPayment;
 import java.time.YearMonth;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
 class CustomerServiceIntegrationTest extends BillingIntegrationTestBase {
   @Autowired CustomerService customers;
   @Autowired SavedCards savedCards;
+  @Autowired CustomerRepository repository;
+  @Autowired ActiveSubscriptionsCheck activeSubscriptions;
+  @Autowired BillingEvents events;
+  @Autowired Sealer sealer;
+  @Autowired UnitOfWork unitOfWork;
 
   Customer ana() {
     return customers.create(
@@ -109,6 +120,58 @@ class CustomerServiceIntegrationTest extends BillingIntegrationTestBase {
     assertThat(updated.version()).isEqualTo(2L);
     assertThat(updated.address().state().value()).isEqualTo("SP");
     assertThat(updated.document()).isEqualTo(created.document());
+  }
+
+  @Test
+  void deleteReportsAConcurrentChangeInsteadOfDoingNothing() {
+    Customer created = ana();
+    // The service reads a snapshot, then the row moves on: the window between get and update.
+    jdbc.update("UPDATE billing.customers SET version = version + 1 WHERE id = ?", created.id());
+    CustomerService racing =
+        new CustomerService(
+            new StaleReads(repository, created),
+            savedCards,
+            activeSubscriptions,
+            events,
+            sealer,
+            unitOfWork,
+            clock);
+
+    assertThatThrownBy(() -> racing.delete(merchant, created.id()))
+        .isInstanceOf(DomainException.class)
+        .extracting(exception -> ((DomainException) exception).code())
+        .isEqualTo("CONFLICT");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT deleted_at IS NULL FROM billing.customers WHERE id = ?",
+                Boolean.class,
+                created.id()))
+        .isTrue();
+  }
+
+  /** Reads return the snapshot taken before the concurrent write; writes go to the real table. */
+  private record StaleReads(CustomerRepository real, Customer snapshot)
+      implements CustomerRepository {
+    @Override
+    public void insert(Customer customer, byte[] documentCiphertext, String documentHash) {
+      real.insert(customer, documentCiphertext, documentHash);
+    }
+
+    @Override
+    public boolean update(Customer customer) {
+      return real.update(customer);
+    }
+
+    @Override
+    public Optional<Customer> findActive(MerchantId merchantId, String id) {
+      return Optional.of(snapshot);
+    }
+
+    @Override
+    public Optional<Customer> findActiveByDocumentHash(
+        MerchantId merchantId, ProviderEnvironment environment, String documentHash) {
+      return real.findActiveByDocumentHash(merchantId, environment, documentHash);
+    }
   }
 
   @Test

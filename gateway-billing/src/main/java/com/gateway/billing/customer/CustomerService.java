@@ -123,7 +123,12 @@ public class CustomerService {
           "CUSTOMER_HAS_ACTIVE_SUBSCRIPTION", "customer " + id + " has an active subscription");
     }
 
-    unitOfWork.run(() -> customers.update(current.deleted(clock.instant())));
+    unitOfWork.run(
+        () -> {
+          if (!customers.update(current.deleted(clock.instant()))) {
+            throw new DomainException("CONFLICT", "customer " + id + " changed concurrently");
+          }
+        });
   }
 
   public List<SavedCard> cardsOf(MerchantId merchantId, String id) {
