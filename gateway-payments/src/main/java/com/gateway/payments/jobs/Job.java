@@ -65,6 +65,19 @@ public record Job(
         clock.instant());
   }
 
+  public static Job expireOrder(String orderId, Instant when, Clock clock) {
+    return new Job(
+        Ulid.next(),
+        JobType.EXPIRE_ORDER,
+        orderId,
+        when,
+        0,
+        "PENDING",
+        null,
+        null,
+        clock.instant());
+  }
+
   public static Job reconcile(Clock clock) {
     Instant now = clock.instant();
     return new Job(Ulid.next(), JobType.RECONCILE, "all", now, 0, "PENDING", null, null, now);

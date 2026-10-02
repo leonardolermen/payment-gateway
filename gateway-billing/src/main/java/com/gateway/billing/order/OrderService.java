@@ -6,6 +6,8 @@ import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.payments.UnitOfWork;
+import com.gateway.payments.jobs.Job;
+import com.gateway.payments.jobs.persistence.JobRepository;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentCancellation;
 import com.gateway.payments.payment.PaymentQueries;
@@ -24,6 +26,7 @@ public class OrderService {
   private final PaymentQueries payments;
   private final PaymentCancellation cancellation;
   private final BillingEvents events;
+  private final JobRepository jobs;
   private final UnitOfWork unitOfWork;
   private final Clock clock;
 
@@ -32,12 +35,14 @@ public class OrderService {
       PaymentQueries payments,
       PaymentCancellation cancellation,
       BillingEvents events,
+      JobRepository jobs,
       UnitOfWork unitOfWork,
       Clock clock) {
     this.orders = orders;
     this.payments = payments;
     this.cancellation = cancellation;
     this.events = events;
+    this.jobs = jobs;
     this.unitOfWork = unitOfWork;
     this.clock = clock;
   }
@@ -47,6 +52,10 @@ public class OrderService {
         () -> {
           orders.insert(order);
           events.emit(order.merchantId(), "order.created", order.id(), order.id(), json(order));
+
+          if (order.expiresAt() != null) {
+            jobs.enqueue(Job.expireOrder(order.id(), order.expiresAt(), clock));
+          }
 
           return order;
         });

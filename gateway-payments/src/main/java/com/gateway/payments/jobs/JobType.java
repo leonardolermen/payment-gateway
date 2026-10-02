@@ -5,5 +5,8 @@ public enum JobType {
   EXPIRE_PAYMENT,
   POLL_REFUND,
   RECONCILE,
-  POLL_BOLETO
+  POLL_BOLETO,
+
+  /** Billing's; the handler lives in gateway-billing, the runner does not care. */
+  EXPIRE_ORDER
 }
