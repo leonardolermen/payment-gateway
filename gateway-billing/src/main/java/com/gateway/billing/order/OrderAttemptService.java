@@ -18,6 +18,8 @@ import com.gateway.payments.payment.create.CreatePaymentCommand;
 import com.gateway.payments.payment.create.CreatePixPayment;
 import com.gateway.payments.payment.create.PayerData;
 import com.gateway.payments.payment.create.PaymentFlows;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 
 /**
@@ -31,6 +33,8 @@ import org.springframework.dao.DataIntegrityViolationException;
  * requests both read "no active attempt" and only the index serializes them.
  */
 public class OrderAttemptService {
+  private static final Logger log = LoggerFactory.getLogger(OrderAttemptService.class);
+
   private final PaymentFlows flows;
   private final PaymentQueries payments;
   private final CustomerService customers;
@@ -74,18 +78,40 @@ public class OrderAttemptService {
       throw new OrderHasActivePaymentException(order.id(), active.id());
     }
 
-    // Spec §5: a card saved on a customer's order is born his. The card flow saved it by document
-    // hash only; without this, the card could not pay his subscription
-    // (CARD_NOT_OWNED_BY_CUSTOMER).
-    if (order.customerId() != null && savedACard(payment)) {
-      customers.adoptSavedCards(customers.get(order.merchantId(), order.customerId()));
+    if (order.customerId() != null && savesANewCard(request) && payment.card().cardId() != null) {
+      adoptQuietly(order, payment);
     }
 
     return payment;
   }
 
-  private static boolean savedACard(Payment payment) {
-    return payment.card() != null && payment.card().cardId() != null;
+  private static boolean savesANewCard(AttemptRequest request) {
+    return request instanceof AttemptRequest.CardAttempt card
+        && card.card() instanceof CardChoice.NewCard newCard
+        && newCard.save();
+  }
+
+  /**
+   * Spec §5: a card saved on a customer's order is born his; the card flow saved it by document
+   * hash only. This runs after the charge committed, so it must never fail the request: the payment
+   * response is the contract, and an error here would be a 404/500 for money already taken, which
+   * IdempotencyFilter would then replay on every retry. A card left unlinked is repairable
+   * (adoption by document hash links it on the next CustomerService adoption); a lost charge
+   * response is not.
+   */
+  private void adoptQuietly(Order order, Payment payment) {
+    try {
+      customers.adoptSavedCards(customers.get(order.merchantId(), order.customerId()));
+    } catch (RuntimeException e) {
+      // The class only: a message may carry SQL or customer data.
+      log.warn(
+          "card {} of payment {} was saved but not linked to customer {} ({});"
+              + " CustomerService.create/adopt repairs it later",
+          payment.card().cardId(),
+          payment.id(),
+          order.customerId(),
+          e.getClass().getSimpleName());
+    }
   }
 
   /** The dispatch point: the one switch over the attempt kinds. */

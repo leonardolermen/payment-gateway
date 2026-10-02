@@ -169,6 +169,49 @@ class OrderAttemptServiceIntegrationTest extends BillingIntegrationTestBase {
         .containsExactly(card.card().cardId());
   }
 
+  /**
+   * The charge committed before the adoption runs, so a failing adoption must not turn a paid
+   * attempt into an error the idempotency filter would replay. A deleted customer cannot stand in
+   * for the failure: payerOf refuses it before any charge. A trigger refusing the adoption's UPDATE
+   * on payments.cards is a real database failure at exactly that step.
+   */
+  @Test
+  void aFailedAdoptionStillReturnsThePaidAttempt() {
+    Order order = orderWithAddress();
+    jdbc.execute(
+        "CREATE FUNCTION payments.refuse_adoption() RETURNS trigger LANGUAGE plpgsql AS"
+            + " $$ BEGIN RAISE EXCEPTION 'adoption refused'; END $$");
+    jdbc.execute(
+        "CREATE TRIGGER refuse_adoption BEFORE UPDATE ON payments.cards"
+            + " FOR EACH ROW EXECUTE FUNCTION payments.refuse_adoption()");
+
+    try {
+      Payment card =
+          attempts.attempt(
+              order,
+              new AttemptRequest.CardAttempt(
+                  new CardChoice.NewCard(
+                      CardDataFactory.from(
+                          "4024007153763171",
+                          "ANA SILVA",
+                          "12/2030",
+                          "123",
+                          null,
+                          YearMonth.of(2026, 9)),
+                      true),
+                  1,
+                  true,
+                  "LOJA"),
+              EventSource.API);
+
+      assertThat(card.status()).isEqualTo(PaymentStatus.COMPLETED);
+      assertThat(customers.cardsOf(merchant, order.customerId())).isEmpty();
+    } finally {
+      jdbc.execute("DROP TRIGGER refuse_adoption ON payments.cards");
+      jdbc.execute("DROP FUNCTION payments.refuse_adoption()");
+    }
+  }
+
   @Test
   void aStaleOrderObjectCannotOpenAnAttemptAfterTheOrderWasCanceled() {
     Order stale = orderWithAddress();

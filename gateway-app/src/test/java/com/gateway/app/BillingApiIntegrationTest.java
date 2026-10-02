@@ -428,6 +428,9 @@ class BillingApiIntegrationTest {
         post(key, "att-4", "/v1/orders/" + cardOrderId + "/payments", newCardAttempt());
     assertThat(charged.getStatus().value()).isEqualTo(201);
     assertThat(charged.getResponseBody()).containsEntry("status", "COMPLETED");
+    assertThat(charged.getResponseBody().toString())
+        .doesNotContain(CARD_NUMBER)
+        .doesNotContain("987");
     String cardPaymentId = (String) charged.getResponseBody().get("id");
     String cardId =
         (String) ((Map<String, Object>) charged.getResponseBody().get("card")).get("card_id");

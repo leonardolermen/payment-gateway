@@ -320,6 +320,32 @@ class CardDataNeverLeavesTheRequestTest {
     post(apiKey, "p6", "/v1/payments", newCard(CIELO_REFUSES, true, false), 422);
     post(apiKey, "p7", "/v1/payments", newCard("4024007153763172", true, false), 422);
 
+    // An order attempt by a registered customer, saving the card: the body is read by a different
+    // DTO (CardAttemptBody) and the card is then adopted by the customer, a billing write.
+    String customerId =
+        (String)
+            post(
+                    apiKey,
+                    "p8",
+                    "/v1/customers",
+                    Map.of("name", "Joao da Silva", "document", "52998224725"),
+                    201)
+                .get("id");
+    String orderId =
+        (String)
+            post(
+                    apiKey,
+                    "p9",
+                    "/v1/orders",
+                    Map.of("amount", 12990, "currency", "BRL", "customer_id", customerId),
+                    201)
+                .get("id");
+    Map<String, Object> orderAttempt = new HashMap<>(newCard(GROUPED, false, true));
+    orderAttempt.remove("amount");
+    orderAttempt.remove("currency");
+    orderAttempt.remove("customer");
+    post(apiKey, "p10", "/v1/orders/" + orderId + "/payments", orderAttempt, 201);
+
     // The scan is not vacuous: every step reached the Cielo, and the numbers only the Cielo. The
     // refused card never leaves the gateway.
     for (String number : List.of(NUMBER, DECLINED_NUMBER, CIELO_REFUSES)) {
@@ -352,6 +378,9 @@ class CardDataNeverLeavesTheRequestTest {
     stored.addAll(text("SELECT coalesce(reason,'') FROM payments.refunds"));
     stored.addAll(text("SELECT coalesce(detail,'') FROM payments.reconciliation_divergences"));
     stored.addAll(text("SELECT holder || last4 || brand FROM payments.cards"));
+    // Whole rows: every column the billing side writes, the inline payer included.
+    stored.addAll(text("SELECT o::text FROM billing.orders o"));
+    stored.addAll(text("SELECT c::text FROM billing.customers c"));
     stored.addAll(
         jdbc.queryForList("SELECT token_ciphertext FROM payments.cards", byte[].class).stream()
             .map(bytes -> new String(bytes, StandardCharsets.ISO_8859_1))
