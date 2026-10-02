@@ -4,6 +4,7 @@ import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.payments.payment.persistence.PaymentRepository;
 import java.util.List;
+import java.util.Optional;
 
 /** Reading a merchant's payments: no bank call and no write, so no transaction. */
 public class PaymentQueries {
@@ -30,6 +31,15 @@ public class PaymentQueries {
    */
   public List<Payment> listByReference(MerchantId merchantId, String reference, int limit) {
     return payments.listByMerchantAndReference(merchantId, reference, limit);
+  }
+
+  /** The attempt holding a billing order's one active slot, if any. Unscoped: billing's id. */
+  public Optional<Payment> activeAttempt(String orderId) {
+    return payments.findActiveByOrder(orderId);
+  }
+
+  public List<Payment> listByOrder(MerchantId merchantId, String orderId) {
+    return payments.listByMerchantAndOrder(merchantId, orderId);
   }
 
   public List<PaymentEvent> events(MerchantId merchantId, String id) {

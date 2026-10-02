@@ -15,6 +15,12 @@ interface PaymentJpaRepository extends JpaRepository<PaymentEntity, String> {
 
   Optional<PaymentEntity> findByMerchantIdAndId(String merchantId, String id);
 
+  Optional<PaymentEntity> findFirstByOrderIdAndStatusIn(
+      String orderId, Collection<String> statuses);
+
+  java.util.List<PaymentEntity> findByMerchantIdAndOrderIdOrderByCreatedAt(
+      String merchantId, String orderId);
+
   java.util.List<PaymentEntity> findByMerchantIdAndReferenceOrderByIdDesc(
       String merchantId, String reference, Limit limit);
 

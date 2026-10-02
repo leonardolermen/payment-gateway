@@ -62,6 +62,15 @@ public interface PaymentRepository {
   List<PaymentEvent> events(String paymentId);
 
   /**
+   * The attempt of a billing order that still holds its slot (CREATED, PENDING or AUTHORIZED), the
+   * same set {@code uq_payments_order_active} is partial on: at most one row can match.
+   */
+  Optional<Payment> findActiveByOrder(String orderId);
+
+  /** Every attempt of a billing order, oldest first. */
+  List<Payment> listByMerchantAndOrder(MerchantId merchantId, String orderId);
+
+  /**
    * {@code SELECT ... FOR UPDATE}; requires an active transaction. For the refund reserve: two
    * concurrent requests must not both see the same "remaining" and together exceed the amount.
    */
