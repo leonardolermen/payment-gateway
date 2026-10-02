@@ -4,11 +4,10 @@ import com.gateway.app.api.payment.dto.CaptureRequestBody;
 import com.gateway.app.api.payment.dto.CreatePaymentRequest;
 import com.gateway.app.api.payment.dto.PaymentEventResponse;
 import com.gateway.app.api.payment.dto.PaymentResponse;
+import com.gateway.app.api.support.Environments;
 import com.gateway.app.api.support.IdempotencyFilter;
 import com.gateway.app.security.MerchantContext;
 import com.gateway.kernel.money.Money;
-import com.gateway.kernel.provider.ProviderEnvironment;
-import com.gateway.merchants.apikey.ApiKeyEnvironment;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentCancellation;
 import com.gateway.payments.payment.PaymentQueries;
@@ -58,7 +57,7 @@ public class PaymentsController {
 
     MerchantContext.Current caller = MerchantContext.current();
     CreatePaymentCommand paymentCommand =
-        request.toCommand(caller.merchantId(), providerEnvironment(caller.environment()));
+        request.toCommand(caller.merchantId(), Environments.toProvider(caller.environment()));
 
     return withResource(HttpStatus.CREATED, payments.create(paymentCommand));
   }
@@ -134,9 +133,5 @@ public class PaymentsController {
     return ResponseEntity.status(status)
         .header(IdempotencyFilter.RESOURCE_ID_HEADER, payment.id())
         .body(PaymentResponse.from(payment));
-  }
-
-  static ProviderEnvironment providerEnvironment(ApiKeyEnvironment env) {
-    return env == ApiKeyEnvironment.LIVE ? ProviderEnvironment.LIVE : ProviderEnvironment.TEST;
   }
 }
