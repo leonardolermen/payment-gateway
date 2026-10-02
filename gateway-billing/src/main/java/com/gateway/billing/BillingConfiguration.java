@@ -1,8 +1,19 @@
 package com.gateway.billing;
 
+import com.gateway.billing.customer.ActiveSubscriptionsCheck;
+import com.gateway.billing.customer.CustomerService;
+import com.gateway.billing.customer.persistence.CustomerRepository;
+import com.gateway.billing.customer.persistence.CustomerRepositoryImpl;
+import com.gateway.kernel.security.Sealer;
+import com.gateway.payments.UnitOfWork;
+import com.gateway.payments.card.SavedCards;
+import com.gateway.payments.outbox.persistence.OutboxRepository;
+import java.time.Clock;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 /**
@@ -13,4 +24,30 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @EntityScan("com.gateway.billing")
 @EnableJpaRepositories("com.gateway.billing")
 @EnableConfigurationProperties(BillingProperties.class)
-public class BillingConfiguration {}
+@Import(CustomerRepositoryImpl.class)
+public class BillingConfiguration {
+
+  @Bean
+  BillingEvents billingEvents(OutboxRepository outbox, Clock clock) {
+    return new BillingEvents(outbox, clock);
+  }
+
+  /** Task 8 replaces this with the real check against subscriptions; until then none can exist. */
+  @Bean
+  ActiveSubscriptionsCheck noActiveSubscriptionsYet() {
+    return (merchantId, customerId) -> false;
+  }
+
+  @Bean
+  CustomerService customerService(
+      CustomerRepository customers,
+      SavedCards savedCards,
+      ActiveSubscriptionsCheck activeSubscriptions,
+      BillingEvents events,
+      Sealer sealer,
+      UnitOfWork unitOfWork,
+      Clock clock) {
+    return new CustomerService(
+        customers, savedCards, activeSubscriptions, events, sealer, unitOfWork, clock);
+  }
+}
