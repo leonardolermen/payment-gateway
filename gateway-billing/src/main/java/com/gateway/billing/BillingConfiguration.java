@@ -13,6 +13,9 @@ import com.gateway.billing.order.OrderService;
 import com.gateway.billing.order.OrderSettlement;
 import com.gateway.billing.order.persistence.OrderRepository;
 import com.gateway.billing.order.persistence.OrderRepositoryImpl;
+import com.gateway.billing.plan.PlanService;
+import com.gateway.billing.plan.persistence.PlanRepository;
+import com.gateway.billing.plan.persistence.PlanRepositoryImpl;
 import com.gateway.kernel.security.Sealer;
 import com.gateway.payments.UnitOfWork;
 import com.gateway.payments.card.SavedCards;
@@ -40,7 +43,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @EntityScan("com.gateway.billing")
 @EnableJpaRepositories("com.gateway.billing")
 @EnableConfigurationProperties(BillingProperties.class)
-@Import({CustomerRepositoryImpl.class, OrderRepositoryImpl.class})
+@Import({CustomerRepositoryImpl.class, OrderRepositoryImpl.class, PlanRepositoryImpl.class})
 public class BillingConfiguration {
 
   @Bean
@@ -65,6 +68,11 @@ public class BillingConfiguration {
       Clock clock) {
     return new CustomerService(
         customers, savedCards, activeSubscriptions, events, sealer, unitOfWork, clock);
+  }
+
+  @Bean
+  PlanService planService(PlanRepository plans, UnitOfWork unitOfWork, Clock clock) {
+    return new PlanService(plans, unitOfWork, clock);
   }
 
   @Bean
