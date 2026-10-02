@@ -23,7 +23,7 @@ public class ArchitectureTest {
     // dropped from the scan still trips it well before the count could coincidentally clear it.
     assertThat(classes.size())
         .as("ArchUnit imported too few classes; the rules would pass vacuously")
-        .isGreaterThan(160);
+        .isGreaterThan(380);
   }
 
   @ArchTest

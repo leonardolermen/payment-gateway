@@ -427,3 +427,89 @@ Decisão: nada muda no código; o comportamento é o da spec §6.4 e "sem token,
 Follow-up: a resposta da API dizer por que o cartão não foi guardado (hoje o merchant só vê o `null`).
 Custo se errado: um merchant em produção que pediu `save_card` e recebeu `null` cobra a segunda vez com
 PAN de novo — funciona, mas ele não sabe se foi ele ou nós.
+
+## 2026-10-02 — Fatura é ordem
+A fatura de uma assinatura é uma `Order` com `subscription_id` e `invoice_number`, não uma entidade
+própria: estado, tentativas e liquidação são os da ordem avulsa. Rejeitado: tabela `invoices` com estado
+espelhando `orders` (duas máquinas de estado para manter iguais). Custo se errado: relatório por fatura
+precisa filtrar `subscription_id IS NOT NULL`.
+
+## 2026-10-02 — Uma tentativa ativa por ordem, garantida pelo banco
+O índice parcial em `payments` (uma tentativa viva por `order_id`) é quem recusa a segunda; o 409
+`ORDER_HAS_ACTIVE_PAYMENT` nasce da violação de unicidade. Rejeitado: lock na ordem dentro do serviço.
+Custo se errado: zero em concorrência; um índice mal escrito deixaria duas cobranças vivas para a mesma
+dívida.
+
+## 2026-10-02 — Dunning não cancela
+Fatura que falha deixa a assinatura `PAST_DUE` e é retentada nos dias de
+`gateway.billing.dunning-retry-days`; esgotadas, sai `subscription.dunning_exhausted` e nada mais. O
+próximo ciclo continua cobrando. Rejeitado: cancelar após N falhas (cortar serviço é decisão do
+merchant). Custo se errado: assinatura `PAST_DUE` eterna se o merchant não agir.
+
+## 2026-10-02 — Cartão recorrente sem CVV só para o job
+Cobrança com cartão guardado sem CVV só para `EventSource.SYSTEM`, atrás de
+`gateway.billing.card-recurring-enabled`; desligada, a fatura falha com `CARD_RECURRING_UNSUPPORTED` e vai
+para o dunning. Rejeitado: guardar CVV (PCI proíbe). Custo se errado: uma afiliação Cielo que recuse
+recorrência sem CVV transforma toda fatura de cartão em dunning até alguém desligar a bandeira.
+
+## 2026-10-02 — O billing ouve o `OutboxRelay`, sem cursor próprio
+`OrderSettlement` é listener interno do relay, idempotente por `processed_events`. Rejeitado: tabela
+`outbox_consumers` com cursor por consumidor. Custo se errado: não dá para reprocessar só o billing sem
+reentregar webhooks; se precisar, nasce o cursor.
+
+## 2026-10-02 — Plano sem ambiente, assinatura com
+O plano é catálogo do merchant; a assinatura herda o ambiente da chave que a criou. Rejeitado: plano por
+ambiente. Custo se errado: plano de teste e de produção são o mesmo registro, e o merchant só os distingue
+pela chave.
+
+## 2026-10-02 — `payments` recebe `order_id` como string opaca
+`Payment` guarda `order_id` sem saber o que é uma ordem; quem confere "valor da tentativa = valor da ordem"
+é o `billing`. Rejeitado: `payments` consultar `billing` (ciclo entre módulos). Custo se errado: uma
+tentativa criada fora do `billing` com `order_id` não passa por essa regra.
+
+## 2026-10-02 — Idempotência do ciclo é estrutural, não uma Idempotency-Key sintética
+Uma ordem por assinatura + número da fatura; uma nova execução retoma a fatura corrente e nunca retenta uma
+tentativa `COMPLETED` ou ativa. Isto substitui a chave sintética da spec §6. Rejeitado: uma
+Idempotency-Key gerada pelo job (os fluxos de pagamento internos não recebem chave). Custo se errado: um
+caminho que crie tentativa sem passar por essa checagem cobra duas vezes.
+
+## 2026-10-02 — O próximo ciclo é a mesma linha de job, reaberta
+`BillSubscriptionJob.finish` devolve a própria linha a `PENDING` com a data do próximo ciclo: a tabela de
+jobs tem uma linha por tipo + referência, então um `enqueue` da próxima execução seria no-op. Rejeitado:
+um tipo de job por ciclo. Custo se errado: perder o `finish` (crash entre cobrança e reagendamento) deixa a
+assinatura sem próximo ciclo até o lease vencer e a linha ser retomada.
+
+## 2026-10-02 — `*_NOT_FOUND` vira `NOT_FOUND`, e o documento nunca volta num 404
+Os códigos por recurso foram dobrados em `NOT_FOUND`, com a mensagem nomeando o recurso.
+`DOCUMENT_IMMUTABLE` ficou inalcançável: o PATCH de customer não tem campo `document`, e
+`fail-on-unknown-properties` responde 400 antes do serviço. `GET /v1/customers?document=` devolve lista de
+0 ou 1, para que nenhum 404 ecoe o documento. Rejeitado: um código por recurso e 422 para documento
+(contrato maior sem informação nova). Custo se errado: cliente que dependesse de `CUSTOMER_NOT_FOUND`
+precisa ler a mensagem.
+
+## 2026-10-02 — Serviços divididos para caber em ~7 dependências
+`SubscriptionService`/`SubscriptionQueries`, `CycleOpener`/`SubscriptionBilling`/`InvoiceIssuer`,
+`DunningLedger`/`Dunning` e `OrderAttemptService` (o que o plano chamava `OrderPayments`). Rejeitado: um
+`SubscriptionService` com tudo (passaria de 7 dependências e 300 linhas). Custo se errado: mais saltos
+para seguir um ciclo de cobrança.
+
+## 2026-10-02 — Regras finas do dunning
+O dunning só começa quando a fatura não tem nenhuma linha de tentativa; o último Pix/boleto reemitido que
+expira emite `subscription.dunning_exhausted` em vez de recomeçar. A volta `PAST_DUE → ACTIVE` só acontece
+quando nenhuma outra fatura aberta da assinatura tem retentativa pendente. `ExpireOrderJob` e
+`DunningRetryJob` que encontram tentativa viva esperam em cadência fixa (`gateway.billing.order-expiry-recheck`,
+PT1H) sem gastar retentativa. Rejeitado: reiniciar o dunning a cada expiração e recuperar na primeira fatura
+paga. Custo se errado: assinatura marcada `ACTIVE` com outra fatura ainda devida, ou dunning infinito.
+
+## 2026-10-02 — Pagamento em ordem fechada é divergência, e cartão adotado não derruba cobrança
+Pagamento concluído numa ordem `CANCELED`/`EXPIRED` abre divergência `PAID_AFTER_CLOSE`, nunca exceção
+(o dinheiro já entrou). A adoção do cartão salvo pelo customer da ordem roda depois da cobrança e nunca
+falha a resposta: WARN e reparável. Rejeitado: rejeitar o evento, e adotar na mesma transação da cobrança.
+Custo se errado: divergências que ninguém olha, e cartão salvo fora da lista do customer até reparo.
+
+## 2026-10-02 — Fora desta fase (ordens e assinaturas)
+Follow-ups, não decisões: cancelamento imediato de assinatura ainda não cancela a tentativa da fatura
+aberta; duas execuções de `billOne` para a mesma assinatura além do lease do job poderiam cobrar o cartão
+duas vezes (a correção é um marcador de tentativa por fatura); uma retentativa pendente marcada `SKIPPED`
+numa fatura expirada/cancelada não reavalia a recuperação; a mensagem de `IN_PROGRESS` ainda aponta para
+`/v1/payments?reference=`.
