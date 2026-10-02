@@ -4,8 +4,11 @@ import com.gateway.billing.customer.ActiveSubscriptionsCheck;
 import com.gateway.billing.customer.CustomerService;
 import com.gateway.billing.customer.persistence.CustomerRepository;
 import com.gateway.billing.customer.persistence.CustomerRepositoryImpl;
+import com.gateway.billing.order.InvoiceSettlementHook;
+import com.gateway.billing.order.Order;
 import com.gateway.billing.order.OrderAttemptService;
 import com.gateway.billing.order.OrderService;
+import com.gateway.billing.order.OrderSettlement;
 import com.gateway.billing.order.persistence.OrderRepository;
 import com.gateway.billing.order.persistence.OrderRepositoryImpl;
 import com.gateway.kernel.security.Sealer;
@@ -15,7 +18,9 @@ import com.gateway.payments.outbox.persistence.OutboxRepository;
 import com.gateway.payments.payment.PaymentCancellation;
 import com.gateway.payments.payment.PaymentQueries;
 import com.gateway.payments.payment.create.PaymentFlows;
+import com.gateway.payments.reconciliation.Divergences;
 import java.time.Clock;
+import java.time.Instant;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.context.annotation.Bean;
@@ -76,5 +81,30 @@ public class BillingConfiguration {
       UnitOfWork unitOfWork,
       Clock clock) {
     return new OrderService(orders, payments, cancellation, events, unitOfWork, clock);
+  }
+
+  /** Task 10 replaces this with the subscription's reaction; until then no invoice exists. */
+  @Bean
+  InvoiceSettlementHook noInvoiceHookYet() {
+    return new InvoiceSettlementHook() {
+      @Override
+      public void invoicePaid(Order order, Instant at) {}
+
+      @Override
+      public void invoiceAttemptFailed(
+          Order order, String paymentId, String eventType, Instant at) {}
+    };
+  }
+
+  @Bean
+  OrderSettlement orderSettlement(
+      OrderRepository orders,
+      PaymentQueries payments,
+      Divergences divergences,
+      InvoiceSettlementHook invoices,
+      BillingEvents events,
+      UnitOfWork unitOfWork,
+      Clock clock) {
+    return new OrderSettlement(orders, payments, divergences, invoices, events, unitOfWork, clock);
   }
 }
