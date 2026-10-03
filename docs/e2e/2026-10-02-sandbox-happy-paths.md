@@ -123,7 +123,7 @@ Response:
   "description": null,
   "pix": {
     "txid": "01M3ZFZHNKFQEZ6A23QVQYBE5V",
-    "copia_e_cola": "00020101021226910014BR.GOV.BCB.PIX2569spi-h.itau.com.br/pix/qr/v2/af581bdc-624e-4333-af38-1adaddfa6ce05204000053039865802BR5914PMD BASHAR RIO6009SAO PAULO62070503***6304E7DB",
+    "copia_e_cola": "<hidden>",
     "location": "spi-h.itau.com.br/pix/qr/v2/af581bdc-624e-4333-af38-1adaddfa6ce0",
     "end_to_end_id": null
   },
@@ -155,7 +155,7 @@ Response:
   "description": null,
   "pix": {
     "txid": "01M3ZFZHNKFQEZ6A23QVQYBE5V",
-    "copia_e_cola": "00020101021226910014BR.GOV.BCB.PIX2569spi-h.itau.com.br/pix/qr/v2/af581bdc-624e-4333-af38-1adaddfa6ce05204000053039865802BR5914PMD BASHAR RIO6009SAO PAULO62070503***6304E7DB",
+    "copia_e_cola": "<hidden>",
     "location": "spi-h.itau.com.br/pix/qr/v2/af581bdc-624e-4333-af38-1adaddfa6ce0",
     "end_to_end_id": null
   },
@@ -217,7 +217,7 @@ Response:
   "description": null,
   "pix": {
     "txid": "01M3ZFZHNKFQEZ6A23QVQYBE5V",
-    "copia_e_cola": "00020101021226910014BR.GOV.BCB.PIX2569spi-h.itau.com.br/pix/qr/v2/af581bdc-624e-4333-af38-1adaddfa6ce05204000053039865802BR5914PMD BASHAR RIO6009SAO PAULO62070503***6304E7DB",
+    "copia_e_cola": "<hidden>",
     "location": "spi-h.itau.com.br/pix/qr/v2/af581bdc-624e-4333-af38-1adaddfa6ce0",
     "end_to_end_id": null
   },
@@ -249,7 +249,7 @@ Response:
   "description": null,
   "pix": {
     "txid": "01M3ZFZHNKFQEZ6A23QVQYBE5V",
-    "copia_e_cola": "00020101021226910014BR.GOV.BCB.PIX2569spi-h.itau.com.br/pix/qr/v2/af581bdc-624e-4333-af38-1adaddfa6ce05204000053039865802BR5914PMD BASHAR RIO6009SAO PAULO62070503***6304E7DB",
+    "copia_e_cola": "<hidden>",
     "location": "spi-h.itau.com.br/pix/qr/v2/af581bdc-624e-4333-af38-1adaddfa6ce0",
     "end_to_end_id": null
   },
@@ -699,7 +699,7 @@ Response:
   "description": null,
   "pix": {
     "txid": "01M3ZFZW6Y33YY3A1NXXQ006VS",
-    "copia_e_cola": "00020101021226910014BR.GOV.BCB.PIX2569spi-h.itau.com.br/pix/qr/v2/af581bdc-624e-4333-af38-1adaddfa6ce05204000053039865802BR5914PMD BASHAR RIO6009SAO PAULO62070503***6304E7DB",
+    "copia_e_cola": "<hidden>",
     "location": "spi-h.itau.com.br/pix/qr/v2/af581bdc-624e-4333-af38-1adaddfa6ce0",
     "end_to_end_id": null
   },
@@ -755,7 +755,7 @@ Response:
   "description": null,
   "pix": {
     "txid": "01M3ZFZW6Y33YY3A1NXXQ006VS",
-    "copia_e_cola": "00020101021226910014BR.GOV.BCB.PIX2569spi-h.itau.com.br/pix/qr/v2/af581bdc-624e-4333-af38-1adaddfa6ce05204000053039865802BR5914PMD BASHAR RIO6009SAO PAULO62070503***6304E7DB",
+    "copia_e_cola": "<hidden>",
     "location": "spi-h.itau.com.br/pix/qr/v2/af581bdc-624e-4333-af38-1adaddfa6ce0",
     "end_to_end_id": null
   },

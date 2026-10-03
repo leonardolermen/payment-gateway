@@ -35,7 +35,7 @@ TODAY = datetime.date.today().isoformat()
 REPORT = ROOT / "docs" / "e2e" / f"{TODAY}-sandbox-happy-paths.md"
 
 # Values that must never reach the report, whatever field carries them.
-HIDDEN_FIELDS = {"client_id", "client_secret", "merchant_id", "merchant_key", "pix_key", "key", "number", "cvv", "beneficiary_id"}
+HIDDEN_FIELDS = {"client_id", "client_secret", "merchant_id", "merchant_key", "pix_key", "key", "number", "cvv", "beneficiary_id", "copia_e_cola", "linha_digitavel", "codigo_barras"}
 PAN_PATTERN = re.compile(r"\b\d{13,19}\b")
 
 
