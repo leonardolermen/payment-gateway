@@ -297,6 +297,7 @@ class ExpirationAndReconciliationIntegrationTest extends ServiceIntegrationTestB
             null,
             null,
             3600,
+            null,
             clock);
     return new TransactionTemplate(txManager)
         .execute(transaction -> payments.save(p, List.of(p.createdEvent())));

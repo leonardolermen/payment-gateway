@@ -29,6 +29,7 @@ class PaymentEventsCardTest {
             "Pedido 42",
             null,
             CardDetails.requested(3, "VISA", "3171", null),
+            null,
             clock);
     payment.markCompletedByCard(
         new CardDetails("pid", "tid-1", "auth-1", "pos-1", "VISA", "3171", 3, null, "card-1", null),
@@ -72,6 +73,7 @@ class PaymentEventsCardTest {
             null,
             null,
             3600,
+            null,
             clock);
 
     assertThat(PaymentEvents.paymentJson(pix)).containsEntry("card", null);

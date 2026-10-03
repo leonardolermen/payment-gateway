@@ -11,7 +11,7 @@ import java.time.YearMonth;
  */
 public record CardFields(String number, String holder, String expiry, String cvv, String brand) {
 
-  CardData toCardData(YearMonth currentMonth) {
+  public CardData toCardData(YearMonth currentMonth) {
     return CardDataFactory.from(number, holder, expiry, cvv, brand, currentMonth);
   }
 

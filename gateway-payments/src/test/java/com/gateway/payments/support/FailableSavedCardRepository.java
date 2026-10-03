@@ -1,9 +1,11 @@
 package com.gateway.payments.support;
 
 import com.gateway.kernel.ids.MerchantId;
+import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.payments.card.SavedCard;
 import com.gateway.payments.card.persistence.SavedCardRepository;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -46,5 +48,19 @@ public class FailableSavedCardRepository implements SavedCardRepository {
   @Override
   public boolean markDeleted(MerchantId merchantId, String id, Instant at) {
     return real.markDeleted(merchantId, id, at);
+  }
+
+  @Override
+  public List<SavedCard> findActiveByCustomer(MerchantId merchantId, String customerId) {
+    return real.findActiveByCustomer(merchantId, customerId);
+  }
+
+  @Override
+  public int adoptByDocumentHash(
+      MerchantId merchantId,
+      ProviderEnvironment environment,
+      String documentHash,
+      String customerId) {
+    return real.adoptByDocumentHash(merchantId, environment, documentHash, customerId);
   }
 }

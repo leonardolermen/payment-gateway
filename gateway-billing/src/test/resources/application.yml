@@ -1,0 +1,8 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    schemas: payments,billing
+    locations: classpath:db/migration/payments,classpath:db/migration/billing

@@ -178,11 +178,13 @@ env vars, read as `gateway.webhooks.mtls.*`:
 
 ### Idempotency
 
-`POST /v1/payments`, `/cancel` and `/refunds` require an `Idempotency-Key` header, at most 123
+Every POST that creates a resource or moves money — payments (and their `/cancel`, `/refunds`,
+`/capture`), customers, orders (and their `/payments`, `/cancel`), plans and subscriptions (and their
+`/cancel`) — requires an `Idempotency-Key` header, at most 123
 characters. A repeated key with the same request body and method replays the stored response
 (`Idempotent-Replayed: true`); the same key with a different body is `422 IDEMPOTENCY_KEY_REUSED`; a key
 still being processed, or one whose first attempt failed with a 5xx and is held open, is `409 IN_PROGRESS`
-— retry with a new key, or `GET` the resource to see what happened. The key is scoped per environment
+— wait and retry with the same key; a different key would start a second operation. The key is scoped per environment
 (TEST and LIVE never share a key row), so it is safe to script tests against TEST and LIVE with the same
 key values. The stored body hash is an HMAC-SHA256 under `GATEWAY_IDEMPOTENCY_HMAC_KEY` (falling back to
 `GATEWAY_API_KEY_PEPPER` when unset), because card request bodies carry PAN and CVV.
@@ -254,6 +256,101 @@ curl -X PUT localhost:8080/v1/admin/merchants/$MERCHANT/providers/CIELO/notifica
 
 The notification is only a hint: the gateway queries the sale and moves the payment on the Cielo's
 answer. See `docs/providers/cielo/NOTES.md`.
+
+### Customers, orders, plans and subscriptions
+
+An **order** is what the payer owes; a **payment** is one attempt to pay it. A subscription bills itself by
+opening one order per cycle (the invoice), so everything below is the same five resources.
+
+| Route | Success | Errors |
+|---|---|---|
+| `POST /v1/customers` * | 201 | 409 `CUSTOMER_EXISTS` (+`customer_id`); 422 `CUSTOMER_INVALID` |
+| `GET /v1/customers/{id}` | 200 | 404 `NOT_FOUND` |
+| `GET /v1/customers?document=` | 200, a list of 0 or 1 | 400 on an invalid document |
+| `PATCH /v1/customers/{id}` (`name`, `email`, `address`) | 200 | 400 on an empty body or an unknown field (`document` is immutable) |
+| `DELETE /v1/customers/{id}` | 204 | 409 `CUSTOMER_HAS_ACTIVE_SUBSCRIPTION` |
+| `GET /v1/customers/{id}/cards` | 200 | |
+| `POST /v1/orders` * | 201 `OPEN` | 400 when both or neither of `customer_id`/`customer` are sent |
+| `POST /v1/orders/{id}/payments` * | 201 payment | 409 `ORDER_CLOSED`; 409 `ORDER_HAS_ACTIVE_PAYMENT` (+`payment_id`); 402 `CARD_DECLINED` |
+| `POST /v1/orders/{id}/cancel` * | 200 `CANCELED` | 409 `ORDER_CLOSED`; 409 `ALREADY_PAID` |
+| `GET /v1/orders/{id}`, `GET /v1/orders?reference=&limit=`, `GET /v1/orders/{id}/payments` | 200 | |
+| `POST /v1/plans` * | 201 | 400 on a range error |
+| `GET /v1/plans/{id}`, `GET /v1/plans?active=` | 200 | |
+| `PATCH /v1/plans/{id}` (`name`, `active`) | 200 | 422 `PLAN_IMMUTABLE` naming the field |
+| `POST /v1/subscriptions` * | 201 `ACTIVE` | 404; 422 `PLAN_INACTIVE`, `CARD_REQUIRED`, `CARD_NOT_OWNED_BY_CUSTOMER`, `CUSTOMER_ADDRESS_REQUIRED` |
+| `GET /v1/subscriptions/{id}`, `GET /v1/subscriptions?customer_id=` | 200 | |
+| `POST /v1/subscriptions/{id}/cancel` * `{"at_period_end": true}` (default) | 200 | 409 `SUBSCRIPTION_NOT_ACTIVE` |
+| `PATCH /v1/subscriptions/{id}` (`method`, `card_id`) | 200 | the 422s of create; 409 `SUBSCRIPTION_NOT_ACTIVE` |
+| `GET /v1/subscriptions/{id}/orders` | 200, newest first | |
+
+`*` requires an `Idempotency-Key` (400 `IDEMPOTENCY_KEY_REQUIRED` otherwise).
+
+```bash
+curl -X POST localhost:8080/v1/customers -H "Authorization: Bearer $TEST_KEY" \
+  -H 'Idempotency-Key: cust-1' -H 'Content-Type: application/json' \
+  -d '{"name": "Ana Silva", "document": "529.982.247-25", "email": "ana@example.com"}'
+# 201 {"id": "<customer_id>", "name": "Ana Silva", "email": "ana@example.com", ...}
+
+curl -X POST localhost:8080/v1/orders -H "Authorization: Bearer $TEST_KEY" \
+  -H 'Idempotency-Key: order-42' -H 'Content-Type: application/json' \
+  -d '{"amount": 4990, "currency": "BRL", "reference": "order-42", "customer_id": "<customer_id>"}'
+# 201 {"id": "<order_id>", "status": "OPEN", "amount": 4990, ...}
+```
+
+An attempt is the payment body **without** `amount`, `currency` and `customer` — the order owns them:
+
+```bash
+curl -X POST localhost:8080/v1/orders/<order_id>/payments -H "Authorization: Bearer $TEST_KEY" \
+  -H 'Idempotency-Key: order-42-pix' -H 'Content-Type: application/json' \
+  -d '{"method": "PIX", "expires_in": 600}'
+# 201 {"id": "<payment_id>", "order_id": "<order_id>", "status": "PENDING", ...}
+```
+
+Only one attempt per order can be live (`PENDING`, `AUTHORIZED`, in doubt): a second one is
+`409 ORDER_HAS_ACTIVE_PAYMENT` with the live `payment_id` — cancel it first. The order turns `PAID` when an
+attempt completes, after the outbox relay ran. A card saved with `save_card` on a customer's order belongs to
+that customer (`GET /v1/customers/{id}/cards`).
+
+```bash
+curl -X POST localhost:8080/v1/plans ... -d '{"name": "Monthly", "amount": 2990, "currency": "BRL", "interval": "MONTH"}'
+curl -X POST localhost:8080/v1/subscriptions ... \
+  -d '{"customer_id": "<customer_id>", "plan_id": "<plan_id>", "method": "CARD", "card_id": "<card_id>"}'
+# 201 {"id": "<subscription_id>", "status": "ACTIVE", "method": "CARD", "card_id": "<card_id>",
+#      "current_period": {"start": "...", "end": "..."}, "next_billing_at": "...",
+#      "cancel_at_period_end": false, "latest_order": {...}, "dunning": [], "created_at": "..."}
+```
+
+A plan has no environment; a subscription takes the environment of the key that created it. Price and interval
+of a plan never change (`422 PLAN_IMMUTABLE`): create a new plan.
+
+**Order and customer events.** `order.created` (also for each invoice a cycle opens), `order.paid`,
+`order.canceled` and `order.expired` carry the order: `id`, `status`, `amount`, `currency`, `reference`,
+`customer_id`, `paid_payment_id`, `paid_at`, `expires_at`, `subscription_id`, `invoice_number`, `created_at`.
+`customer.created` and `customer.updated` carry `id`, `name`, `document` (masked), `email`, `has_address`,
+`created_at`.
+
+**Invoice events.** Each cycle emits `invoice.created` with `invoice_id`, `subscription_id`,
+`invoice_number`, `amount`, `currency`, `method`, `period` (`start`, `end`), `payment_id`, `charged`,
+`decline_code`, `reason`, and per method: `pix.copia_e_cola` for PIX, `boleto.linha_digitavel` and
+`boleto.due_date` for BOLECODE, neither for CARD (`charged`/`decline_code` say how it went). A dunning reissue
+emits `invoice.updated` with `invoice_id`, `subscription_id`, `attempt`, `payment_id`, `method` and the same
+`pix`/`boleto` objects. Subscription events: `subscription.created`, `.past_due`, `.recovered`,
+`.dunning_exhausted`, `.canceled`, `.ended`.
+
+**Dunning.** A failed invoice (declined card, expired Pix or boleto) makes the subscription `PAST_DUE` and is
+retried on the days in `gateway.billing.dunning-retry-days` (default `1,3,7`, ascending). A card is charged
+again; a Pix or boleto is reissued. When the last one fails, `subscription.dunning_exhausted` is emitted and
+nothing else happens. **`PAST_DUE` never cancels**: we keep charging, including the next cycle; cutting the
+service is yours. A payment of the invoice brings the subscription back to `ACTIVE` once no other open invoice
+is still being chased.
+
+- `gateway.billing.card-recurring-enabled` (default `true`): a stored card is charged without CVV only by the
+  billing job. Set it to `false` if your Cielo affiliation refuses recurring charges without CVV; card invoices
+  then fail with reason `CARD_RECURRING_UNSUPPORTED` and go to dunning.
+- `gateway.billing.order-expiry-recheck` (default `PT1H`): how often an order expiry or a dunning retry that
+  finds a live attempt looks again, without spending a retry.
+- The Itaú sandbox cannot settle a Pix or boleto, so a Pix or boleto invoice stays open in TEST until it
+  expires and goes to dunning; only card subscriptions can be seen paid end to end in the sandbox.
 
 ### Sandbox
 

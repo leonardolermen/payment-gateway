@@ -49,6 +49,7 @@ public record BolecodePaymentRequest(
         description,
         customer == null ? null : customer.toPayerData(),
         dueDate,
-        paymentLimitDays);
+        paymentLimitDays,
+        null);
   }
 }

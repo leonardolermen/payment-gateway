@@ -134,6 +134,24 @@ public class SaleRequestFactoryTest {
         .isEqualTo("CredentialsOnFile");
   }
 
+  /**
+   * A subscription charges the token with no customer present, so no CVV: an empty or null
+   * SecurityCode key would be a field the acquirer validates, while an absent one is what the token
+   * charge documents.
+   */
+  @Test
+  void aStoredCardWithoutCvvOmitsTheSecurityCode() {
+    CardToken recurring =
+        new CardToken(
+            "6e1bf77a-b28b-4660-b14f-455e2a1c95e9", CardBrand.MASTER, CardOnFileUsage.USED, null);
+
+    JsonNode body = json(SaleRequestFactory.from(request(recurring, false)));
+
+    assertThat(body.at("/Payment/CreditCard/CardToken").asText())
+        .isEqualTo("6e1bf77a-b28b-4660-b14f-455e2a1c95e9");
+    assertThat(body.at("/Payment/CreditCard").has("SecurityCode")).isFalse();
+  }
+
   /** docs/card-on-file: "Bandeiras Suportadas: Mastercard, Visa, Elo". */
   @Test
   void anAmexTokenCarriesNoCardOnFileMarker() {

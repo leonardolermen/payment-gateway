@@ -42,6 +42,10 @@ class PaymentEntity {
   @Column(name = "reference", length = 140)
   String reference;
 
+  @Column(name = "order_id", length = 26)
+  @JdbcTypeCode(SqlTypes.CHAR)
+  String orderId;
+
   @Column(name = "description", length = 140)
   String description;
 

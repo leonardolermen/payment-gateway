@@ -287,7 +287,8 @@ class CardPaymentFlowIntegrationTest extends ServiceIntegrationTestBase {
             null,
             null,
             null,
-            new CardCustomerData(" ", null, null));
+            new CardCustomerData(" ", null, null),
+            null);
 
     assertThatThrownBy(() -> paymentService.create(noName))
         .isInstanceOf(DomainException.class)
@@ -312,7 +313,8 @@ class CardPaymentFlowIntegrationTest extends ServiceIntegrationTestBase {
             null,
             null,
             "LOJA-42 PEDIDO",
-            new CardCustomerData("Joao", null, null));
+            new CardCustomerData("Joao", null, null),
+            null);
 
     assertThatThrownBy(() -> paymentService.create(longDescriptor))
         .isInstanceOf(DomainException.class)

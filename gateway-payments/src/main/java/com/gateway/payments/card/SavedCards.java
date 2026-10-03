@@ -14,6 +14,7 @@ import com.gateway.payments.card.persistence.SavedCardRepository;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.YearMonth;
+import java.util.List;
 
 /**
  * Saving, reading, charging with and deleting a merchant's cards. The acquirer's token is sealed
@@ -59,6 +60,7 @@ public class SavedCards {
             expiry,
             holder,
             customerDocumentHash,
+            null,
             clock.instant(),
             null);
     byte[] sealed =
@@ -95,6 +97,32 @@ public class SavedCards {
             StandardCharsets.UTF_8);
 
     return new CardToken(token, card.brand(), CardOnFileUsage.USED, securityCode);
+  }
+
+  public List<SavedCard> listByCustomer(MerchantId merchantId, String customerId) {
+    return cards.findActiveByCustomer(merchantId, customerId);
+  }
+
+  /** Joins the caller's transaction: adoption happens with the customer's own insert. */
+  public int adoptByDocumentHash(
+      MerchantId merchantId,
+      ProviderEnvironment environment,
+      String documentHash,
+      String customerId) {
+    if (documentHash == null) {
+      return 0;
+    }
+
+    return cards.adoptByDocumentHash(merchantId, environment, documentHash, customerId);
+  }
+
+  /**
+   * A token for a charge nobody is typing a CVV for (a subscription cycle). The CVV rule for the
+   * API stays (DECISOES 2026-09-28): this path is reachable only from billing's jobs.
+   */
+  public CardToken tokenForRecurring(
+      MerchantId merchantId, ProviderEnvironment environment, String cardId) {
+    return tokenFor(merchantId, environment, cardId, null);
   }
 
   public void delete(MerchantId merchantId, String cardId) {

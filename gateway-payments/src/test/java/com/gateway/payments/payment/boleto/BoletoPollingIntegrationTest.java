@@ -226,7 +226,8 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
                 null,
                 payer(),
                 BoletoDates.today(clock),
-                0));
+                0,
+                null));
     assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isFalse();
     clock.advance(Duration.ofDays(3));
     assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isTrue();
@@ -305,7 +306,8 @@ class BoletoPollingIntegrationTest extends ServiceIntegrationTestBase {
                 null,
                 payer(),
                 BoletoDates.today(clock),
-                0));
+                0,
+                null));
     paymentCancellation.cancel(merchant, p.id());
     assertThat(polling.check(p.id(), EventSource.PROVIDER_POLL)).isFalse();
     clock.advance(Duration.ofDays(3));

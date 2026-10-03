@@ -26,4 +26,7 @@ public sealed interface CreatePaymentCommand
   String description();
 
   PaymentMethod method();
+
+  /** Opaque to payments: billing's order this attempt settles, or null for a standalone charge. */
+  String orderId();
 }

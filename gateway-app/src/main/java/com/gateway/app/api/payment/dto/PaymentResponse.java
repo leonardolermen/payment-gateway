@@ -23,6 +23,7 @@ public record PaymentResponse(
     long amount,
     String currency,
     String reference,
+    String orderId,
     String description,
     Pix pix,
     Boleto boleto,
@@ -73,6 +74,7 @@ public record PaymentResponse(
         payment.amount().cents(),
         payment.amount().currency(),
         payment.reference(),
+        payment.orderId(),
         payment.description(),
         pix == null
             ? null

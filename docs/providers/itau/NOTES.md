@@ -182,6 +182,15 @@ Steps 4–6 above therefore have no answer yet: echo of nosso número/txid, chan
 `x-itau-apikey` requirement stay open until the Itaú maps the scenario (their message asks to contact the team) or
 until production. The WireMock integration tests remain the only exercise of the Bolecode contract.
 
+Confirmed from the portal on 2026-10-02: the API reference tab of "Boleto com Pix" (version 1.0.7) has its own
+"Habilitar teste" console that sends the portal's sample (identical to `requestPostBoletosPix`) with a token the portal
+itself generates for the app, and that console answers `500 Internal Server Error` with the same `Cenário de teste não
+mapeado` body. Nothing on our side can change this: the sandbox mock of this product has no scenario for anyone. The
+other sandbox products do not fill the gap either — `cash_management POST /boletos` and `boletoscash GET /boletos`
+answer 200 but their bodies carry no `dados_qrcode`, txid or EMV. The way forward is the Itaú side: a ticket through
+the portal ("Abrir um chamado") asking for the scenario, or a real credential with the dynamic certificate against
+`pix-pj.api.hom.itau.com` (the STS rejects the portal credentials and the hom host drops connections without mTLS).
+
 ### Open follow-up (outside this plan)
 
 Nosso número is allocated sequentially per merchant (`boleto_numbers`, starting at `00000001`), but Itaú requires uniqueness

@@ -1,6 +1,7 @@
 package com.gateway.app.outbound;
 
 import com.gateway.payments.PaymentsProperties;
+import com.gateway.payments.outbox.OutboxListener;
 import com.gateway.payments.outbox.OutboxMessage;
 import com.gateway.payments.outbox.persistence.OutboxRepository;
 import java.nio.charset.StandardCharsets;
@@ -15,10 +16,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Moves the payments outbox into webhook-delivery. This is the only caller of {@link
- * MerchantEvents} for payment events: the payments module cannot import the app (ArchUnit {@code
- * nobodyImportsApp}), so it writes outbox rows in the same transaction as the state change, and
- * this relay reads them through the module's own {@link OutboxRepository} interface.
+ * Moves the payments outbox into webhook-delivery, after the in-process listeners. This is the only
+ * caller of {@link MerchantEvents} for payment events: the payments module cannot import the app
+ * (ArchUnit {@code nobodyImportsApp}), so it writes outbox rows in the same transaction as the
+ * state change, and this relay reads them through the module's own {@link OutboxRepository}
+ * interface.
  *
  * <p>The claim is a short transaction ({@code SKIP LOCKED} + lease); the emit runs OUTSIDE it. Held
  * row locks across the intake's own writes would couple the two commits: a rollback here after the
@@ -35,16 +37,19 @@ public class OutboxRelay {
   private final MerchantEvents events;
   private final TransactionTemplate transactionTemplate;
   private final PaymentsProperties properties;
+  private final List<OutboxListener> listeners;
 
   public OutboxRelay(
       OutboxRepository outbox,
       MerchantEvents events,
       TransactionTemplate transactionTemplate,
-      PaymentsProperties properties) {
+      PaymentsProperties properties,
+      List<OutboxListener> listeners) {
     this.outbox = outbox;
     this.events = events;
     this.transactionTemplate = transactionTemplate;
     this.properties = properties;
+    this.listeners = listeners;
   }
 
   @Scheduled(fixedDelayString = "${gateway.payments.outbox-relay-ms:1000}")
@@ -65,6 +70,15 @@ public class OutboxRelay {
         continue;
       }
       try {
+        for (OutboxListener listener : listeners) {
+          if (listener.handles(message.eventType())) {
+            // Internal consumers go first (spec §8): the merchant must never learn "order paid"
+            // from a webhook before the order row says so. A throw here keeps the row for the
+            // next pass; listeners are idempotent by message id.
+            listener.on(message);
+          }
+        }
+
         events.emitRaw(
             message.merchantId(),
             message.eventType(),

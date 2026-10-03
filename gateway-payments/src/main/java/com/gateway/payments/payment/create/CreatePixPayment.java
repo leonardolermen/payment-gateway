@@ -16,7 +16,8 @@ public record CreatePixPayment(
     String reference,
     String description,
     String customerDocument,
-    Integer expiresInSeconds)
+    Integer expiresInSeconds,
+    String orderId)
     implements CreatePaymentCommand {
 
   @Override
