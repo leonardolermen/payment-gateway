@@ -21,6 +21,9 @@ import java.util.Map;
 /**
  * The writes. Customer and plan lookups stay in the API layer, which passes them in, and the reads
  * live in {@link SubscriptionQueries}: together they would be nine dependencies.
+ *
+ * <p>Eight, one above the limit: {@link OpenInvoiceCancellation} is the collaborator that keeps the
+ * immediate cancel's bank call out of this class, and it cannot be folded into another one.
  */
 public class SubscriptionService {
   private final SubscriptionRepository subscriptions;
@@ -30,6 +33,7 @@ public class SubscriptionService {
   private final BillingProperties properties;
   private final UnitOfWork unitOfWork;
   private final Clock clock;
+  private final OpenInvoiceCancellation openInvoice;
 
   public SubscriptionService(
       SubscriptionRepository subscriptions,
@@ -38,7 +42,8 @@ public class SubscriptionService {
       BillingEvents events,
       BillingProperties properties,
       UnitOfWork unitOfWork,
-      Clock clock) {
+      Clock clock,
+      OpenInvoiceCancellation openInvoice) {
     this.subscriptions = subscriptions;
     this.savedCards = savedCards;
     this.jobs = jobs;
@@ -46,6 +51,7 @@ public class SubscriptionService {
     this.properties = properties;
     this.unitOfWork = unitOfWork;
     this.clock = clock;
+    this.openInvoice = openInvoice;
   }
 
   /** Moves no money: the first cycle is a BILL_SUBSCRIPTION job at {@code nextBillingAt}. */
@@ -72,7 +78,7 @@ public class SubscriptionService {
   /**
    * At period end only flags it, with no event: the next BILL_SUBSCRIPTION sees the flag and ends
    * it, and {@code subscription.ended} is the merchant's notice (spec §7). Immediate is {@code
-   * subscription.canceled}.
+   * subscription.canceled}, after the open invoice is canceled at the bank.
    */
   public Subscription cancel(MerchantId merchantId, String id, boolean atPeriodEnd) {
     Subscription subscription = get(merchantId, id);
@@ -85,6 +91,8 @@ public class SubscriptionService {
       return save(subscription);
     }
 
+    // Before the subscription's transaction: the bank call never runs inside one.
+    openInvoice.cancelOpenInvoice(subscription);
     subscription.cancelNow(now);
 
     return save(subscription, "subscription.canceled");

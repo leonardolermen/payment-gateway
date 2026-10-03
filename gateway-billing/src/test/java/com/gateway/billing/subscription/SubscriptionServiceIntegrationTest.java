@@ -7,10 +7,14 @@ import com.gateway.billing.customer.ActiveSubscriptionsCheck;
 import com.gateway.billing.customer.Customer;
 import com.gateway.billing.customer.CustomerFactory;
 import com.gateway.billing.customer.CustomerService;
+import com.gateway.billing.order.Order;
+import com.gateway.billing.order.OrderService;
+import com.gateway.billing.order.OrderStatus;
 import com.gateway.billing.plan.Plan;
 import com.gateway.billing.plan.PlanFactory;
 import com.gateway.billing.plan.PlanInterval;
 import com.gateway.billing.plan.PlanService;
+import com.gateway.billing.subscription.billing.SubscriptionBilling;
 import com.gateway.billing.support.BillingIntegrationTestBase;
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.ids.MerchantId;
@@ -18,6 +22,7 @@ import com.gateway.kernel.money.Money;
 import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.payments.payment.Payment;
+import com.gateway.payments.payment.PaymentStatus;
 import com.gateway.payments.payment.create.CardChoice;
 import com.gateway.payments.payment.create.CardCustomerData;
 import com.gateway.payments.payment.create.CardDataFactory;
@@ -35,6 +40,8 @@ class SubscriptionServiceIntegrationTest extends BillingIntegrationTestBase {
   @Autowired CustomerService customers;
   @Autowired PlanService plans;
   @Autowired ActiveSubscriptionsCheck activeSubscriptions;
+  @Autowired SubscriptionBilling billing;
+  @Autowired OrderService orders;
 
   Customer customer(String name, String document) {
     return customers.create(
@@ -180,6 +187,44 @@ class SubscriptionServiceIntegrationTest extends BillingIntegrationTestBase {
     assertThat(read.canceledAt()).isNotNull();
     assertThat(eventsOf(created.id()))
         .containsExactly("subscription.created", "subscription.canceled");
+  }
+
+  Order billedInvoiceOf(Subscription subscription) {
+    billing.billOne(subscription.id(), clock.instant());
+
+    return queries.invoicesOf(merchant, subscription.id()).get(0);
+  }
+
+  /** Spec §7: immediate cancel removes the charge at the bank and closes the invoice with it. */
+  @Test
+  void cancelNowCancelsTheOpenInvoiceAndItsPixAtTheBank() {
+    Subscription created = pix(ana());
+    Order invoice = billedInvoiceOf(created);
+    Payment pix = paymentQueries.listByOrder(merchant, invoice.id()).get(0);
+    assertThat(pix.status()).isEqualTo(PaymentStatus.PENDING);
+
+    subscriptions.cancel(merchant, created.id(), false);
+
+    assertThat(paymentQueries.get(merchant, pix.id()).status()).isEqualTo(PaymentStatus.CANCELED);
+    assertThat(orders.get(merchant, invoice.id()).status()).isEqualTo(OrderStatus.CANCELED);
+    assertThat(queries.get(merchant, created.id()).status()).isEqualTo(SubscriptionStatus.CANCELED);
+  }
+
+  /**
+   * The payer paid while the merchant canceled: the bank refuses to remove the charge, and the
+   * subscription is canceled anyway; the invoice stays OPEN for the settlement to mark PAID.
+   */
+  @Test
+  void cancelNowOfAnInvoicePaidAtTheBankStillCancelsTheSubscription() {
+    Subscription created = pix(ana());
+    Order invoice = billedInvoiceOf(created);
+    Payment pix = paymentQueries.listByOrder(merchant, invoice.id()).get(0);
+    bank.markPaid(pix.id(), "E2E-1", Money.brl(9900));
+
+    subscriptions.cancel(merchant, created.id(), false);
+
+    assertThat(queries.get(merchant, created.id()).status()).isEqualTo(SubscriptionStatus.CANCELED);
+    assertThat(orders.get(merchant, invoice.id()).status()).isEqualTo(OrderStatus.OPEN);
   }
 
   @Test

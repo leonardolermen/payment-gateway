@@ -17,6 +17,7 @@ import com.gateway.billing.plan.PlanService;
 import com.gateway.billing.plan.persistence.PlanRepository;
 import com.gateway.billing.plan.persistence.PlanRepositoryImpl;
 import com.gateway.billing.subscription.ActiveSubscriptions;
+import com.gateway.billing.subscription.OpenInvoiceCancellation;
 import com.gateway.billing.subscription.SubscriptionQueries;
 import com.gateway.billing.subscription.SubscriptionService;
 import com.gateway.billing.subscription.billing.BillSubscriptionJob;
@@ -157,9 +158,16 @@ public class BillingConfiguration {
       BillingEvents events,
       BillingProperties properties,
       UnitOfWork unitOfWork,
-      Clock clock) {
+      Clock clock,
+      OpenInvoiceCancellation openInvoice) {
     return new SubscriptionService(
-        subscriptions, savedCards, jobs, events, properties, unitOfWork, clock);
+        subscriptions, savedCards, jobs, events, properties, unitOfWork, clock, openInvoice);
+  }
+
+  @Bean
+  OpenInvoiceCancellation openInvoiceCancellation(
+      OrderRepository orders, OrderService orderService) {
+    return new OpenInvoiceCancellation(orders, orderService);
   }
 
   @Bean
