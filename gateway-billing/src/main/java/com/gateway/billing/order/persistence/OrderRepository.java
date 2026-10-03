@@ -39,8 +39,10 @@ public interface OrderRepository {
    */
   boolean claimAttempt(String orderId, Instant now, Duration lock);
 
-  /** Clears the marker. Own transaction. */
-  void releaseAttempt(String orderId);
+  /**
+   * Clears the marker only if it is still the one written at {@code claimedAt}. Own transaction.
+   */
+  void releaseAttempt(String orderId, Instant claimedAt);
 
   /** Returns whether the row was inserted (false = already processed). Same transaction. */
   boolean recordProcessedEvent(String eventId, Instant at);

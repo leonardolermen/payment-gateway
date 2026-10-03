@@ -178,11 +178,13 @@ env vars, read as `gateway.webhooks.mtls.*`:
 
 ### Idempotency
 
-`POST /v1/payments`, `/cancel` and `/refunds` require an `Idempotency-Key` header, at most 123
+Every POST that creates a resource or moves money — payments (and their `/cancel`, `/refunds`,
+`/capture`), customers, orders (and their `/payments`, `/cancel`), plans and subscriptions (and their
+`/cancel`) — requires an `Idempotency-Key` header, at most 123
 characters. A repeated key with the same request body and method replays the stored response
 (`Idempotent-Replayed: true`); the same key with a different body is `422 IDEMPOTENCY_KEY_REUSED`; a key
 still being processed, or one whose first attempt failed with a 5xx and is held open, is `409 IN_PROGRESS`
-— retry with a new key, or `GET` the resource to see what happened. The key is scoped per environment
+— wait and retry with the same key; a different key would start a second operation. The key is scoped per environment
 (TEST and LIVE never share a key row), so it is safe to script tests against TEST and LIVE with the same
 key values. The stored body hash is an HMAC-SHA256 under `GATEWAY_IDEMPOTENCY_HMAC_KEY` (falling back to
 `GATEWAY_API_KEY_PEPPER` when unset), because card request bodies carry PAN and CVV.

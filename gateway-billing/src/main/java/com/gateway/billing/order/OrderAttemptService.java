@@ -19,6 +19,8 @@ import com.gateway.payments.payment.create.CreatePaymentCommand;
 import com.gateway.payments.payment.create.CreatePixPayment;
 import com.gateway.payments.payment.create.PayerData;
 import com.gateway.payments.payment.create.PaymentFlows;
+import java.time.Instant;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -69,7 +71,8 @@ public class OrderAttemptService {
       throw new DomainException("ORDER_CLOSED", "order " + order.id() + " is " + order.status());
     }
 
-    if (!slot.claim(order.id())) {
+    Optional<Instant> claimedAt = slot.claim(order.id());
+    if (claimedAt.isEmpty()) {
       throw new OrderHasActivePaymentException(
           order.id(), payments.activeAttempt(order.id()).map(Payment::id).orElse("in-flight"));
     }
@@ -81,7 +84,7 @@ public class OrderAttemptService {
 
       return charge(order, request);
     } finally {
-      slot.release(order.id());
+      slot.release(order.id(), claimedAt.get());
     }
   }
 

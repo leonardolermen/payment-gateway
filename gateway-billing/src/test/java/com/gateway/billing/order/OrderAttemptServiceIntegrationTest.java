@@ -7,6 +7,7 @@ import com.gateway.billing.customer.Customer;
 import com.gateway.billing.customer.CustomerAddress;
 import com.gateway.billing.customer.CustomerFactory;
 import com.gateway.billing.customer.CustomerService;
+import com.gateway.billing.order.persistence.OrderRepository;
 import com.gateway.billing.support.BillingIntegrationTestBase;
 import com.gateway.kernel.address.Uf;
 import com.gateway.kernel.address.ZipCode;
@@ -24,7 +25,9 @@ import com.gateway.payments.payment.create.CardDataFactory;
 import com.gateway.payments.payment.create.CustomerDocumentHash;
 import java.sql.Timestamp;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -38,6 +41,7 @@ class OrderAttemptServiceIntegrationTest extends BillingIntegrationTestBase {
   @Autowired OrderService orders;
   @Autowired OrderAttemptService attempts;
   @Autowired CustomerService customers;
+  @Autowired OrderRepository orderRepository;
 
   Order orderWithAddress() {
     Customer customer =
@@ -142,6 +146,24 @@ class OrderAttemptServiceIntegrationTest extends BillingIntegrationTestBase {
     Payment card = attempts.attempt(order, cardAttempt(), EventSource.SYSTEM);
 
     assertThat(card.status()).isEqualTo(PaymentStatus.COMPLETED);
+  }
+
+  /**
+   * A call slower than the lock: another caller claimed the expired slot, and the slow one's
+   * release must not clear the newer marker.
+   */
+  @Test
+  void releasingAnExpiredClaimLeavesTheNewerMarker() {
+    Order order = orderWithAddress();
+    Duration lock = Duration.ofMinutes(10);
+    Instant slow = clock.instant().truncatedTo(ChronoUnit.MICROS);
+    Instant newer = slow.plus(Duration.ofMinutes(11));
+    assertThat(orderRepository.claimAttempt(order.id(), slow, lock)).isTrue();
+    assertThat(orderRepository.claimAttempt(order.id(), newer, lock)).isTrue();
+
+    orderRepository.releaseAttempt(order.id(), slow);
+
+    assertThat(attemptMarkerOf(order).toInstant()).isEqualTo(newer);
   }
 
   @Test

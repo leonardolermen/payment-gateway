@@ -167,12 +167,19 @@ public class OrderRepositoryImpl implements OrderRepository {
     return updated == 1;
   }
 
+  /**
+   * Keyed on the claim's instant: a call slower than the lock lets another caller claim the slot,
+   * and releasing by id alone would clear that caller's marker while its charge is still in flight.
+   */
   @Override
   @Transactional(propagation = Propagation.REQUIRES_NEW)
-  public void releaseAttempt(String orderId) {
+  public void releaseAttempt(String orderId, Instant claimedAt) {
     entityManager
-        .createNativeQuery("UPDATE billing.orders SET attempt_in_progress_at = NULL WHERE id = ?1")
+        .createNativeQuery(
+            "UPDATE billing.orders SET attempt_in_progress_at = NULL"
+                + " WHERE id = ?1 AND attempt_in_progress_at = ?2")
         .setParameter(1, orderId)
+        .setParameter(2, claimedAt)
         .executeUpdate();
   }
 
