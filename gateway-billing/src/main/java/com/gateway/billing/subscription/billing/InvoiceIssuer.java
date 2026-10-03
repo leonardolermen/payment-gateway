@@ -26,6 +26,8 @@ public class InvoiceIssuer {
    */
   private static final long MAX_PIX_SECONDS = Duration.ofDays(1).toSeconds();
 
+  private static final long MIN_PIX_SECONDS = 60;
+
   /**
    * A boleto stays payable a week past the invoice's own expiry: the default dunning schedule's
    * last retry is day 7, and a payer who pays late should settle this one, not race a fresh
@@ -70,6 +72,16 @@ public class InvoiceIssuer {
     return new IssuedInvoice(payment, false, payment.card().declineCode());
   }
 
+  /**
+   * Capped at a day, floored at a minute: a run resumed after {@code until} (a job retried past the
+   * invoice's expiry) would otherwise send a zero or negative expiry, which the provider refuses.
+   */
+  static int pixExpirySeconds(Instant now, Instant until) {
+    long left = Duration.between(now, until).toSeconds();
+
+    return (int) Math.max(MIN_PIX_SECONDS, Math.min(MAX_PIX_SECONDS, left));
+  }
+
   /** The dispatch point: the one switch over the subscription's method. */
   private static AttemptRequest requestFor(
       Subscription subscription, Order invoice, Instant now, Instant until) {
@@ -77,7 +89,7 @@ public class InvoiceIssuer {
 
     return switch (subscription.method()) {
       case CARD -> new AttemptRequest.RecurringCardAttempt(subscription.cardId(), 1);
-      case PIX -> new AttemptRequest.PixAttempt((int) Math.min(MAX_PIX_SECONDS, left.toSeconds()));
+      case PIX -> new AttemptRequest.PixAttempt(pixExpirySeconds(now, until));
       case BOLECODE -> {
         LocalDate due =
             invoice.periodEnd() == null ? BillingCalendar.today(until) : invoice.periodEnd();

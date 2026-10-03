@@ -137,6 +137,14 @@ public class OrderService {
           late.get().id(),
           orderId,
           e.code());
+    } catch (RuntimeException e) {
+      // The class only: a provider or database message may carry payer data. Swallowed for the
+      // same reason as the refusal above: the CANCELED order is already committed.
+      log.warn(
+          "late cancel of attempt {} on canceled order {} failed ({})",
+          late.get().id(),
+          orderId,
+          e.getClass().getSimpleName());
     }
   }
 

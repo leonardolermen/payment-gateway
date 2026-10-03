@@ -47,7 +47,8 @@ public record BillingProperties(
     int previous = 0;
     for (Integer day : days) {
       if (day == null || day <= previous) {
-        throw new IllegalArgumentException("dunning.retry-days must be ascending positive days");
+        throw new IllegalArgumentException(
+            "gateway.billing.dunning-retry-days must be ascending positive days");
       }
       previous = day;
     }
