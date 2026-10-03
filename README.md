@@ -321,6 +321,12 @@ curl -X POST localhost:8080/v1/subscriptions ... \
 A plan has no environment; a subscription takes the environment of the key that created it. Price and interval
 of a plan never change (`422 PLAN_IMMUTABLE`): create a new plan.
 
+**Order and customer events.** `order.created` (also for each invoice a cycle opens), `order.paid`,
+`order.canceled` and `order.expired` carry the order: `id`, `status`, `amount`, `currency`, `reference`,
+`customer_id`, `paid_payment_id`, `paid_at`, `expires_at`, `subscription_id`, `invoice_number`, `created_at`.
+`customer.created` and `customer.updated` carry `id`, `name`, `document` (masked), `email`, `has_address`,
+`created_at`.
+
 **Invoice events.** Each cycle emits `invoice.created` with `invoice_id`, `subscription_id`,
 `invoice_number`, `amount`, `currency`, `method`, `period` (`start`, `end`), `payment_id`, `charged`,
 `decline_code`, `reason`, and per method: `pix.copia_e_cola` for PIX, `boleto.linha_digitavel` and
