@@ -1,5 +1,6 @@
 package com.gateway.billing.subscription.billing;
 
+import com.gateway.billing.BillingProperties;
 import com.gateway.billing.subscription.Subscription;
 import com.gateway.billing.subscription.persistence.SubscriptionRepository;
 import com.gateway.payments.jobs.Job;
@@ -12,13 +13,16 @@ import java.util.Optional;
 public class BillSubscriptionJob implements JobHandler {
   private final SubscriptionBilling billing;
   private final SubscriptionRepository subscriptions;
-  private final JobBackoff backoff;
+  private final BillingJobRetry retry;
 
   public BillSubscriptionJob(
-      SubscriptionBilling billing, SubscriptionRepository subscriptions, JobBackoff backoff) {
+      SubscriptionBilling billing,
+      SubscriptionRepository subscriptions,
+      JobBackoff backoff,
+      BillingProperties properties) {
     this.billing = billing;
     this.subscriptions = subscriptions;
-    this.backoff = backoff;
+    this.retry = new BillingJobRetry(backoff, properties);
   }
 
   @Override
@@ -33,7 +37,7 @@ public class BillSubscriptionJob implements JobHandler {
 
   @Override
   public Job afterFailure(Job job, Instant now, String error) {
-    return backoff.retry(job, now, error);
+    return retry.afterFailure(job, now, error);
   }
 
   /**

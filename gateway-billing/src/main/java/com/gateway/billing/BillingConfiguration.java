@@ -234,7 +234,10 @@ public class BillingConfiguration {
 
   @Bean
   BillSubscriptionJob billSubscriptionJob(
-      SubscriptionBilling billing, SubscriptionRepository subscriptions, JobBackoff backoff) {
-    return new BillSubscriptionJob(billing, subscriptions, backoff);
+      SubscriptionBilling billing,
+      SubscriptionRepository subscriptions,
+      JobBackoff backoff,
+      BillingProperties properties) {
+    return new BillSubscriptionJob(billing, subscriptions, backoff, properties);
   }
 }

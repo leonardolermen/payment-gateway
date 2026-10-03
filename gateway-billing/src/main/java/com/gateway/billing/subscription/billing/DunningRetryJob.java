@@ -9,12 +9,12 @@ import java.time.Instant;
 
 public class DunningRetryJob implements JobHandler {
   private final Dunning dunning;
-  private final JobBackoff backoff;
+  private final BillingJobRetry retry;
   private final BillingProperties properties;
 
   public DunningRetryJob(Dunning dunning, JobBackoff backoff, BillingProperties properties) {
     this.dunning = dunning;
-    this.backoff = backoff;
+    this.retry = new BillingJobRetry(backoff, properties);
     this.properties = properties;
   }
 
@@ -30,7 +30,7 @@ public class DunningRetryJob implements JobHandler {
 
   @Override
   public Job afterFailure(Job job, Instant now, String error) {
-    return backoff.retry(job, now, error);
+    return retry.afterFailure(job, now, error);
   }
 
   /**
