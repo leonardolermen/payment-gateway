@@ -10,6 +10,7 @@ import com.gateway.kernel.party.Document;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentQueries;
+import com.gateway.payments.payment.PaymentStatus;
 import com.gateway.payments.payment.create.CardChoice;
 import com.gateway.payments.payment.create.CardCustomerData;
 import com.gateway.payments.payment.create.CreateBolecodePayment;
@@ -64,6 +65,7 @@ public class OrderAttemptService {
     if (!order.isOpen()) {
       throw new DomainException("ORDER_CLOSED", "order " + order.id() + " is " + order.status());
     }
+    refuseIfAlreadyPaid(order);
 
     Payer payer = payerOf(order);
     CreatePaymentCommand command = commandFor(order, payer, request);
@@ -83,6 +85,23 @@ public class OrderAttemptService {
     }
 
     return payment;
+  }
+
+  /**
+   * The order turns PAID only when the outbox relay delivers the settlement, and the partial unique
+   * index covers active statuses only, so a COMPLETED attempt not yet relayed would let an API
+   * retry, the cycle or a dunning retry charge the payer a second time. Every one of them comes
+   * through here, so this one read guards all three.
+   */
+  private void refuseIfAlreadyPaid(Order order) {
+    payments.listByOrder(order.merchantId(), order.id()).stream()
+        .filter(payment -> payment.status() == PaymentStatus.COMPLETED)
+        .findFirst()
+        .ifPresent(
+            paid -> {
+              throw new DomainException(
+                  "ALREADY_PAID", "order " + order.id() + " was paid by " + paid.id());
+            });
   }
 
   private static boolean savesANewCard(AttemptRequest request) {

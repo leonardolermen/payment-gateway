@@ -212,6 +212,42 @@ class OrderAttemptServiceIntegrationTest extends BillingIntegrationTestBase {
     }
   }
 
+  /**
+   * The order turns PAID only when the relay delivers the settlement; until then the index sees no
+   * active attempt, and without the guard a retry would charge the card a second time.
+   */
+  @Test
+  void aCompletedAttemptNotYetSettledRefusesASecondCharge() {
+    Order order = orderWithAddress();
+    Payment paid =
+        attempts.attempt(
+            order,
+            new AttemptRequest.CardAttempt(
+                new CardChoice.NewCard(
+                    CardDataFactory.from(
+                        "4024007153763171",
+                        "ANA SILVA",
+                        "12/2030",
+                        "123",
+                        null,
+                        YearMonth.of(2026, 9)),
+                    false),
+                1,
+                true,
+                "LOJA"),
+            EventSource.API);
+    assertThat(paid.status()).isEqualTo(PaymentStatus.COMPLETED);
+
+    assertThatThrownBy(
+            () -> attempts.attempt(order, new AttemptRequest.PixAttempt(600), EventSource.API))
+        .isInstanceOf(DomainException.class)
+        .extracting(e -> ((DomainException) e).code())
+        .isEqualTo("ALREADY_PAID");
+    assertThat(paymentQueries.listByOrder(merchant, order.id()))
+        .extracting(Payment::id)
+        .containsExactly(paid.id());
+  }
+
   @Test
   void aStaleOrderObjectCannotOpenAnAttemptAfterTheOrderWasCanceled() {
     Order stale = orderWithAddress();
