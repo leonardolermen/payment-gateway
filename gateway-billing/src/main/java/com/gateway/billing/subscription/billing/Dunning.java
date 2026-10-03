@@ -94,13 +94,23 @@ public class Dunning implements DunningStarter, InvoiceSettlementHook {
         .pendingFor(invoice.id())
         .ifPresent(pending -> ledger.close(pending, DunningOutcome.SKIPPED, null, at));
 
+    recoverIfNothingElseIsChased(invoice, at);
+  }
+
+  /**
+   * Requires a transaction. The one recovery rule, shared by a paid invoice and a retry skipped
+   * because its invoice expired or was canceled: either way that invoice is no longer chased, and
+   * if no other one is, nothing keeps the subscription PAST_DUE. Re-reads it: update() accepts
+   * exactly one version bump since the read.
+   */
+  private void recoverIfNothingElseIsChased(Order invoice, Instant now) {
     if (ledger.isChasingAnotherInvoice(invoice)) {
       return;
     }
 
     Subscription subscription = reload(invoice.subscriptionId());
     if (subscription.status() == SubscriptionStatus.PAST_DUE) {
-      subscription.recover(at);
+      subscription.recover(now);
       update(subscription);
       emit(subscription, "subscription.recovered", null);
     }
@@ -146,7 +156,13 @@ public class Dunning implements DunningStarter, InvoiceSettlementHook {
 
     RetryContext context = loaded.get();
     if (!context.invoice().isOpen() || !context.subscription().isBillable()) {
-      unitOfWork.run(() -> ledger.close(context.attempt(), DunningOutcome.SKIPPED, null, now));
+      // Without the recovery, an invoice that expired or was canceled while chased left the
+      // subscription PAST_DUE forever when it was the last one: no payment would ever recover it.
+      unitOfWork.run(
+          () -> {
+            ledger.close(context.attempt(), DunningOutcome.SKIPPED, null, now);
+            recoverIfNothingElseIsChased(context.invoice(), now);
+          });
       return true;
     }
 

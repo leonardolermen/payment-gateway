@@ -247,6 +247,54 @@ class DunningIntegrationTest extends BillingIntegrationTestBase {
     assertThat(outboxTypes(subscription.id())).containsOnlyOnce("subscription.recovered");
   }
 
+  /**
+   * An expired invoice is no longer chased: its SKIPPED retry must not leave the subscription
+   * PAST_DUE by itself once the other invoice is paid.
+   */
+  @Test
+  void anExpiredChasedInvoiceDoesNotKeepTheSubscriptionPastDue() {
+    Subscription subscription = cardSubscription();
+    cards.nextAuthorizeStatus(CardStatus.DENIED);
+    billing.billOne(subscription.id(), clock.instant());
+    Instant secondCycle = queries.get(merchant, subscription.id()).nextBillingAt();
+    clock.advance(Duration.between(clock.instant(), secondCycle));
+    cards.nextAuthorizeStatus(CardStatus.DENIED);
+    billing.billOne(subscription.id(), clock.instant());
+    Order firstInvoice = invoiceNumbered(subscription, 1);
+    Order secondInvoice = invoiceNumbered(subscription, 2);
+
+    expireOrder(firstInvoice);
+    DunningAttempt pending = attempts.findPendingByOrder(firstInvoice.id()).get();
+    dunning.retryOne(pending.id(), clock.instant());
+
+    assertThat(attempts.findById(pending.id()).get().outcome()).isEqualTo(DunningOutcome.SKIPPED);
+    assertThat(queries.get(merchant, subscription.id()).status())
+        .isEqualTo(SubscriptionStatus.PAST_DUE);
+
+    payByRetry(secondInvoice);
+
+    assertThat(queries.get(merchant, subscription.id()).status())
+        .isEqualTo(SubscriptionStatus.ACTIVE);
+    assertThat(outboxTypes(subscription.id())).containsOnlyOnce("subscription.recovered");
+  }
+
+  @Test
+  void theOnlyChasedInvoiceExpiringRecoversTheSubscription() {
+    Subscription subscription = cardSubscription();
+    cards.nextAuthorizeStatus(CardStatus.DENIED);
+    billing.billOne(subscription.id(), clock.instant());
+    Order invoice = invoiceOf(subscription);
+
+    expireOrder(invoice);
+    DunningAttempt pending = attempts.findPendingByOrder(invoice.id()).get();
+    dunning.retryOne(pending.id(), clock.instant());
+
+    assertThat(attempts.findById(pending.id()).get().outcome()).isEqualTo(DunningOutcome.SKIPPED);
+    assertThat(queries.get(merchant, subscription.id()).status())
+        .isEqualTo(SubscriptionStatus.ACTIVE);
+    assertThat(outboxTypes(subscription.id())).containsOnlyOnce("subscription.recovered");
+  }
+
   @Test
   void aPaidInvoiceSkipsItsPendingRetry() {
     Subscription subscription = cardSubscription();
@@ -291,6 +339,11 @@ class DunningIntegrationTest extends BillingIntegrationTestBase {
     dunning.retryOne(pending.id(), clock.instant());
     String paymentId = attempts.findById(pending.id()).get().paymentId();
     settlement.on(event("payment.completed", invoice, paymentQueries.get(merchant, paymentId)));
+  }
+
+  /** The invoice's period ran out unpaid, as OrderExpiration leaves it. */
+  private void expireOrder(Order invoice) {
+    jdbc.update("UPDATE billing.orders SET status = 'EXPIRED' WHERE id = ?", invoice.id());
   }
 
   /** The bank expired the payment, and its payment.expired reached the settlement. */
