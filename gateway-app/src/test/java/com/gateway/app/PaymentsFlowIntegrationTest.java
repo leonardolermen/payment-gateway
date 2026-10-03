@@ -446,7 +446,7 @@ class PaymentsFlowIntegrationTest {
             .getResponseBody();
     assertThat(refunds).hasSize(1);
 
-    // 7b. Lookup by the merchant's own reference: what the 409 IN_PROGRESS text points to.
+    // 7b. Lookup by the merchant's own reference: how an interrupted create is checked.
     List<Map<String, Object>> byReference =
         http()
             .get()

@@ -513,3 +513,25 @@ aberta; duas execuções de `billOne` para a mesma assinatura além do lease do 
 duas vezes (a correção é um marcador de tentativa por fatura); uma retentativa pendente marcada `SKIPPED`
 numa fatura expirada/cancelada não reavalia a recuperação; a mensagem de `IN_PROGRESS` ainda aponta para
 `/v1/payments?reference=`.
+
+## 2026-10-03 — A mensagem de `IN_PROGRESS` não nomeia rota
+O `detail` do 409 `IN_PROGRESS` passa a ser `a request with this Idempotency-Key is still being processed;
+retry in a moment`; código e status não mudam. A mensagem é texto de contrato e mudou de propósito: ela
+mandava consultar `GET /v1/payments?reference=…`, e o `IdempotencyFilter` hoje cobre também os POSTs de
+ordens, clientes, planos e assinaturas, para os quais essa rota não diz nada. Rejeitado: uma mensagem por
+rota (o filtro não sabe qual recurso a chave criou — só o controller sabe, e ele não rodou). Custo se
+errado: um cliente que tratava o texto antigo como instrução perde a dica de consultar antes de trocar de
+chave; o código `IN_PROGRESS` continua o mesmo para quem decide por ele.
+
+## 2026-10-03 — Fechados os follow-ups 1–3 de "Fora desta fase (ordens e assinaturas)"
+Cancelamento imediato: `OpenInvoiceCancellation` cancela no banco a fatura `OPEN` mais recente antes da
+transação da assinatura e nunca falha o cancelamento (`ALREADY_PAID` vira INFO, qualquer outro erro WARN;
+a fatura expira sozinha) — `SubscriptionService` fica com 8 dependências por isso. Cobrança dupla além do
+lease: `billing.orders.attempt_in_progress_at` (V305) é reclamado por um `UPDATE` condicional em transação
+própria antes da chamada ao banco e liberado num `finally`; expira após `gateway.billing.attempt-lock`
+(PT10M) para um processo morto não travar a ordem, e a leitura de `ALREADY_PAID` passou para dentro do
+marcador, senão um segundo chamador passaria pela leitura antes do primeiro completar. Retentativa
+`SKIPPED` em fatura expirada/cancelada: roda a mesma regra de recuperação de `invoicePaid`
+(`recoverIfNothingElseIsChased`), na mesma transação do fechamento. Rejeitado: lock pessimista na ordem
+durante a chamada ao banco (prenderia uma conexão por até o timeout do provedor). Custo se errado: um
+`attempt-lock` menor que a chamada mais lenta ao banco reabre a janela de cobrança dupla.

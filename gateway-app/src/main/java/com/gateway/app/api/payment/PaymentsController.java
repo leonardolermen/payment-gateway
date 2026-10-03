@@ -68,8 +68,8 @@ public class PaymentsController {
   }
 
   /**
-   * {@code reference} is the merchant's own order id: what the 409 IN_PROGRESS answer tells a
-   * client to look up before retrying a create with a new Idempotency-Key.
+   * {@code reference} is the merchant's own order id: how a client whose create was interrupted
+   * finds out whether the payment exists before trying again with a new Idempotency-Key.
    */
   @GetMapping
   public List<PaymentResponse> list(
