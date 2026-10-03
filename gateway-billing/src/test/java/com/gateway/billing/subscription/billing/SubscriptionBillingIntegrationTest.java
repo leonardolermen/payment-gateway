@@ -192,7 +192,7 @@ class SubscriptionBillingIntegrationTest extends BillingIntegrationTestBase {
             paymentQueries,
             recording,
             events,
-            new BillingProperties(null, 0, false, null),
+            new BillingProperties(null, 0, false, null, null),
             unitOfWork);
 
     withoutRecurring.billOne(subscription.id(), clock.instant());

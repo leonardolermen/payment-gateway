@@ -40,16 +40,19 @@ public class OrderAttemptService {
   private final PaymentQueries payments;
   private final CustomerService customers;
   private final OrderRepository orders;
+  private final AttemptSlot slot;
 
   public OrderAttemptService(
       PaymentFlows flows,
       PaymentQueries payments,
       CustomerService customers,
-      OrderRepository orders) {
+      OrderRepository orders,
+      AttemptSlot slot) {
     this.flows = flows;
     this.payments = payments;
     this.customers = customers;
     this.orders = orders;
+    this.slot = slot;
   }
 
   /**
@@ -65,8 +68,24 @@ public class OrderAttemptService {
     if (!order.isOpen()) {
       throw new DomainException("ORDER_CLOSED", "order " + order.id() + " is " + order.status());
     }
-    refuseIfAlreadyPaid(order);
 
+    if (!slot.claim(order.id())) {
+      throw new OrderHasActivePaymentException(
+          order.id(), payments.activeAttempt(order.id()).map(Payment::id).orElse("in-flight"));
+    }
+
+    try {
+      // Under the claim, not before it: read earlier, a caller could pass while another's card
+      // payment is still CREATED, claim after that one completed and released, and charge again.
+      refuseIfAlreadyPaid(order);
+
+      return charge(order, request);
+    } finally {
+      slot.release(order.id());
+    }
+  }
+
+  private Payment charge(Order order, AttemptRequest request) {
     Payer payer = payerOf(order);
     CreatePaymentCommand command = commandFor(order, payer, request);
 

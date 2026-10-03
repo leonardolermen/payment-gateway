@@ -15,6 +15,7 @@ import com.gateway.kernel.security.Sealer;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -143,6 +144,36 @@ public class OrderRepositoryImpl implements OrderRepository {
         .stream()
         .map(this::toDomain)
         .toList();
+  }
+
+  /**
+   * One conditional UPDATE: two claimers serialize on the row lock and only one sees 1. Its own
+   * transaction so the marker is visible to other callers before the bank call starts.
+   */
+  @Override
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
+  public boolean claimAttempt(String orderId, Instant now, Duration lock) {
+    int updated =
+        entityManager
+            .createNativeQuery(
+                "UPDATE billing.orders SET attempt_in_progress_at = ?1 WHERE id = ?2"
+                    + " AND status = 'OPEN'"
+                    + " AND (attempt_in_progress_at IS NULL OR attempt_in_progress_at < ?3)")
+            .setParameter(1, now)
+            .setParameter(2, orderId)
+            .setParameter(3, now.minus(lock))
+            .executeUpdate();
+
+    return updated == 1;
+  }
+
+  @Override
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
+  public void releaseAttempt(String orderId) {
+    entityManager
+        .createNativeQuery("UPDATE billing.orders SET attempt_in_progress_at = NULL WHERE id = ?1")
+        .setParameter(1, orderId)
+        .executeUpdate();
   }
 
   /**

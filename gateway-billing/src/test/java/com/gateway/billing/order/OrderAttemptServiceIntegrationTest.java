@@ -15,12 +15,15 @@ import com.gateway.kernel.money.Money;
 import com.gateway.kernel.party.Document;
 import com.gateway.kernel.party.PersonName;
 import com.gateway.kernel.provider.ProviderEnvironment;
+import com.gateway.kernel.provider.ProviderException;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentStatus;
 import com.gateway.payments.payment.create.CardChoice;
 import com.gateway.payments.payment.create.CardDataFactory;
 import com.gateway.payments.payment.create.CustomerDocumentHash;
+import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.YearMonth;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -59,6 +62,107 @@ class OrderAttemptServiceIntegrationTest extends BillingIntegrationTestBase {
             null,
             null,
             clock));
+  }
+
+  AttemptRequest.CardAttempt cardAttempt() {
+    return new AttemptRequest.CardAttempt(
+        new CardChoice.NewCard(
+            CardDataFactory.from(
+                "4024007153763171", "ANA SILVA", "12/2030", "123", null, YearMonth.of(2026, 9)),
+            false),
+        1,
+        true,
+        "LOJA");
+  }
+
+  Timestamp attemptMarkerOf(Order order) {
+    return jdbc.queryForObject(
+        "SELECT attempt_in_progress_at FROM billing.orders WHERE id = ?",
+        Timestamp.class,
+        order.id());
+  }
+
+  // Guard exercised: uq_payments_order_active (the CREATED row is committed before the bank call).
+  /**
+   * Two callers past the job lease, the bank slow to answer: the one that claimed the order
+   * charges, the other is refused before reaching the bank at all.
+   */
+  @Test
+  void twoAttemptsWithASlowBankChargeOnceAndRefuseTheOther() throws Exception {
+    Order order = orderWithAddress();
+    cards.delayNextIssue(Duration.ofMillis(800));
+    ExecutorService pool = Executors.newFixedThreadPool(2);
+    Callable<Object> attempt =
+        () -> {
+          try {
+            return attempts.attempt(order, cardAttempt(), EventSource.SYSTEM);
+          } catch (DomainException refused) {
+            return refused;
+          }
+        };
+
+    Future<Object> first = pool.submit(attempt);
+    Thread.sleep(200);
+    Future<Object> second = pool.submit(attempt);
+
+    assertThat(second.get())
+        .isInstanceOf(DomainException.class)
+        .extracting(refused -> ((DomainException) refused).code())
+        .isEqualTo("ORDER_HAS_ACTIVE_PAYMENT");
+    assertThat(first.get()).isInstanceOf(Payment.class);
+    assertThat(cards.callsFor(((Payment) first.get()).id()))
+        .containsExactly("authorize:" + ((Payment) first.get()).id());
+    pool.shutdown();
+  }
+
+  // Guard exercised: the attempt marker (no payment row exists yet for the index to see).
+  /** Another process is mid-call on this order: its marker, not an index, is what refuses. */
+  @Test
+  void aFreshAttemptMarkerRefusesTheAttempt() {
+    Order order = orderWithAddress();
+    jdbc.update(
+        "UPDATE billing.orders SET attempt_in_progress_at = ? WHERE id = ?",
+        Timestamp.from(clock.instant()),
+        order.id());
+
+    assertThatThrownBy(() -> attempts.attempt(order, cardAttempt(), EventSource.SYSTEM))
+        .isInstanceOf(OrderHasActivePaymentException.class);
+    assertThat(paymentQueries.listByOrder(merchant, order.id())).isEmpty();
+  }
+
+  /** A process that died mid-call must not lock the order forever. */
+  @Test
+  void anExpiredAttemptMarkerDoesNotBlock() {
+    Order order = orderWithAddress();
+    jdbc.update(
+        "UPDATE billing.orders SET attempt_in_progress_at = ? WHERE id = ?",
+        Timestamp.from(clock.instant().minus(Duration.ofHours(1))),
+        order.id());
+
+    Payment card = attempts.attempt(order, cardAttempt(), EventSource.SYSTEM);
+
+    assertThat(card.status()).isEqualTo(PaymentStatus.COMPLETED);
+  }
+
+  @Test
+  void theMarkerIsReleasedAfterACompletedAttempt() {
+    Order order = orderWithAddress();
+
+    attempts.attempt(order, cardAttempt(), EventSource.SYSTEM);
+
+    assertThat(attemptMarkerOf(order)).isNull();
+  }
+
+  @Test
+  void theMarkerIsReleasedEvenWhenTheBankThrows() {
+    Order order = orderWithAddress();
+    cards.failNextAuthorizeWith(
+        new ProviderException(ProviderException.Code.UNAVAILABLE, 503, "CIELO", "down"));
+
+    assertThatThrownBy(() -> attempts.attempt(order, cardAttempt(), EventSource.SYSTEM))
+        .isInstanceOf(RuntimeException.class);
+
+    assertThat(attemptMarkerOf(order)).isNull();
   }
 
   @Test

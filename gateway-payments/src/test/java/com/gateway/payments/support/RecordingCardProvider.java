@@ -16,6 +16,7 @@ import com.gateway.kernel.provider.card.CardStatus;
 import com.gateway.kernel.provider.card.StoredCard;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -53,9 +54,15 @@ public class RecordingCardProvider implements CardMethodProvider {
   private volatile CardStatus nextAuthorizeStatus;
   private volatile CardStatus nextFindByOrderStatus;
   private volatile boolean withholdNextToken;
+  private volatile Duration delayNextIssue;
 
   public RecordingCardProvider(Clock clock) {
     this.clock = clock;
+  }
+
+  /** The next sale stays at the Cielo for {@code delay} before answering: a slow acquirer. */
+  public void delayNextIssue(Duration delay) {
+    this.delayNextIssue = delay;
   }
 
   public void failNextAuthorizeWith(ProviderException e) {
@@ -149,6 +156,16 @@ public class RecordingCardProvider implements CardMethodProvider {
   public CardAuthorization issue(ProviderCredentials credentials, CardIssueRequest request) {
     calls.add("authorize:" + request.merchantOrderId());
     issued.add(request);
+
+    Duration delay = delayNextIssue;
+    if (delay != null) {
+      delayNextIssue = null;
+      try {
+        Thread.sleep(delay);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
 
     ProviderException fail = failNextAuthorize;
     if (fail != null) {

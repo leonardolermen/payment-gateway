@@ -2,6 +2,7 @@ package com.gateway.billing.order.persistence;
 
 import com.gateway.billing.order.Order;
 import com.gateway.kernel.ids.MerchantId;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -30,6 +31,16 @@ public interface OrderRepository {
   List<Order> findBySubscription(String subscriptionId, int limit);
 
   List<Order> findOpenExpiredBefore(Instant now, int limit);
+
+  /**
+   * Marks an OPEN order as having an attempt in flight unless a marker younger than {@code lock}
+   * holds it. Own transaction, committed before the bank call. Returns whether this caller holds
+   * it.
+   */
+  boolean claimAttempt(String orderId, Instant now, Duration lock);
+
+  /** Clears the marker. Own transaction. */
+  void releaseAttempt(String orderId);
 
   /** Returns whether the row was inserted (false = already processed). Same transaction. */
   boolean recordProcessedEvent(String eventId, Instant at);

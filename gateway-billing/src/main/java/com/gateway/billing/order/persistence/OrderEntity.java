@@ -71,6 +71,9 @@ class OrderEntity {
   @Column(name = "period_end")
   LocalDate periodEnd;
 
+  @Column(name = "attempt_in_progress_at")
+  Instant attemptInProgressAt;
+
   @Column(name = "version", nullable = false)
   long version;
 

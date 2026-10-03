@@ -17,13 +17,16 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param orderExpiryRecheck how often an expired order with a still-active attempt is looked at
  *     again: an attempt outlives the order's expiry by up to its own payment limit, so polling
  *     hourly is cheap and, unlike a retry, never runs out
+ * @param attemptLock how long an order's attempt marker holds off a second attempt; it expires by
+ *     itself so a process that dies mid-call never locks an order forever
  */
 @ConfigurationProperties("gateway.billing")
 public record BillingProperties(
     List<Integer> dunningRetryDays,
     int billingHour,
     Boolean cardRecurringEnabled,
-    Duration orderExpiryRecheck) {
+    Duration orderExpiryRecheck,
+    Duration attemptLock) {
 
   public BillingProperties {
     if (dunningRetryDays == null || dunningRetryDays.isEmpty()) {
@@ -41,6 +44,9 @@ public record BillingProperties(
         || orderExpiryRecheck.isNegative()) {
       orderExpiryRecheck = Duration.ofHours(1);
     }
+    if (attemptLock == null || attemptLock.isZero() || attemptLock.isNegative()) {
+      attemptLock = Duration.ofMinutes(10);
+    }
   }
 
   private static void requireAscendingPositive(List<Integer> days) {
@@ -55,6 +61,6 @@ public record BillingProperties(
   }
 
   public static BillingProperties defaults() {
-    return new BillingProperties(null, 0, null, null);
+    return new BillingProperties(null, 0, null, null, null);
   }
 }

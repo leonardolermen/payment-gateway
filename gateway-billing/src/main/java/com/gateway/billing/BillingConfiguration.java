@@ -4,6 +4,7 @@ import com.gateway.billing.customer.ActiveSubscriptionsCheck;
 import com.gateway.billing.customer.CustomerService;
 import com.gateway.billing.customer.persistence.CustomerRepository;
 import com.gateway.billing.customer.persistence.CustomerRepositoryImpl;
+import com.gateway.billing.order.AttemptSlot;
 import com.gateway.billing.order.ExpireOrderJob;
 import com.gateway.billing.order.InvoiceSettlementHook;
 import com.gateway.billing.order.OrderAttemptService;
@@ -99,8 +100,14 @@ public class BillingConfiguration {
       PaymentFlows flows,
       PaymentQueries payments,
       CustomerService customers,
-      OrderRepository orders) {
-    return new OrderAttemptService(flows, payments, customers, orders);
+      OrderRepository orders,
+      AttemptSlot slot) {
+    return new OrderAttemptService(flows, payments, customers, orders, slot);
+  }
+
+  @Bean
+  AttemptSlot attemptSlot(OrderRepository orders, BillingProperties properties, Clock clock) {
+    return new AttemptSlot(orders, properties, clock);
   }
 
   @Bean

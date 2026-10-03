@@ -13,7 +13,7 @@ class DunningScheduleTest {
   private static final Instant FAILED_AT = Instant.parse("2026-10-02T15:00:00Z");
 
   private final DunningSchedule schedule =
-      new DunningSchedule(new BillingProperties(List.of(1, 3, 7), 3, null, null));
+      new DunningSchedule(new BillingProperties(List.of(1, 3, 7), 3, null, null, null));
 
   @Test
   void theFirstRetryIsTheNextDayAtTheBillingHour() {
