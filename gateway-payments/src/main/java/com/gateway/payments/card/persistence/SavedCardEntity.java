@@ -50,6 +50,10 @@ class SavedCardEntity {
   @JdbcTypeCode(SqlTypes.CHAR)
   String customerDocumentHash;
 
+  @Column(name = "customer_id", length = 26)
+  @JdbcTypeCode(SqlTypes.CHAR)
+  String customerId;
+
   @Column(name = "created_at", nullable = false)
   Instant createdAt;
 

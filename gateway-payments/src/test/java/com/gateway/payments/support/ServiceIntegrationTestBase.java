@@ -69,6 +69,7 @@ public abstract class ServiceIntegrationTestBase {
             "order-1",
             "a test charge",
             "123.456.789-09",
+            null,
             null));
   }
 
@@ -88,6 +89,7 @@ public abstract class ServiceIntegrationTestBase {
             "order-1",
             "Pedido 1",
             payer(),
+            null,
             null,
             null));
   }
@@ -115,7 +117,8 @@ public abstract class ServiceIntegrationTestBase {
         installments,
         capture,
         "LOJA42",
-        new CardCustomerData("Joao da Silva", "12345678901", "joao@example.com"));
+        new CardCustomerData("Joao da Silva", "12345678901", "joao@example.com"),
+        null);
   }
 
   /** A captured-by-default card payment; the number's last digit steers RecordingCardProvider. */

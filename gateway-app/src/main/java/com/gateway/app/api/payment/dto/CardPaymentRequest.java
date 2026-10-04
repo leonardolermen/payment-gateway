@@ -63,7 +63,8 @@ public record CardPaymentRequest(
         installments,
         capture,
         softDescriptor,
-        customer == null ? null : customer.toData());
+        customer == null ? null : customer.toData(),
+        null);
   }
 
   private CardChoice choice() {

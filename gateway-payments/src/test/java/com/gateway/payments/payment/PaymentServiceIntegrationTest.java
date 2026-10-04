@@ -79,6 +79,7 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
                         null,
                         null,
                         null,
+                        null,
                         null)))
         .isInstanceOf(DomainException.class)
         .extracting(e -> ((DomainException) e).code())
@@ -220,7 +221,7 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
     MerchantId other = MerchantId.next();
     paymentService.create(
         new CreatePixPayment(
-            other, ProviderEnvironment.TEST, Money.brl(200), null, null, null, 600));
+            other, ProviderEnvironment.TEST, Money.brl(200), null, null, null, 600, null));
 
     assertThat(paymentQueries.list(merchant, 10, null))
         .extracting(Payment::id)
@@ -235,7 +236,7 @@ class PaymentServiceIntegrationTest extends ServiceIntegrationTestBase {
     Payment p =
         paymentService.create(
             new CreatePixPayment(
-                merchant, ProviderEnvironment.TEST, Money.brl(200), null, null, null, 600));
+                merchant, ProviderEnvironment.TEST, Money.brl(200), null, null, null, 600, null));
     assertThat(p.expiresAt()).isEqualTo(clock.instant().plus(Duration.ofSeconds(600)));
   }
 

@@ -192,6 +192,13 @@ public class CardPaymentFlow implements PaymentFlow {
         SavedCard card = savedCards.get(cardPayment.merchantId(), saved.cardId());
         yield new ChosenCard(token, card.last4(), card.id());
       }
+      case CardChoice.RecurringCard recurring -> {
+        CardToken token =
+            savedCards.tokenForRecurring(
+                cardPayment.merchantId(), cardPayment.environment(), recurring.cardId());
+        SavedCard card = savedCards.get(cardPayment.merchantId(), recurring.cardId());
+        yield new ChosenCard(token, card.last4(), card.id());
+      }
     };
   }
 

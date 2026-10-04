@@ -48,7 +48,16 @@ public class IdempotencyFilter extends OncePerRequestFilter {
   /** idempotency_keys.key is VARCHAR(128) and holds "LIVE:" + the client's key; longer would fail at the insert as a 500. */
   private static final int MAX_KEY_LENGTH = 123;
 
-  private static final Pattern PAYMENT_ACTION = Pattern.compile("^/v1/payments/[^/]+/(cancel|refunds|capture)$");
+  /**
+   * Every POST that creates a resource or moves money. One pattern, so a new route is one more
+   * alternative here and a line in IdempotencyFilterPathsTest, never a second check to forget.
+   */
+  private static final Pattern IDEMPOTENT_POST =
+      Pattern.compile(
+          "^/v1/(payments|customers|orders|plans|subscriptions)$"
+              + "|^/v1/payments/[^/]+/(cancel|refunds|capture)$"
+              + "|^/v1/orders/[^/]+/(payments|cancel)$"
+              + "|^/v1/subscriptions/[^/]+/cancel$");
 
   private final IdempotencyService idempotency;
   private final byte[] hmacKey;
@@ -71,7 +80,7 @@ public class IdempotencyFilter extends OncePerRequestFilter {
       return true;
     }
     String path = RequestPath.of(request).normalized();
-    return !(path.equals("/v1/payments") || PAYMENT_ACTION.matcher(path).matches());
+    return !IDEMPOTENT_POST.matcher(path).matches();
   }
 
   @Override
@@ -100,10 +109,10 @@ public class IdempotencyFilter extends OncePerRequestFilter {
     switch (outcome) {
       case Outcome.Replayed(IdempotencyService.Replay r) -> replay(response, r);
       case Outcome.InProgress() ->
-          // The old text said "retry with a new Idempotency-Key" first: for an interrupted create that
-          // is exactly how a client pays the same order twice. Check first, new key only if nothing exists.
-          Problems.write(response, 409, "IN_PROGRESS", "A request with this Idempotency-Key is still in progress or was interrupted by a server error."
-                  + " Check the resource with GET /v1/payments?reference=… before retrying; only use a new Idempotency-Key if no payment exists.");
+          // Never "use a new Idempotency-Key": for an interrupted create that is how a client pays the
+          // same order twice. No route either: the filter guards orders, customers and subscriptions
+          // too, and does not know which resource the key was for (DECISOES 2026-10-03).
+          Problems.write(response, 409, "IN_PROGRESS", "a request with this Idempotency-Key is still being processed; retry in a moment");
       case Outcome.Mismatch() ->
           Problems.write(response, 422, "IDEMPOTENCY_KEY_REUSED", "this Idempotency-Key was already used with a different request");
       case Outcome.Proceed(IdempotencyKey k) -> proceed(new CachedBodyRequest(request, body), response, chain, k);

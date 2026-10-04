@@ -29,7 +29,7 @@ class OutboxRelayTest {
   private final MerchantEvents events = mock(MerchantEvents.class);
   private final TransactionTemplate tx = mock(TransactionTemplate.class);
   private final OutboxRelay relay =
-      new OutboxRelay(outbox, events, tx, PaymentsProperties.defaults());
+      new OutboxRelay(outbox, events, tx, PaymentsProperties.defaults(), List.of());
 
   @SuppressWarnings("unchecked")
   private void claims(OutboxMessage... rows) {

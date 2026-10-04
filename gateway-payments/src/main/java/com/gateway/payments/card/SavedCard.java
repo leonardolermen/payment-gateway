@@ -21,5 +21,6 @@ public record SavedCard(
     YearMonth expiry,
     String holder,
     String customerDocumentHash,
+    String customerId,
     Instant createdAt,
     Instant deletedAt) {}

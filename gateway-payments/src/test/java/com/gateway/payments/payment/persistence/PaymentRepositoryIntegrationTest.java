@@ -64,6 +64,7 @@ class PaymentRepositoryIntegrationTest {
         "Order 8812",
         null,
         3600,
+        null,
         clock);
   }
 
@@ -279,6 +280,7 @@ class PaymentRepositoryIntegrationTest {
             null,
             b,
             Instant.parse("2026-11-01T02:59:59Z"),
+            null,
             clock);
     tx().executeWithoutResult(transaction -> repository.save(p, List.of(p.createdEvent())));
     tx().executeWithoutResult(
@@ -343,6 +345,7 @@ class PaymentRepositoryIntegrationTest {
             "Pedido 42",
             null,
             CardDetails.requested(2, "MASTER", "0634", null),
+            null,
             clock);
     tx().executeWithoutResult(status -> repository.save(draft, List.of(draft.createdEvent())));
 

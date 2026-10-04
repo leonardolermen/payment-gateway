@@ -80,6 +80,7 @@ public class PaymentEvents {
     json.put("amount", payment.amount().cents());
     json.put("currency", payment.amount().currency());
     json.put("reference", payment.reference());
+    json.put("order_id", payment.orderId());
     json.put("description", payment.description());
     // Null for a card payment, which has no Pix side (spec 2026-09-28 §9); same spelling as the
     // REST

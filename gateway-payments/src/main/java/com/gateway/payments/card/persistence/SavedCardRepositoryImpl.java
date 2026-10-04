@@ -8,6 +8,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.time.Instant;
 import java.time.YearMonth;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
@@ -39,6 +40,7 @@ public class SavedCardRepositoryImpl implements SavedCardRepository {
     entity.expiryYear = (short) card.expiry().getYear();
     entity.holder = card.holder();
     entity.customerDocumentHash = card.customerDocumentHash();
+    entity.customerId = card.customerId();
     entity.createdAt = card.createdAt();
     entityManager.persist(entity);
   }
@@ -47,6 +49,26 @@ public class SavedCardRepositoryImpl implements SavedCardRepository {
   public Optional<SavedCard> findActive(MerchantId merchantId, String id) {
     return jpa.findByIdAndMerchantIdAndDeletedAtIsNull(id, merchantId.value())
         .map(SavedCardRepositoryImpl::toDomain);
+  }
+
+  @Override
+  public List<SavedCard> findActiveByCustomer(MerchantId merchantId, String customerId) {
+    return jpa
+        .findByMerchantIdAndCustomerIdAndDeletedAtIsNullOrderByCreatedAt(
+            merchantId.value(), customerId)
+        .stream()
+        .map(SavedCardRepositoryImpl::toDomain)
+        .toList();
+  }
+
+  @Override
+  @Transactional(propagation = Propagation.MANDATORY)
+  public int adoptByDocumentHash(
+      MerchantId merchantId,
+      ProviderEnvironment environment,
+      String documentHash,
+      String customerId) {
+    return jpa.adopt(merchantId.value(), environment.name(), documentHash, customerId);
   }
 
   @Override
@@ -75,6 +97,7 @@ public class SavedCardRepositoryImpl implements SavedCardRepository {
         YearMonth.of(entity.expiryYear, entity.expiryMonth),
         entity.holder,
         entity.customerDocumentHash,
+        entity.customerId,
         entity.createdAt,
         entity.deletedAt);
   }

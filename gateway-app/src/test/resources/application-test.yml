@@ -11,5 +11,5 @@ gateway:
       port: 0
 spring:
   flyway:
-    schemas: merchants,payments
-    locations: classpath:db/migration/merchants,classpath:db/migration/payments
+    schemas: merchants,payments,billing
+    locations: classpath:db/migration/merchants,classpath:db/migration/payments,classpath:db/migration/billing

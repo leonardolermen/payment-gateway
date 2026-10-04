@@ -25,6 +25,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class PaymentRepositoryImpl implements PaymentRepository {
+  /** Must match the WHERE of {@code uq_payments_order_active}, or the 409 names the wrong row. */
+  private static final List<String> ACTIVE_ATTEMPT_STATUSES =
+      List.of(
+          PaymentStatus.CREATED.name(),
+          PaymentStatus.PENDING.name(),
+          PaymentStatus.AUTHORIZED.name());
+
   private final PaymentJpaRepository jpa;
   private final PaymentEventJpaRepository eventsJpa;
 
@@ -60,6 +67,7 @@ public class PaymentRepositoryImpl implements PaymentRepository {
       entity.amount = payment.amount().cents();
       entity.currency = payment.amount().currency();
       entity.reference = payment.reference();
+      entity.orderId = payment.orderId();
       entity.description = payment.description();
       entity.customerDocumentHash = payment.customerDocumentHash();
       entity.details = details;
@@ -103,6 +111,19 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   @Override
   public Optional<Payment> findById(String id) {
     return jpa.findById(id).map(PaymentRepositoryImpl::toDomain);
+  }
+
+  @Override
+  public Optional<Payment> findActiveByOrder(String orderId) {
+    return jpa.findFirstByOrderIdAndStatusIn(orderId, ACTIVE_ATTEMPT_STATUSES)
+        .map(PaymentRepositoryImpl::toDomain);
+  }
+
+  @Override
+  public List<Payment> listByMerchantAndOrder(MerchantId merchantId, String orderId) {
+    return jpa.findByMerchantIdAndOrderIdOrderByCreatedAt(merchantId.value(), orderId).stream()
+        .map(PaymentRepositoryImpl::toDomain)
+        .toList();
   }
 
   @Override
@@ -272,6 +293,7 @@ public class PaymentRepositoryImpl implements PaymentRepository {
         entity.version,
         entity.createdAt,
         entity.updatedAt,
+        entity.orderId,
         Clock.systemUTC());
   }
 }

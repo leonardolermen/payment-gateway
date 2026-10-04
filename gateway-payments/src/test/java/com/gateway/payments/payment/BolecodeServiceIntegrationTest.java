@@ -85,7 +85,15 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
     Payment p =
         paymentService.create(
             new CreateBolecodePayment(
-                merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, payer(), due, 5));
+                merchant,
+                ProviderEnvironment.TEST,
+                Money.brl(100),
+                null,
+                null,
+                payer(),
+                due,
+                5,
+                null));
     assertThat(p.boleto().dueDate()).isEqualTo(due);
     assertThat(p.boleto().paymentLimitDate()).isEqualTo(due.plusDays(5));
   }
@@ -104,6 +112,7 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
                         null,
                         payer(),
                         yesterday,
+                        null,
                         null)))
         .isInstanceOf(DomainException.class)
         .extracting(e -> ((DomainException) e).code())
@@ -119,7 +128,8 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
                         null,
                         payer(),
                         null,
-                        3651)))
+                        3651,
+                        null)))
         .isInstanceOf(DomainException.class)
         .extracting(e -> ((DomainException) e).code())
         .isEqualTo("INVALID_PAYMENT_LIMIT");
@@ -149,6 +159,7 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
                         null,
                         noZip,
                         null,
+                        null,
                         null)))
         .isInstanceOfSatisfying(
             DomainException.class,
@@ -163,6 +174,7 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
                         merchant,
                         ProviderEnvironment.TEST,
                         Money.brl(100),
+                        null,
                         null,
                         null,
                         null,
@@ -186,6 +198,7 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
                         null,
                         badDoc,
                         null,
+                        null,
                         null)))
         .isInstanceOfSatisfying(
             DomainException.class, e -> assertThat(e.getMessage()).contains("customer.document"));
@@ -204,6 +217,7 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
                         null,
                         null,
                         badState,
+                        null,
                         null,
                         null)))
         .isInstanceOfSatisfying(
@@ -309,6 +323,7 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
                         null,
                         null,
                         payer(),
+                        null,
                         null,
                         null)))
         .isInstanceOf(DomainException.class)
@@ -444,7 +459,15 @@ class BolecodeServiceIntegrationTest extends ServiceIntegrationTestBase {
     Payment p =
         paymentService.create(
             new CreateBolecodePayment(
-                merchant, ProviderEnvironment.TEST, Money.brl(100), null, null, lower, null, null));
+                merchant,
+                ProviderEnvironment.TEST,
+                Money.brl(100),
+                null,
+                null,
+                lower,
+                null,
+                null,
+                null));
     assertThat(p.status()).isEqualTo(PaymentStatus.PENDING);
   }
 }

@@ -1,5 +1,6 @@
 package com.gateway.app.providers;
 
+import com.gateway.billing.BillingConfiguration;
 import com.gateway.kernel.provider.CredentialLookup;
 import com.gateway.kernel.provider.ProviderCredentials;
 import com.gateway.kernel.provider.ProviderEnvironment;
@@ -22,7 +23,7 @@ import org.springframework.context.annotation.Import;
  * ProviderEnvironment}) lives here.
  */
 @Configuration(proxyBeanMethods = false)
-@Import({ProvidersConfiguration.class, PaymentsConfiguration.class})
+@Import({ProvidersConfiguration.class, PaymentsConfiguration.class, BillingConfiguration.class})
 public class ProviderWiring {
 
   /**

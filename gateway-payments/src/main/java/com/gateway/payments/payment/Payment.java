@@ -36,6 +36,7 @@ public final class Payment {
   private final String reference;
   private final String description;
   private final String customerDocumentHash;
+  private final String orderId;
   private final Instant createdAt;
   private final Clock clock;
 
@@ -62,6 +63,7 @@ public final class Payment {
       String description,
       String customerDocumentHash,
       Instant createdAt,
+      String orderId,
       Clock clock) {
     this.id = id;
     this.method = method;
@@ -72,6 +74,7 @@ public final class Payment {
     this.reference = reference;
     this.description = description;
     this.customerDocumentHash = customerDocumentHash;
+    this.orderId = orderId;
     this.clock = clock;
     this.createdAt = createdAt;
     this.updatedAt = createdAt;
@@ -89,6 +92,7 @@ public final class Payment {
       String description,
       String customerDocumentHash,
       int expiresInSeconds,
+      String orderId,
       Clock clock) {
     String id = Ulid.next();
     Payment payment =
@@ -103,6 +107,7 @@ public final class Payment {
             description,
             customerDocumentHash,
             clock.instant(),
+            orderId,
             clock);
     payment.expiresAt = clock.instant().plusSeconds(expiresInSeconds);
     payment.version = 1;
@@ -133,6 +138,7 @@ public final class Payment {
       String customerDocumentHash,
       BoletoDetails boleto,
       Instant expiresAt,
+      String orderId,
       Clock clock) {
     String id = Ulid.next();
     Payment payment =
@@ -147,6 +153,7 @@ public final class Payment {
             description,
             customerDocumentHash,
             clock.instant(),
+            orderId,
             clock);
     payment.pix = new PixDetails(null, null, null, null);
     payment.boleto = boleto;
@@ -183,6 +190,7 @@ public final class Payment {
       String description,
       String customerDocumentHash,
       CardDetails card,
+      String orderId,
       Clock clock) {
     String id = Ulid.next();
     Payment payment =
@@ -197,6 +205,7 @@ public final class Payment {
             description,
             customerDocumentHash,
             clock.instant(),
+            orderId,
             clock);
     payment.pix = null;
     payment.card = card;
@@ -511,6 +520,11 @@ public final class Payment {
     return amount;
   }
 
+  /** The order this attempt belongs to; opaque here, billing owns the table (plan E §4.3). */
+  public String orderId() {
+    return orderId;
+  }
+
   public String reference() {
     return reference;
   }
@@ -591,6 +605,7 @@ public final class Payment {
       long version,
       Instant createdAt,
       Instant updatedAt,
+      String orderId,
       Clock clock) {
     return rehydrate(
         id,
@@ -612,6 +627,7 @@ public final class Payment {
         version,
         createdAt,
         updatedAt,
+        orderId,
         clock);
   }
 
@@ -635,6 +651,7 @@ public final class Payment {
       long version,
       Instant createdAt,
       Instant updatedAt,
+      String orderId,
       Clock clock) {
     return rehydrate(
         id,
@@ -657,6 +674,7 @@ public final class Payment {
         version,
         createdAt,
         updatedAt,
+        orderId,
         clock);
   }
 
@@ -681,6 +699,7 @@ public final class Payment {
       long version,
       Instant createdAt,
       Instant updatedAt,
+      String orderId,
       Clock clock) {
     Payment payment =
         new Payment(
@@ -694,6 +713,7 @@ public final class Payment {
             description,
             customerDocumentHash,
             createdAt,
+            orderId,
             clock);
     payment.status = status;
     payment.pix = pix;
