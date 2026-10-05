@@ -26,11 +26,35 @@ class ReconciliationDivergenceEntity {
   @Column(name = "detail", length = 500)
   String detail;
 
-  @Column(name = "status", nullable = false, length = 10)
+  @Column(name = "status", nullable = false, length = 12)
   String status;
+
+  @Column(name = "origin", nullable = false, length = 10)
+  String origin;
+
+  @Column(name = "reason", length = 20)
+  String reason;
+
+  @Column(name = "merchant_note", length = 500)
+  String merchantNote;
+
+  @Column(name = "resolution", length = 16)
+  String resolution;
+
+  @Column(name = "resolution_note", length = 500)
+  String resolutionNote;
+
+  @Column(name = "resolved_by", length = 80)
+  String resolvedBy;
+
+  @Column(name = "resolved_at")
+  Instant resolvedAt;
 
   @Column(name = "created_at", nullable = false)
   Instant createdAt;
+
+  @Column(name = "updated_at", nullable = false)
+  Instant updatedAt;
 
   protected ReconciliationDivergenceEntity() {}
 }

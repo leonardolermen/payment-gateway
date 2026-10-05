@@ -157,8 +157,9 @@ public class PaymentsConfiguration {
   }
 
   @Bean
-  Divergences divergences(ReconciliationDivergenceRepository divergences, Clock clock) {
-    return new Divergences(divergences, clock);
+  Divergences divergences(
+      ReconciliationDivergenceRepository divergences, UnitOfWork unitOfWork, Clock clock) {
+    return new Divergences(divergences, unitOfWork, clock);
   }
 
   @Bean
