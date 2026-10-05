@@ -17,6 +17,7 @@ import com.gateway.payments.inbox.WebhookInboxService;
 import com.gateway.payments.inbox.persistence.WebhookInboxRepository;
 import com.gateway.payments.inbox.persistence.WebhookInboxRepositoryImpl;
 import com.gateway.payments.jobs.ExpirePaymentJob;
+import com.gateway.payments.jobs.JobAdministration;
 import com.gateway.payments.jobs.JobBackoff;
 import com.gateway.payments.jobs.JobHandler;
 import com.gateway.payments.jobs.JobHandlers;
@@ -37,6 +38,7 @@ import com.gateway.payments.payment.PaymentQueries;
 import com.gateway.payments.payment.PaymentService;
 import com.gateway.payments.payment.PixSettlement;
 import com.gateway.payments.payment.StuckCreatedSweep;
+import com.gateway.payments.payment.StuckPayments;
 import com.gateway.payments.payment.boleto.BoletoPollingService;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepository;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepositoryImpl;
@@ -547,6 +549,17 @@ public class PaymentsConfiguration {
   @Bean
   JobHandlers jobHandlers(List<JobHandler> handlers) {
     return new JobHandlers(handlers);
+  }
+
+  @Bean
+  JobAdministration jobAdministration(
+      JobRepository jobs, PaymentsProperties properties, Clock clock) {
+    return new JobAdministration(jobs, properties, clock);
+  }
+
+  @Bean
+  StuckPayments stuckPayments(PaymentRepository payments, PaymentsProperties properties) {
+    return new StuckPayments(payments, properties);
   }
 
   @Bean

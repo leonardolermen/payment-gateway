@@ -296,4 +296,14 @@ public class PaymentRepositoryImpl implements PaymentRepository {
         entity.orderId,
         Clock.systemUTC());
   }
+
+  @Override
+  public long countByStatusCreatedBefore(PaymentStatus status, Instant createdBefore) {
+    return jpa.countByStatusAndCreatedAtBefore(status.name(), createdBefore);
+  }
+
+  @Override
+  public long countPendingOlderThan(Instant expiresBefore) {
+    return jpa.countPendingOlderThan(expiresBefore);
+  }
 }

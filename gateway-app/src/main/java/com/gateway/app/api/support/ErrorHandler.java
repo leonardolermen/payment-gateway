@@ -42,7 +42,9 @@ public class ErrorHandler {
    * call cannot change, or a concurrent write that won (CONFLICT). DELIVERY_NOT_REDELIVERABLE is
    * 409 too: the delivery is PENDING or DELIVERED, or its endpoint was deactivated. So are
    * DIVERGENCE_CLOSED (the row was already decided) and DISPUTE_ALREADY_OPEN (one dispute per
-   * payment at a time). {@code Map.ofEntries}: {@code Map.of} stops at ten pairs.
+   * payment at a time). JOB_IN_FLIGHT and JOB_NOT_PENDING are 409: a worker holds the job inside
+   * its lease, or it is already DONE or DEAD. {@code Map.ofEntries}: {@code Map.of} stops at ten
+   * pairs.
    */
   private static final Map<String, HttpStatus> STATUS_BY_CODE =
       Map.ofEntries(
@@ -57,7 +59,9 @@ public class ErrorHandler {
           Map.entry("CONFLICT", HttpStatus.CONFLICT),
           Map.entry("DELIVERY_NOT_REDELIVERABLE", HttpStatus.CONFLICT),
           Map.entry("DIVERGENCE_CLOSED", HttpStatus.CONFLICT),
-          Map.entry("DISPUTE_ALREADY_OPEN", HttpStatus.CONFLICT));
+          Map.entry("DISPUTE_ALREADY_OPEN", HttpStatus.CONFLICT),
+          Map.entry("JOB_IN_FLIGHT", HttpStatus.CONFLICT),
+          Map.entry("JOB_NOT_PENDING", HttpStatus.CONFLICT));
 
   @ExceptionHandler(DomainException.class)
   public ProblemDetail domainError(DomainException e) {

@@ -8,9 +8,11 @@ import java.util.Optional;
 import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 interface JobJpaRepository extends JpaRepository<JobEntity, String> {
 
@@ -36,4 +38,41 @@ interface JobJpaRepository extends JpaRepository<JobEntity, String> {
       @Param("leaseCutoff") Instant leaseCutoff,
       @Param("reconcileCutoff") Instant reconcileCutoff,
       Limit limit);
+
+  /** The lease condition is {@link #selectDue}'s: free here means a worker could claim it too. */
+  @Transactional
+  @Modifying(clearAutomatically = true, flushAutomatically = true)
+  @Query(
+      """
+      UPDATE JobEntity j SET j.status = 'PENDING', j.nextRunAt = :now, j.claimedAt = NULL
+       WHERE j.id = :id
+         AND (j.claimedAt IS NULL
+              OR (j.type <> 'RECONCILE' AND j.claimedAt < :leaseCutoff)
+              OR (j.type = 'RECONCILE' AND j.claimedAt < :reconcileCutoff))
+      """)
+  int forceDue(
+      @Param("id") String id,
+      @Param("now") Instant now,
+      @Param("leaseCutoff") Instant leaseCutoff,
+      @Param("reconcileCutoff") Instant reconcileCutoff);
+
+  @Transactional
+  @Modifying(clearAutomatically = true, flushAutomatically = true)
+  @Query(
+      """
+      UPDATE JobEntity j SET j.status = 'DEAD', j.lastError = :note
+       WHERE j.id = :id AND j.status = 'PENDING'
+         AND (j.claimedAt IS NULL
+              OR (j.type <> 'RECONCILE' AND j.claimedAt < :leaseCutoff)
+              OR (j.type = 'RECONCILE' AND j.claimedAt < :reconcileCutoff))
+      """)
+  int giveUp(
+      @Param("id") String id,
+      @Param("note") String note,
+      @Param("leaseCutoff") Instant leaseCutoff,
+      @Param("reconcileCutoff") Instant reconcileCutoff);
+
+  long countByStatus(String status);
+
+  long countByStatusAndNextRunAtBefore(String status, Instant before);
 }

@@ -40,6 +40,12 @@ interface PaymentJpaRepository extends JpaRepository<PaymentEntity, String> {
   java.util.List<PaymentEntity> findByStatusAndCreatedAtBefore(
       @Param("status") String status, @Param("before") Instant before, Limit limit);
 
+  long countByStatusAndCreatedAtBefore(String status, Instant before);
+
+  @Query(
+      "SELECT COUNT(p) FROM PaymentEntity p WHERE p.status = 'PENDING' AND p.expiresAt < :before")
+  long countPendingOlderThan(@Param("before") Instant before);
+
   @Query(
       "SELECT p FROM PaymentEntity p WHERE p.status IN :statuses AND p.createdAt > :after ORDER BY p.createdAt ASC")
   java.util.List<PaymentEntity> findByStatusInAndCreatedAtAfter(

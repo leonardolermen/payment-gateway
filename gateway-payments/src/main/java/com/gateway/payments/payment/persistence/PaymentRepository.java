@@ -96,4 +96,10 @@ public interface PaymentRepository {
 
   /** Ordered by {@code created_at} ascending, capped at {@code limit}. */
   List<Payment> findByStatusCreatedBefore(PaymentStatus status, Instant createdBefore, int limit);
+
+  /** The count behind {@link #findByStatusCreatedBefore}, uncapped. */
+  long countByStatusCreatedBefore(PaymentStatus status, Instant createdBefore);
+
+  /** The count behind {@link #findPendingOlderThan}, uncapped. */
+  long countPendingOlderThan(Instant expiresBefore);
 }
