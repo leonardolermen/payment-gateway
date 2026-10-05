@@ -10,6 +10,7 @@ import com.gateway.payments.payment.PaymentCount;
 import com.gateway.payments.payment.PaymentDetailsJson;
 import com.gateway.payments.payment.PaymentEvent;
 import com.gateway.payments.payment.PaymentStatus;
+import com.gateway.payments.reconciliation.DivergenceStatus;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.time.Clock;
@@ -205,7 +206,8 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   public List<Payment> findByStatusCreatedBeforeWithoutOpenDivergence(
       PaymentStatus status, Instant createdBefore, String kind, int limit) {
     return jpa
-        .findByStatusCreatedBeforeWithoutOpenDivergence(status.name(), createdBefore, kind, limit)
+        .findByStatusCreatedBeforeWithoutOpenDivergence(
+            status.name(), createdBefore, kind, DivergenceStatus.UNSETTLED_NAMES, limit)
         .stream()
         .map(PaymentRepositoryImpl::toDomain)
         .toList();

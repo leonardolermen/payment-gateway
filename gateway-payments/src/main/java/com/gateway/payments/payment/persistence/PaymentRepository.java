@@ -88,9 +88,10 @@ public interface PaymentRepository {
       int limit);
 
   /**
-   * Oldest first, skipping payments with an OPEN divergence of {@code kind}: an already-flagged row
-   * would otherwise be re-read every run and, once there are {@code limit} of them, starve the
-   * newer ones forever.
+   * Oldest first, skipping payments with an unsettled (OPEN or UNDER_REVIEW) divergence of {@code
+   * kind}: an already-flagged row would otherwise be re-read every run and, once there are {@code
+   * limit} of them, starve the newer ones forever. Under review counts as flagged: the operator
+   * holding the case is the reason it is not settled yet, not a reason to look at it again.
    */
   List<Payment> findByStatusCreatedBeforeWithoutOpenDivergence(
       PaymentStatus status, Instant createdBefore, String kind, int limit);

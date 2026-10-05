@@ -95,18 +95,21 @@ interface PaymentJpaRepository extends JpaRepository<PaymentEntity, String> {
 
   /**
    * Native: the divergence table has no mapping on this side, and NOT EXISTS keeps it one query.
+   * {@code statuses} is a parameter, not a literal, so the set of "still flagged" statuses lives in
+   * one place ({@code DivergenceStatus.UNSETTLED_NAMES}) and cannot drift from the index.
    */
   @Query(
       value =
           "SELECT * FROM payments.payments p WHERE p.status = :status AND p.created_at < :before"
               + " AND NOT EXISTS (SELECT 1 FROM payments.reconciliation_divergences d"
-              + " WHERE d.payment_id = p.id AND d.provider_status = :kind AND d.status = 'OPEN')"
+              + " WHERE d.payment_id = p.id AND d.provider_status = :kind AND d.status IN (:statuses))"
               + " ORDER BY p.created_at ASC LIMIT :limit",
       nativeQuery = true)
   java.util.List<PaymentEntity> findByStatusCreatedBeforeWithoutOpenDivergence(
       @Param("status") String status,
       @Param("before") Instant before,
       @Param("kind") String kind,
+      @Param("statuses") Collection<String> statuses,
       @Param("limit") int limit);
 
   /** Native: the Cielo's PaymentId lives inside jsonb (V204 indexes this expression). */
