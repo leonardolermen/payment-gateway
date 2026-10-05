@@ -244,6 +244,55 @@ class WebhookDeliveriesApiIntegrationTest {
     assertThat(bulk.getResponseBody()).containsEntry("scheduled", 1);
   }
 
+  /**
+   * The write paths are scoped to the tenant: another merchant's key neither sees nor moves rows.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void writePathsArePinnedPerTenant() {
+    String merchantId = createMerchant("Tenant Store");
+    String apiKey = createTestKey(merchantId);
+    saveItauCredential(merchantId);
+    registerEndpoint(apiKey);
+
+    failuresLeft.set(2);
+    createPayment(apiKey, "tenant-dead-1");
+    Awaitility.await()
+        .atMost(Duration.ofSeconds(20))
+        .until(() -> list(apiKey, "?status=DEAD").getResponseBody().size() == 1);
+    Map<String, Object> deadDelivery =
+        (Map<String, Object>) list(apiKey, "?status=DEAD").getResponseBody().getFirst();
+    String deadId = (String) deadDelivery.get("id");
+
+    String otherKey = createTestKey(createMerchant("Intruder Store"));
+
+    assertThat(redeliver(otherKey, deadId, "x-redeliver").getStatus().value()).isEqualTo(404);
+    assertThat(get(apiKey, "/v1/webhooks/deliveries/" + deadId, 200))
+        .containsEntry("status", "DEAD");
+
+    EntityExchangeResult<Map> otherBulk =
+        redeliverDead(otherKey, Instant.now().minus(Duration.ofDays(1)), "x-bulk");
+    assertThat(otherBulk.getStatus().value()).isEqualTo(202);
+    assertThat(otherBulk.getResponseBody()).containsEntry("scheduled", 0);
+    assertThat(get(apiKey, "/v1/webhooks/deliveries/" + deadId, 200))
+        .containsEntry("status", "DEAD");
+    assertThat(list(otherKey, "").getResponseBody()).isEmpty();
+
+    EntityExchangeResult<Map> noSince =
+        http()
+            .post()
+            .uri("/v1/webhooks/deliveries/redeliver-dead")
+            .header("Authorization", "Bearer " + apiKey)
+            .header("Idempotency-Key", "x-nosince")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(Map.of())
+            .exchange()
+            .expectBody(Map.class)
+            .returnResult();
+    assertThat(noSince.getStatus().value()).isEqualTo(400);
+    assertThat(noSince.getResponseBody()).containsEntry("type", "urn:gateway:INVALID_REQUEST");
+  }
+
   /** The first request for this payload the sink answered 200 — the failed attempts precede it. */
   private Received landed(Map<String, Object> payload) {
     return received.stream()

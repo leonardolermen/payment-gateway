@@ -197,8 +197,11 @@ event catalog below is written to an outbox in the same transaction as the chang
   redelivery). `X-Gateway-Event-Id` is the same on every attempt of the same event: store it and ignore
   repeats.
 - **Ordered per partition key.** Events for one payment (including its refunds), one order, one customer
-  or one subscription (including its invoices) are delivered in the order they happened; a failing event
-  holds back the ones behind it on that key. There is no order across keys.
+  or one subscription (including its invoices) are delivered in the order they happened while they are
+  being retried: a failing event holds back the ones behind it on that key. There is no order across keys.
+  **Once an event goes `DEAD`, the newer ones on that key are delivered**, so a later redelivery (manual or
+  bulk) arrives OUT of order. Do not infer state from arrival order: use the payload (`status`,
+  timestamps) and the event id.
 - **Success is any 2xx.** Anything else, a connection error or a timeout (2 s to connect, 10 s to read)
   is a failed attempt. Answer fast and do the work afterwards.
 - **Retries.** Up to `webhook-delivery.max-attempts` (5) attempts, waiting `base-backoff` (30 s) × 2^n,
@@ -243,15 +246,17 @@ TOLERANCE_SECONDS = 300
 def signature_valid(header, raw_body: bytes, secret: str) -> bool:
     if not header:
         return False
-    parts = dict(item.split("=", 1) for item in header.split(",") if "=" in item)
-    timestamp, received = parts.get("t"), parts.get("v1")
-    if timestamp is None or received is None:
+    try:
+        parts = dict(item.split("=", 1) for item in header.split(","))
+        timestamp, received = parts["t"], parts["v1"]
+        age = abs(time.time() - int(timestamp))
+    except (ValueError, KeyError):  # a malformed header is invalid, never an exception
         return False
-    if abs(time.time() - int(timestamp)) > TOLERANCE_SECONDS:
+    if age > TOLERANCE_SECONDS:
         return False
     signed = timestamp.encode() + b"." + raw_body
     expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, received)
+    return hmac.compare_digest(expected.encode(), received.encode())
 
 
 def verified(headers, raw_body: bytes, secret: str) -> bool:
@@ -297,7 +302,13 @@ final class GatewaySignature {
     if (timestamp == null || received == null) {
       return false;
     }
-    if (Math.abs(Instant.now().getEpochSecond() - Long.parseLong(timestamp)) > TOLERANCE_SECONDS) {
+    long signedAt;
+    try {
+      signedAt = Long.parseLong(timestamp);
+    } catch (NumberFormatException e) { // a malformed header is invalid, never an exception
+      return false;
+    }
+    if (Math.abs(Instant.now().getEpochSecond() - signedAt) > TOLERANCE_SECONDS) {
       return false;
     }
 
@@ -347,9 +358,10 @@ next page (which may be empty). `GET /v1/webhooks/deliveries/{id}` returns the s
 
 `POST /v1/webhooks/deliveries/{id}/redeliver` schedules one delivery again: `202 {"status":"PENDING"}`,
 `404` for an unknown id, `409 DELIVERY_NOT_REDELIVERABLE` when it is not in a state that can be resent.
-`POST /v1/webhooks/deliveries/redeliver-dead` with `{"since":"<ISO-8601>"}` reschedules every `DEAD`
-delivery created since then: `202 {"scheduled": <n>}`, or `422 WINDOW_TOO_WIDE` when `since` is more
-than 30 days back. Both POSTs require an `Idempotency-Key`.
+`POST /v1/webhooks/deliveries/redeliver-dead` with `{"since":"<ISO-8601>"}` reschedules at most 1000 `DEAD`
+deliveries created since then per call, oldest first: `202 {"scheduled": <n>}`. Call again until
+`scheduled < 1000`. A missing `since` is `400 INVALID_REQUEST`; `since` more than 30 days back is
+`422 WINDOW_TOO_WIDE`. Both POSTs require an `Idempotency-Key`.
 
 **Event catalog.** One section per `X-Gateway-Event-Type`. Values are illustrative; the keys are the
 contract (a null value still has its key), and a test (`EventCatalogTest`) fails the build when a

@@ -214,9 +214,10 @@ class SubscriptionServiceIntegrationTest extends BillingIntegrationTestBase {
   }
 
   /**
-   * A subscription started today first bills at 03:00 São Paulo; before that hour billOne is not
-   * due and creates nothing. Moving the clock to the cycle, as SubscriptionBillingIntegrationTest
-   * does, keeps the test independent of the hour it runs at.
+   * A subscription started today bills now; one starting on a future day first bills at the billing
+   * hour of that day, and until then billOne is not due and creates nothing. Moving the clock to
+   * the cycle, as SubscriptionBillingIntegrationTest does, keeps the test independent of the hour
+   * it runs at.
    */
   Order billedInvoiceOf(Subscription subscription) {
     if (subscription.nextBillingAt().isAfter(clock.instant())) {
