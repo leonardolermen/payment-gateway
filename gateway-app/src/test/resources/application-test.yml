@@ -13,3 +13,6 @@ spring:
   flyway:
     schemas: merchants,payments,billing
     locations: classpath:db/migration/merchants,classpath:db/migration/payments,classpath:db/migration/billing
+webhook-delivery:
+  # Every app test's sink is on localhost, and lib 0.2.0 refuses private targets by default.
+  allow-private-targets: true

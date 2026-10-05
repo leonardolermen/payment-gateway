@@ -17,6 +17,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import tools.jackson.databind.exc.InvalidTypeIdException;
 
 /**
@@ -38,7 +39,8 @@ public class ErrorHandler {
    * resource is in a state the call cannot change (the cancel lost to the payer; the sale was
    * captured already, or is not an authorization). CARD_DECLINED has its own handler (402). The
    * billing codes are 409 for the same reason: a customer, order or subscription whose state the
-   * call cannot change, or a concurrent write that won (CONFLICT).
+   * call cannot change, or a concurrent write that won (CONFLICT). DELIVERY_NOT_REDELIVERABLE is
+   * 409 too: the delivery is PENDING or DELIVERED, or its endpoint was deactivated.
    */
   private static final Map<String, HttpStatus> STATUS_BY_CODE =
       Map.of(
@@ -50,7 +52,8 @@ public class ErrorHandler {
           "ORDER_CLOSED", HttpStatus.CONFLICT,
           "ORDER_HAS_ACTIVE_PAYMENT", HttpStatus.CONFLICT,
           "SUBSCRIPTION_NOT_ACTIVE", HttpStatus.CONFLICT,
-          "CONFLICT", HttpStatus.CONFLICT);
+          "CONFLICT", HttpStatus.CONFLICT,
+          "DELIVERY_NOT_REDELIVERABLE", HttpStatus.CONFLICT);
 
   @ExceptionHandler(DomainException.class)
   public ProblemDetail domainError(DomainException e) {
@@ -89,6 +92,16 @@ public class ErrorHandler {
   @ExceptionHandler(IllegalArgumentException.class)
   public ProblemDetail invalidRequest(IllegalArgumentException e) {
     return problem(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e.getMessage());
+  }
+
+  /**
+   * A query or path parameter that does not convert ({@code ?status=NOPE}, a malformed UUID or
+   * instant). Spring's own message names the Java type, so the detail is built from the parameter
+   * name the client sent instead.
+   */
+  @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+  public ProblemDetail parameterTypeMismatch(MethodArgumentTypeMismatchException e) {
+    return problem(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e.getName() + " is not valid");
   }
 
   /**
