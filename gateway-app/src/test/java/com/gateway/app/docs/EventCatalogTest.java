@@ -22,12 +22,14 @@ import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.money.Money;
 import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.kernel.provider.ProviderEnvironment;
+import com.gateway.payments.dispute.DisputeEvents;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentEvents;
 import com.gateway.payments.payment.boleto.BoletoDetails;
 import com.gateway.payments.payment.card.CardDetails;
 import com.gateway.payments.payment.pix.PixDetails;
+import com.gateway.payments.reconciliation.ReconciliationDivergence;
 import com.gateway.payments.refund.Refund;
 import java.time.Clock;
 import java.time.Instant;
@@ -83,7 +85,8 @@ class EventCatalogTest {
           new CatalogEntry("subscription.recovered", EventCatalogTest::subscriptionJson),
           new CatalogEntry("subscription.dunning_exhausted", EventCatalogTest::dunningExhausted),
           new CatalogEntry("subscription.canceled", EventCatalogTest::subscriptionJson),
-          new CatalogEntry("subscription.ended", EventCatalogTest::subscriptionJson));
+          new CatalogEntry("subscription.ended", EventCatalogTest::subscriptionJson),
+          new CatalogEntry("dispute.updated", EventCatalogTest::disputeJson));
 
   @Test
   void everyEventTypeIsDocumentedWithTheKeysItsBuilderEmits() {
@@ -104,6 +107,14 @@ class EventCatalogTest {
       System.out.println("#### " + entry.type());
       System.out.println(json.writeValueAsString(entry.example().get()));
     }
+  }
+
+  private static Map<String, Object> disputeJson() {
+    ReconciliationDivergence dispute =
+        ReconciliationDivergence.merchant(
+            pixPayment().id(), "COMPLETED", "DUPLICATE", "charged twice", CLOCK.instant());
+
+    return DisputeEvents.json(dispute);
   }
 
   private static Payment pixPayment() {

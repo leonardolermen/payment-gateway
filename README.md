@@ -948,10 +948,28 @@ A subscription set to cancel at period end reached it.
 }
 ```
 
+#### dispute.updated
+
+A merchant's dispute was opened (`status: OPEN`) or the operator moved it: `UNDER_REVIEW`, then
+`RESOLVED` or `REJECTED` with a `resolution` and `resolution_note`. Same partition as the payment's own
+events, so it arrives in order with them.
+
+```json
+{
+  "id": "01M46BTW3Q56QCNKDYFNQD73A1",
+  "payment_id": "01M46BTW3Q56QCNKDYFNQD73A2",
+  "reason": "DUPLICATE",
+  "status": "OPEN",
+  "resolution": null,
+  "resolution_note": null,
+  "updated_at": "2026-10-05T12:00:00Z"
+}
+```
+
 ### Idempotency
 
 Every POST that creates a resource or moves money — payments (and their `/cancel`, `/refunds`,
-`/capture`), customers, orders (and their `/payments`, `/cancel`), plans and subscriptions (and their
+`/capture`, `/disputes`), customers, orders (and their `/payments`, `/cancel`), plans and subscriptions (and their
 `/cancel`) — requires an `Idempotency-Key` header, at most 123
 characters. A repeated key with the same request body and method replays the stored response
 (`Idempotent-Replayed: true`); the same key with a different body is `422 IDEMPOTENCY_KEY_REUSED`; a key
@@ -960,6 +978,24 @@ still being processed, or one whose first attempt failed with a 5xx and is held 
 (TEST and LIVE never share a key row), so it is safe to script tests against TEST and LIVE with the same
 key values. The stored body hash is an HMAC-SHA256 under `GATEWAY_IDEMPOTENCY_HMAC_KEY` (falling back to
 `GATEWAY_API_KEY_PEPPER` when unset), because card request bodies carry PAN and CVV.
+
+### Disputes
+
+A merchant who disagrees with a payment opens a dispute; an operator reviews and decides it. Opening
+never moves money: a confirmed double charge is refunded through `/refunds` as a separate act.
+
+- `POST /v1/payments/{id}/disputes` (`Idempotency-Key` required) with `{"reason", "note"}` → `201`.
+  `reason` is `AMOUNT_MISMATCH`, `NOT_SETTLED`, `DUPLICATE` or `OTHER` (anything else is `400`); `note` is
+  optional, up to 500 characters. A payment holds one open dispute at a time: a second one while the first
+  is `OPEN` or `UNDER_REVIEW` is `409 DISPUTE_ALREADY_OPEN`. Another merchant's payment is `404`.
+- `GET /v1/disputes?status=&since=&after=&limit=` lists the merchant's disputes, newest first; a full page
+  carries `X-Next-Cursor`, which goes back as `after`.
+- `GET /v1/disputes/{id}`.
+
+The response is `id, payment_id, reason, note, status, resolution, resolution_note, created_at,
+resolved_at`. `status` goes `OPEN` → `UNDER_REVIEW` → `RESOLVED` or `REJECTED` (the operator may also
+decide straight from `OPEN`), through `/v1/admin/divergences/{id}/review` and `/resolve`: the dispute id is
+the divergence id. Each step, the opening included, emits [`dispute.updated`](#disputeupdated).
 
 ### Background jobs
 

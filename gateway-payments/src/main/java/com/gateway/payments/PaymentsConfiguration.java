@@ -9,6 +9,7 @@ import com.gateway.payments.card.SavedCards;
 import com.gateway.payments.card.persistence.SavedCardRepository;
 import com.gateway.payments.card.persistence.SavedCardRepositoryImpl;
 import com.gateway.payments.dispute.DisputeEvents;
+import com.gateway.payments.dispute.DisputeService;
 import com.gateway.payments.idempotency.IdempotencyService;
 import com.gateway.payments.idempotency.persistence.IdempotencyRepository;
 import com.gateway.payments.idempotency.persistence.IdempotencyRepositoryImpl;
@@ -169,6 +170,15 @@ public class PaymentsConfiguration {
   @Bean
   DisputeEvents disputeEvents(OutboxRepository outbox, Clock clock) {
     return new DisputeEvents(outbox, clock);
+  }
+
+  @Bean
+  DisputeService disputeService(
+      Divergences divergences,
+      PaymentRepository payments,
+      DisputeEvents disputeEvents,
+      UnitOfWork unitOfWork) {
+    return new DisputeService(divergences, payments, disputeEvents, unitOfWork);
   }
 
   @Bean
