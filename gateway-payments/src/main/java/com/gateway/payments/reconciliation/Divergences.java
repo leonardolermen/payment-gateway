@@ -1,12 +1,14 @@
 package com.gateway.payments.reconciliation;
 
 import com.gateway.kernel.errors.DomainException;
+import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.payments.UnitOfWork;
 import com.gateway.payments.dispute.DisputeReason;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceRepository;
 import java.time.Clock;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * The divergence queue: opening (by the system, idempotent by payment and kind; by a merchant, one
@@ -69,44 +71,66 @@ public class Divergences {
    * reviewed_by column, and the decision is the act the audit names.
    */
   public ReconciliationDivergence review(String id, String by) {
+    return review(id, by, divergence -> {});
+  }
+
+  /**
+   * {@code afterUpdate} runs in the same transaction, after the update won: whatever it writes (an
+   * outbox row) commits with the state change or not at all.
+   */
+  public ReconciliationDivergence review(
+      String id, String by, Consumer<ReconciliationDivergence> afterUpdate) {
     return unitOfWork.inTransaction(
         () -> {
           ReconciliationDivergence divergence = get(id);
           divergence.markUnderReview(clock.instant());
 
-          return stored(divergence);
+          stored(divergence);
+          afterUpdate.accept(divergence);
+
+          return divergence;
         });
   }
 
   public ReconciliationDivergence resolve(
       String id, DivergenceResolution resolution, String note, String by) {
+    return resolve(id, resolution, note, by, divergence -> {});
+  }
+
+  /** {@code afterUpdate}: see {@link #review(String, String, Consumer)}. */
+  public ReconciliationDivergence resolve(
+      String id,
+      DivergenceResolution resolution,
+      String note,
+      String by,
+      Consumer<ReconciliationDivergence> afterUpdate) {
     return unitOfWork.inTransaction(
         () -> {
           ReconciliationDivergence divergence = get(id);
           divergence.resolve(resolution, trimmed(note), by, clock.instant());
 
-          return stored(divergence);
+          stored(divergence);
+          afterUpdate.accept(divergence);
+
+          return divergence;
         });
   }
 
   public ReconciliationDivergence get(String id) {
-    return divergences
-        .findById(id)
-        .orElseThrow(
-            () -> new DomainException("DIVERGENCE_NOT_FOUND", "divergence " + id + " not found"));
+    return divergences.findById(id).orElseThrow(() -> new NotFoundException("divergence", id));
   }
 
   public List<ReconciliationDivergence> list(DivergenceQuery query) {
     return divergences.find(query);
   }
 
-  private ReconciliationDivergence stored(ReconciliationDivergence divergence) {
+  private void stored(ReconciliationDivergence divergence) {
     if (!divergences.update(divergence)) {
       throw new DomainException(
           "CONFLICT", "divergence " + divergence.id() + " changed meanwhile; reload and retry");
     }
 
-    return divergence;
+    divergence.markSaved();
   }
 
   private static DomainException alreadyOpen(Payment payment) {

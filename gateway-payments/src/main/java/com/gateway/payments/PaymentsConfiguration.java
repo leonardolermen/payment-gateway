@@ -8,6 +8,7 @@ import com.gateway.kernel.security.Sealer;
 import com.gateway.payments.card.SavedCards;
 import com.gateway.payments.card.persistence.SavedCardRepository;
 import com.gateway.payments.card.persistence.SavedCardRepositoryImpl;
+import com.gateway.payments.dispute.DisputeEvents;
 import com.gateway.payments.idempotency.IdempotencyService;
 import com.gateway.payments.idempotency.persistence.IdempotencyRepository;
 import com.gateway.payments.idempotency.persistence.IdempotencyRepositoryImpl;
@@ -59,6 +60,7 @@ import com.gateway.payments.provider.ProviderGateway;
 import com.gateway.payments.provider.persistence.ProviderRequestRepository;
 import com.gateway.payments.provider.persistence.ProviderRequestRepositoryImpl;
 import com.gateway.payments.reconciliation.CardReconciliation;
+import com.gateway.payments.reconciliation.DivergenceAdministration;
 import com.gateway.payments.reconciliation.Divergences;
 import com.gateway.payments.reconciliation.ReconciliationService;
 import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceRepository;
@@ -160,6 +162,17 @@ public class PaymentsConfiguration {
   Divergences divergences(
       ReconciliationDivergenceRepository divergences, UnitOfWork unitOfWork, Clock clock) {
     return new Divergences(divergences, unitOfWork, clock);
+  }
+
+  @Bean
+  DisputeEvents disputeEvents(OutboxRepository outbox, Clock clock) {
+    return new DisputeEvents(outbox, clock);
+  }
+
+  @Bean
+  DivergenceAdministration divergenceAdministration(
+      Divergences divergences, PaymentRepository payments, DisputeEvents disputeEvents) {
+    return new DivergenceAdministration(divergences, payments, disputeEvents);
   }
 
   @Bean

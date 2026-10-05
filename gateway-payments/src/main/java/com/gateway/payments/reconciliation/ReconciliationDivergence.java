@@ -57,6 +57,7 @@ public final class ReconciliationDivergence {
     this.createdAt = micros(createdAt);
     this.status = DivergenceStatus.OPEN;
     this.updatedAt = this.createdAt;
+    this.loadedUpdatedAt = this.updatedAt;
   }
 
   public static ReconciliationDivergence system(
@@ -107,6 +108,14 @@ public final class ReconciliationDivergence {
     this.resolutionNote = note;
     this.resolvedBy = by;
     this.resolvedAt = this.updatedAt;
+  }
+
+  /**
+   * The stored {@code updated_at} is now this copy's: without it a second change on the same copy
+   * would be guarded by the old value and lose to itself.
+   */
+  public void markSaved() {
+    this.loadedUpdatedAt = this.updatedAt;
   }
 
   private void transition(DivergenceStatus to, Instant at) {
