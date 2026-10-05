@@ -35,6 +35,7 @@ import com.gateway.payments.payment.create.CardCustomerData;
 import com.gateway.payments.payment.create.CardDataFactory;
 import com.gateway.payments.payment.create.CreateCardPayment;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
@@ -167,7 +168,8 @@ class SubscriptionBillingIntegrationTest extends BillingIntegrationTestBase {
     Subscription subscription = pixSubscription();
     billing.billOne(subscription.id(), clock.instant());
     service.cancel(merchant, subscription.id(), true);
-    clock.advance(Duration.ofDays(31));
+    Instant nextBillingAt = queries.get(merchant, subscription.id()).nextBillingAt();
+    clock.advance(Duration.between(clock.instant(), nextBillingAt).plusSeconds(1));
 
     billing.billOne(subscription.id(), clock.instant());
 
