@@ -1,5 +1,6 @@
 package com.gateway.app.observability;
 
+import com.barrier.webhookdelivery.domain.DeliveryStatus;
 import com.gateway.payments.jobs.persistence.JobRepository;
 import com.gateway.payments.payment.PaymentCount;
 import com.gateway.payments.payment.StuckPayments;
@@ -143,6 +144,11 @@ public class OperationsMetrics {
   // coupling the app does not have. If the lib renames the table, this family WARNs and goes stale.
   private void refreshDeliveries() {
     Map<Tags, Long> counts = new HashMap<>();
+    // Every status the lib knows exists from the first refresh, at 0: an empty table still scrapes.
+    for (DeliveryStatus status : DeliveryStatus.values()) {
+      counts.put(Tags.of("status", status.name()), 0L);
+    }
+
     jdbc.query(
         "SELECT status, count(*) FROM webhook_delivery.deliveries GROUP BY status",
         row -> {

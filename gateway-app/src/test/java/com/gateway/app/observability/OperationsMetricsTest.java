@@ -7,7 +7,6 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlMatching;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.persistence.PaymentRepository;
@@ -20,9 +19,12 @@ import java.util.Map;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.MediaType;
@@ -43,6 +45,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
     properties = "gateway.rate-limit.requests-per-minute=1000")
 @ActiveProfiles("test")
 @Testcontainers
+@ExtendWith(OutputCaptureExtension.class)
 class OperationsMetricsTest {
 
   @Container @ServiceConnection
@@ -95,9 +98,20 @@ class OperationsMetricsTest {
   @Autowired PaymentRepository payments;
 
   @Test
-  void theScrapeReportsPaymentsAndOpenDivergencesOnTheManagementPortOnly() {
-    assertThatCode(metrics::refresh).doesNotThrowAnyException();
-    assertThat(scrape()).contains("gateway_outbox_pending");
+  void theScrapeReportsPaymentsAndOpenDivergencesOnTheManagementPortOnly(CapturedOutput output) {
+    metrics.refresh();
+    String empty = scrape();
+
+    // refresh() swallows every failure into a WARN, so the WARN is what proves the queries ran.
+    assertThat(output.getAll().lines())
+        .noneMatch(line -> line.contains("\"WARN\"") && line.contains("OperationsMetrics"));
+    assertThat(empty)
+        .contains(
+            "gateway_payments_stuck{kind=\"created_too_long\"} 0",
+            "gateway_jobs{status=\"DEAD\"} 0",
+            "gateway_jobs_overdue 0",
+            "gateway_webhook_deliveries{status=\"DEAD\"} 0",
+            "gateway_outbox_pending 0");
 
     String paymentId = createPix();
     Payment payment = payments.findById(paymentId).orElseThrow();
@@ -110,7 +124,8 @@ class OperationsMetricsTest {
         .containsPattern("gateway_payments\\{[^}]*method=\"PIX\"[^}]*status=\"PENDING\"[^}]*\\} 1");
     assertThat(scraped)
         .containsPattern("gateway_divergences_open\\{kind=\"CONCLUIDA\",origin=\"SYSTEM\"\\} 1");
-    assertThat(scraped).contains("gateway_provider_call_seconds");
+    assertThat(scraped)
+        .containsPattern("gateway_provider_call_seconds_bucket\\{[^}]*provider=\"ITAU\"");
 
     int merchantPortStatus =
         http(port).get().uri("/actuator/prometheus").exchange().returnResult().getStatus().value();

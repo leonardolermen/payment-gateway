@@ -13,6 +13,7 @@ import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.payments.provider.persistence.ProviderRequestRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -209,10 +210,20 @@ public class ProviderGateway {
 
   // Like the row below, the timer is observation: a meter registry failure must not fail a call
   // the bank already answered.
+  // The histogram is what makes a p95 computable at all (histogram_quantile over _bucket): a bare
+  // timer publishes only count, sum and max. The SLO buckets put edges on the thresholds an
+  // operator alerts on, 5 s being the README's.
   private void time(ResolvedProvider<?> resolved, String operation, String outcome, long start) {
     try {
       Timer.builder("gateway_provider_call_seconds")
           .tags("provider", resolved.provider().id(), "operation", operation, "outcome", outcome)
+          .publishPercentileHistogram()
+          .serviceLevelObjectives(
+              Duration.ofMillis(500),
+              Duration.ofSeconds(1),
+              Duration.ofSeconds(2),
+              Duration.ofSeconds(5),
+              Duration.ofSeconds(10))
           .register(meters)
           .record(System.nanoTime() - start, TimeUnit.NANOSECONDS);
     } catch (RuntimeException e) {
