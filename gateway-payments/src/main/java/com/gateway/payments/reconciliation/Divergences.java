@@ -33,8 +33,8 @@ public class Divergences {
   }
 
   /**
-   * Returns whether this call was the one that opened it. A second open while one is still OPEN is
-   * not a second problem.
+   * Returns whether this call was the one that opened it. A second open while one is still OPEN or
+   * UNDER_REVIEW is not a second problem.
    */
   public boolean open(Payment payment, String providerStatus, String detail) {
     return divergences.openIfAbsent(

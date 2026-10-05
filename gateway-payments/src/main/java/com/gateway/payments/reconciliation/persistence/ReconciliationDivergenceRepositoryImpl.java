@@ -20,9 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class ReconciliationDivergenceRepositoryImpl implements ReconciliationDivergenceRepository {
-  private static final List<String> DISPUTE_OPEN_STATUSES =
-      List.of(DivergenceStatus.OPEN.name(), DivergenceStatus.UNDER_REVIEW.name());
-
   private final ReconciliationDivergenceJpaRepository jpa;
 
   @PersistenceContext private EntityManager entityManager;
@@ -68,8 +65,11 @@ public class ReconciliationDivergenceRepositoryImpl implements ReconciliationDiv
 
   @Override
   public boolean hasOpen(String paymentId, String providerStatus) {
-    return jpa.existsByPaymentIdAndProviderStatusAndStatusAndOrigin(
-        paymentId, providerStatus, DivergenceStatus.OPEN.name(), DivergenceOrigin.SYSTEM.name());
+    return jpa.existsByPaymentIdAndProviderStatusAndStatusInAndOrigin(
+        paymentId,
+        providerStatus,
+        DivergenceStatus.UNSETTLED_NAMES,
+        DivergenceOrigin.SYSTEM.name());
   }
 
   @Override
@@ -157,7 +157,7 @@ public class ReconciliationDivergenceRepositoryImpl implements ReconciliationDiv
   @Override
   public Optional<ReconciliationDivergence> findOpenDispute(String paymentId) {
     return jpa.findFirstByPaymentIdAndOriginAndStatusIn(
-            paymentId, DivergenceOrigin.MERCHANT.name(), DISPUTE_OPEN_STATUSES)
+            paymentId, DivergenceOrigin.MERCHANT.name(), DivergenceStatus.UNSETTLED_NAMES)
         .map(ReconciliationDivergenceRepositoryImpl::toDomain);
   }
 

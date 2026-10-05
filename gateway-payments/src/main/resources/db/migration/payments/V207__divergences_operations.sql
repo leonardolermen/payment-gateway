@@ -16,12 +16,17 @@ UPDATE payments.reconciliation_divergences SET updated_at = created_at WHERE upd
 ALTER TABLE payments.reconciliation_divergences ALTER COLUMN updated_at SET NOT NULL;
 ALTER TABLE payments.reconciliation_divergences ALTER COLUMN status TYPE VARCHAR(12);
 
--- One OPEN SYSTEM divergence per (payment, kind) as before; one OPEN dispute per payment. A SYSTEM
--- row and a MERCHANT row may coexist: the bank disagreeing and the merchant complaining are two facts.
+-- One unsettled (OPEN or UNDER_REVIEW) SYSTEM divergence per (payment, kind); one unsettled dispute
+-- per payment. A SYSTEM row and a MERCHANT row may coexist: the bank disagreeing and the merchant
+-- complaining are two facts. UNDER_REVIEW is in the SYSTEM index too: with OPEN only, an operator
+-- reviewing a row freed the slot, and the next reconciliation pass that re-detected the same mismatch
+-- inserted a second OPEN row for a case a human already held (queue duplicates, inflated gauge).
+-- Safe on existing data: UNDER_REVIEW did not exist before this migration, and the old index already
+-- allowed one OPEN row per (payment, provider_status). Keep in step with DivergenceStatus.UNSETTLED_NAMES.
 DROP INDEX payments.ux_divergences_open_payment_status;
 CREATE UNIQUE INDEX ux_divergences_open_system
     ON payments.reconciliation_divergences (payment_id, provider_status)
- WHERE status = 'OPEN' AND origin = 'SYSTEM';
+ WHERE status IN ('OPEN', 'UNDER_REVIEW') AND origin = 'SYSTEM';
 CREATE UNIQUE INDEX ux_divergences_open_dispute
     ON payments.reconciliation_divergences (payment_id)
  WHERE status IN ('OPEN', 'UNDER_REVIEW') AND origin = 'MERCHANT';

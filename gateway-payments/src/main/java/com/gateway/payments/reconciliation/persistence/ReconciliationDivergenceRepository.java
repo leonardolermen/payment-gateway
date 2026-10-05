@@ -9,16 +9,19 @@ import java.util.Optional;
 public interface ReconciliationDivergenceRepository {
   /**
    * Inserts {@code divergence} unless the row would break one of the partial unique indexes of V207
-   * (one OPEN SYSTEM row per payment and kind; one OPEN or UNDER_REVIEW dispute per payment);
-   * returns whether it was inserted. The index, not a prior read, decides, so two workers racing on
-   * the same mismatch cannot both insert.
+   * (one OPEN or UNDER_REVIEW SYSTEM row per payment and kind; one OPEN or UNDER_REVIEW dispute per
+   * payment); returns whether it was inserted. The index, not a prior read, decides, so two workers
+   * racing on the same mismatch cannot both insert.
    */
   boolean openIfAbsent(ReconciliationDivergence divergence);
 
   /** OPEN rows of every origin; UNDER_REVIEW ones are already in a human's hands. */
   List<ReconciliationDivergence> open();
 
-  /** Whether an OPEN SYSTEM divergence of this kind exists for the payment. */
+  /**
+   * Whether an OPEN or UNDER_REVIEW SYSTEM divergence of this kind exists for the payment: a case
+   * an operator already holds is not a reason to open another.
+   */
   boolean hasOpen(String paymentId, String providerStatus);
 
   Optional<ReconciliationDivergence> findById(String id);

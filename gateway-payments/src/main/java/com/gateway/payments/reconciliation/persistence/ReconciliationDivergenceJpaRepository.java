@@ -13,8 +13,8 @@ interface ReconciliationDivergenceJpaRepository
     extends JpaRepository<ReconciliationDivergenceEntity, String> {
   List<ReconciliationDivergenceEntity> findByStatus(String status);
 
-  boolean existsByPaymentIdAndProviderStatusAndStatusAndOrigin(
-      String paymentId, String providerStatus, String status, String origin);
+  boolean existsByPaymentIdAndProviderStatusAndStatusInAndOrigin(
+      String paymentId, String providerStatus, Collection<String> statuses, String origin);
 
   Optional<ReconciliationDivergenceEntity> findFirstByPaymentIdAndOriginAndStatusIn(
       String paymentId, String origin, Collection<String> statuses);

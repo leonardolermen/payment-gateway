@@ -41,6 +41,24 @@ class DivergencesIntegrationTest extends ServiceIntegrationTestBase {
   }
 
   @Test
+  void aSystemDivergenceUnderReviewStillBlocksAReDetectionOfTheSameKind() {
+    Payment payment = newCharge(1000);
+    divergences.open(payment, "PAID", "bank says paid");
+    String id = repository.findByPayment(payment.id()).getFirst().id();
+
+    divergences.review(id, "operator@gateway");
+
+    assertThat(divergences.isOpen(payment, "PAID")).isTrue();
+    assertThat(divergences.open(payment, "PAID", "re-detected by the next pass")).isFalse();
+    assertThat(repository.findByPayment(payment.id())).hasSize(1);
+
+    divergences.resolve(id, DivergenceResolution.CONFIRMED, "paid twice", "operator@gateway");
+
+    assertThat(divergences.isOpen(payment, "PAID")).isFalse();
+    assertThat(divergences.open(payment, "PAID", "a new occurrence after the decision")).isTrue();
+  }
+
+  @Test
   void oneOpenDisputePerPaymentAndItCoexistsWithASystemDivergence() {
     Payment payment = newCharge(1000);
     divergences.open(payment, "PAID", "bank says paid");
