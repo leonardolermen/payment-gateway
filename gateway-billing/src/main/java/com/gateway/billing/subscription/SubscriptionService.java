@@ -58,10 +58,19 @@ public class SubscriptionService {
   public Subscription create(Subscription subscription, Customer customer) {
     requireCardOwnedBy(subscription.merchantId(), subscription.cardId(), customer);
 
-    Instant firstBilling =
-        BillingCalendar.billingInstant(subscription.startDay(), properties.billingHour());
-    // A start today bills now, not at 03:00 tomorrow: the merchant pressed the button.
     Instant now = clock.instant();
+
+    // A start TODAY bills now, whatever the hour: the spec (section 5) promises the first cycle at
+    // once.
+    // Anchoring it to the billing hour sent a subscription created at 01:11 São Paulo to 03:00, and
+    // BillingApiIntegrationTest.customersPlansOrdersAndACardSubscription timed out waiting for
+    // PAID.
+    // A future start day still waits for the billing hour of that day; max(.., now) covers a past
+    // one.
+    Instant firstBilling =
+        subscription.startDay().equals(BillingCalendar.today(now))
+            ? now
+            : BillingCalendar.billingInstant(subscription.startDay(), properties.billingHour());
     Instant nextBillingAt = firstBilling.isBefore(now) ? now : firstBilling;
     subscription.scheduleFirstBilling(nextBillingAt, now);
 

@@ -129,15 +129,38 @@ class SubscriptionServiceIntegrationTest extends BillingIntegrationTestBase {
 
     Subscription read = queries.get(merchant, created.id());
 
-    // Started today: billed at 03:00 São Paulo, or right now if that hour already passed.
-    Instant firstBilling =
-        BillingCalendar.billingInstant(BillingCalendar.today(clock.instant()), 3);
-    Instant expected = firstBilling.isBefore(clock.instant()) ? clock.instant() : firstBilling;
+    // Started today: billed right now, whatever the hour.
+    Instant expected = clock.instant();
     assertThat(read.status()).isEqualTo(SubscriptionStatus.ACTIVE);
     assertThat(read.nextBillingAt()).isEqualTo(expected);
     assertThat(read.currentPeriod()).isNull();
     assertThat(jobsFor(created.id())).isEqualTo(1);
     assertThat(eventsOf(created.id())).containsExactly("subscription.created");
+  }
+
+  @Test
+  void aStartTodayBillsNowEvenBeforeTheBillingHour() {
+    Instant oneAmSaoPaulo =
+        BillingCalendar.billingInstant(BillingCalendar.today(clock.instant()), 1);
+    clock.advance(Duration.between(clock.instant(), oneAmSaoPaulo));
+    Instant now = clock.instant();
+
+    Subscription created = pix(ana());
+
+    assertThat(queries.get(merchant, created.id()).nextBillingAt()).isEqualTo(now);
+  }
+
+  @Test
+  void aStartTomorrowBillsAtTheBillingHourEvenWhenCreatedAfterMidnight() {
+    Instant oneAmSaoPaulo =
+        BillingCalendar.billingInstant(BillingCalendar.today(clock.instant()), 1);
+    clock.advance(Duration.between(clock.instant(), oneAmSaoPaulo));
+    LocalDate tomorrow = BillingCalendar.today(clock.instant()).plusDays(1);
+
+    Subscription created = subscribe(ana(), PaymentMethod.PIX, null, tomorrow);
+
+    assertThat(queries.get(merchant, created.id()).nextBillingAt())
+        .isEqualTo(BillingCalendar.billingInstant(tomorrow, 3));
   }
 
   @Test
