@@ -179,6 +179,14 @@ env vars, read as `gateway.webhooks.mtls.*`:
 ### Outbound webhooks
 
 Register an endpoint with `POST /v1/webhooks/endpoints`; the response carries its signing secret once.
+
+```
+POST /v1/webhooks/endpoints
+{"url": "https://merchant.example.com/hooks", "events": ["payment.*"]}
+
+201 → {"id": "...", "url": "...", "events": ["payment.*"], "active": true, "secret": "..."}
+```
+
 `POST /v1/webhooks/endpoints/{id}/rotate-secret` issues a new one. Every state change listed in the
 event catalog below is written to an outbox in the same transaction as the change, and delivered by
 `webhook-delivery` to each active endpoint as an HTTP `POST` whose body is the event JSON.
@@ -1108,6 +1116,8 @@ the provider, so a TEST-environment run is a real (if non-production) integratio
 already up, using the sandbox credentials in `.env`, and writes the requests and answers to
 `docs/e2e/<date>-sandbox-happy-paths.md` with every secret, key, card number and CVV removed. What each
 sandbox can and cannot prove is written at the top of that report and in `docs/providers/*/NOTES.md`.
+The sandboxes cannot call back into a gateway, so outbound webhooks are proved by
+`WebhookDeliveryFlowIntegrationTest` (signed delivery, retries into `DEAD`, redelivery, secret rotation).
 
 ## Build
 
