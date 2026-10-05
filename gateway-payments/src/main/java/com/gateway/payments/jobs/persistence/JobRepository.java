@@ -10,7 +10,7 @@ import java.util.Optional;
 
 public interface JobRepository {
   /**
-   * {@code INSERT ... ON CONFLICT (type, ref_id) DO NOTHING} â€” one job per (type, ref). Returns
+   * {@code INSERT ... ON CONFLICT (type, ref_id) DO NOTHING} — one job per (type, ref). Returns
    * {@code true} iff this call inserted the row; the RECONCILE job always uses {@code ref_id =
    * "all"}, so a caller needs this to tell "I created the singleton" from "it was already there".
    */
