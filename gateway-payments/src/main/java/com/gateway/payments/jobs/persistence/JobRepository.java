@@ -39,9 +39,9 @@ public interface JobRepository {
 
   /**
    * Back to PENDING and due {@code now}, {@code attempts} and {@code last_error} kept, so the
-   * operator still sees what failed and how often. Refused (false) when a worker holds the job
-   * inside its lease — {@code reconcileLease} for the RECONCILE singleton, as in {@link
-   * #claimDue(Instant, int, Duration, Duration)} — or the id does not exist.
+   * operator still sees what failed and how often. Refused (false) for a DONE job, when a worker
+   * holds the job inside its lease — {@code reconcileLease} for the RECONCILE singleton, as in
+   * {@link #claimDue(Instant, int, Duration, Duration)} — or the id does not exist.
    */
   boolean forceDue(String id, Instant now, Duration lease, Duration reconcileLease);
 

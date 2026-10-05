@@ -119,6 +119,16 @@ class JobRepositoryAdminIntegrationTest extends ServiceIntegrationTestBase {
     assertThat(jobs.countByStatusAndType()).extracting(JobCount::status).doesNotContain("DONE");
   }
 
+  @Test
+  void aFinishedJobIsNeverForcedDueAgain() {
+    Instant now = clock.instant();
+    Job finished = deadExpiration(now).done();
+    jobs.save(finished);
+
+    assertThat(jobs.forceDue(finished.id(), now, LEASE)).isFalse();
+    assertThat(jobs.findById(finished.id()).orElseThrow().status()).isEqualTo("DONE");
+  }
+
   private long count(String status, JobType type) {
     return jobs.countByStatusAndType().stream()
         .filter(each -> each.status().equals(status) && each.type() == type)

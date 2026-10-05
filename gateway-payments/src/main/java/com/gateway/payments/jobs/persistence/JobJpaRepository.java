@@ -39,13 +39,17 @@ interface JobJpaRepository extends JpaRepository<JobEntity, String> {
       @Param("reconcileCutoff") Instant reconcileCutoff,
       Limit limit);
 
-  /** The lease condition is {@link #selectDue}'s: free here means a worker could claim it too. */
+  /**
+   * The lease condition is {@link #selectDue}'s: free here means a worker could claim it too. DONE
+   * is never re-queued: not every handler is idempotent, and a second run of a finished job could
+   * act twice on the same payment.
+   */
   @Transactional
   @Modifying(clearAutomatically = true, flushAutomatically = true)
   @Query(
       """
       UPDATE JobEntity j SET j.status = 'PENDING', j.nextRunAt = :now, j.claimedAt = NULL
-       WHERE j.id = :id
+       WHERE j.id = :id AND j.status IN ('PENDING', 'DEAD')
          AND (j.claimedAt IS NULL
               OR (j.type <> 'RECONCILE' AND j.claimedAt < :leaseCutoff)
               OR (j.type = 'RECONCILE' AND j.claimedAt < :reconcileCutoff))

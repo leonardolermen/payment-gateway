@@ -10,8 +10,8 @@ import java.util.List;
 
 /**
  * The operator's hands on the queue. The writes are conditional UPDATEs, so a refusal only says "0
- * rows"; this is where that becomes a 404 (no such job) or a 409 (a worker holds it, or it is not
- * PENDING), by reading the row once after the refusal.
+ * rows"; this is where that becomes a 404 (no such job) or a 409 (a worker holds it, it is not
+ * PENDING, or it is DONE and must not run again), by reading the row once after the refusal.
  */
 public class JobAdministration {
   private final JobRepository jobs;
@@ -33,6 +33,11 @@ public class JobAdministration {
 
     boolean forced = jobs.forceDue(id, now, properties.jobLease(), properties.reconcileLease());
     Job job = get(id);
+
+    if (!forced && "DONE".equals(job.status())) {
+      throw new DomainException(
+          "JOB_NOT_RERUNNABLE", "job " + id + " is DONE; it does not run again");
+    }
 
     if (!forced) {
       throw new DomainException("JOB_IN_FLIGHT", "job " + id + " is running; try after its lease");

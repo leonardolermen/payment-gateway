@@ -1004,8 +1004,9 @@ Admin routes (header `X-Admin-Key`):
 - `GET /v1/admin/divergences?status=&origin=&kind=&merchant_id=&since=&after=&limit=` — the divergence queue
   (reconciliation and disputes); `GET /v1/admin/divergences/{id}`; `POST /v1/admin/divergences/{id}/review`;
   `POST /v1/admin/divergences/{id}/resolve`.
-- `GET /v1/admin/jobs?status=&type=&limit=` — `DEAD` first; `POST /v1/admin/jobs/{id}/run-now` makes a job due
-  now; `POST /v1/admin/jobs/{id}/give-up` moves a `PENDING` job to `DEAD` with the operator's note.
+- `GET /v1/admin/jobs?status=&type=&limit=` — `DEAD` first; `POST /v1/admin/jobs/{id}/run-now` makes a
+  `PENDING` or `DEAD` job due now (a `DONE` job is `409 JOB_NOT_RERUNNABLE`: not every handler is idempotent);
+  `POST /v1/admin/jobs/{id}/give-up` moves a `PENDING` job to `DEAD` with the operator's note.
 - `GET /v1/admin/payments/stuck` — payments left in `CREATED` too long and `PENDING` payments past their expiry.
 
 Metrics are served at `/actuator/prometheus` on the **management port** (`GATEWAY_MANAGEMENT_PORT`, default

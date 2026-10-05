@@ -98,6 +98,16 @@ class AdminJobsIntegrationTest {
   }
 
   @Test
+  void aFinishedJobIsNotRerunnable() {
+    Job finished = pendingJob(null).done();
+    jobs.save(finished);
+
+    Map<String, Object> refused =
+        adminPost("/v1/admin/jobs/" + finished.id() + "/run-now", null, 409);
+    assertThat(refused.get("type")).isEqualTo("urn:gateway:JOB_NOT_RERUNNABLE");
+  }
+
+  @Test
   void aLimitOutsideOneToTwoHundredIsA400() {
     for (String limit : List.of("0", "201")) {
       http()
