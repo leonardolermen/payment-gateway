@@ -27,6 +27,7 @@ import com.gateway.payments.payment.create.CardChoice;
 import com.gateway.payments.payment.create.CardCustomerData;
 import com.gateway.payments.payment.create.CardDataFactory;
 import com.gateway.payments.payment.create.CreateCardPayment;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -189,7 +190,15 @@ class SubscriptionServiceIntegrationTest extends BillingIntegrationTestBase {
         .containsExactly("subscription.created", "subscription.canceled");
   }
 
+  /**
+   * A subscription started today first bills at 03:00 São Paulo; before that hour billOne is not
+   * due and creates nothing. Moving the clock to the cycle, as SubscriptionBillingIntegrationTest
+   * does, keeps the test independent of the hour it runs at.
+   */
   Order billedInvoiceOf(Subscription subscription) {
+    if (subscription.nextBillingAt().isAfter(clock.instant())) {
+      clock.advance(Duration.between(clock.instant(), subscription.nextBillingAt()));
+    }
     billing.billOne(subscription.id(), clock.instant());
 
     return queries.invoicesOf(merchant, subscription.id()).get(0);
