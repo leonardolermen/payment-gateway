@@ -27,7 +27,7 @@
         <java.version>25</java.version>
         <archunit.version>1.5.0</archunit.version>
         <testcontainers.version>1.21.4</testcontainers.version>
-        <webhook-delivery.version>0.1.1</webhook-delivery.version>
+        <webhook-delivery.version>0.2.0</webhook-delivery.version>
         <ulid-creator.version>5.2.3</ulid-creator.version>
         <bucket4j.version>8.14.0</bucket4j.version>
         <logstash-encoder.version>8.1</logstash-encoder.version>
