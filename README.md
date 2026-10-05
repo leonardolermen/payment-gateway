@@ -176,6 +176,750 @@ env vars, read as `gateway.webhooks.mtls.*`:
 - `ITAU_CA_PEM` — the same CA chain (from `ca-cert.zip`), used outbound as
   `gateway.providers.itau.trust-store-pem` to trust Itaú's API endpoints.
 
+### Outbound webhooks
+
+Register an endpoint with `POST /v1/webhooks/endpoints`; the response carries its signing secret once.
+`POST /v1/webhooks/endpoints/{id}/rotate-secret` issues a new one. Every state change listed in the
+event catalog below is written to an outbox in the same transaction as the change, and delivered by
+`webhook-delivery` to each active endpoint as an HTTP `POST` whose body is the event JSON.
+
+**Delivery semantics.**
+
+- **At least once.** A delivery can arrive twice (a timeout after your server already processed it, a
+  redelivery). `X-Gateway-Event-Id` is the same on every attempt of the same event: store it and ignore
+  repeats.
+- **Ordered per partition key.** Events for one payment (including its refunds), one order, one customer
+  or one subscription (including its invoices) are delivered in the order they happened; a failing event
+  holds back the ones behind it on that key. There is no order across keys.
+- **Success is any 2xx.** Anything else, a connection error or a timeout (2 s to connect, 10 s to read)
+  is a failed attempt. Answer fast and do the work afterwards.
+- **Retries.** Up to `webhook-delivery.max-attempts` (5) attempts, waiting `base-backoff` (30 s) × 2^n,
+  capped at 64×, between them. After the last one the delivery is `DEAD` and stays so until redelivered.
+- **Private targets are refused.** A URL resolving to a loopback, private or link-local address is
+  rejected unless `webhook-delivery.allow-private-targets` is true (only for local development).
+
+**Headers.**
+
+```
+X-Gateway-Event-Id: <uuid, the same on every attempt>
+X-Gateway-Event-Type: payment.completed
+X-Gateway-Signature: t=<epoch-seconds>,v1=<hex HMAC-SHA256(secret, t + "." + body)>
+X-Gateway-Signature-Previous: t=<epoch-seconds>,v1=<same, under the previous secret>
+```
+
+`X-Gateway-Signature-Previous` is only sent during the 24 h after a secret rotation, so a receiver that
+has not switched to the new secret yet keeps validating.
+
+**Verifying the signature.** Compute the HMAC over the **raw request body bytes**, before any JSON
+parsing — a re-serialized body (different spacing, key order or escaping) will not match. Compare in
+constant time, and reject a `t` more than 5 minutes away from your clock, which stops a captured request
+from being replayed later. During a rotation, accept the request if either header validates under the
+secret you hold.
+
+```
+signed   = t + "." + raw_body
+expected = hex(HMAC-SHA256(secret, signed))
+valid    = constant_time_equals(expected, v1) and |now - t| <= 300
+```
+
+Python:
+
+```python
+import hashlib
+import hmac
+import time
+
+TOLERANCE_SECONDS = 300
+
+
+def signature_valid(header, raw_body: bytes, secret: str) -> bool:
+    if not header:
+        return False
+    parts = dict(item.split("=", 1) for item in header.split(",") if "=" in item)
+    timestamp, received = parts.get("t"), parts.get("v1")
+    if timestamp is None or received is None:
+        return False
+    if abs(time.time() - int(timestamp)) > TOLERANCE_SECONDS:
+        return False
+    signed = timestamp.encode() + b"." + raw_body
+    expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, received)
+
+
+def verified(headers, raw_body: bytes, secret: str) -> bool:
+    # Either header: during a rotation one of them is signed with the secret you still hold.
+    return signature_valid(headers.get("X-Gateway-Signature"), raw_body, secret) or signature_valid(
+        headers.get("X-Gateway-Signature-Previous"), raw_body, secret
+    )
+```
+
+Java:
+
+```java
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Instant;
+import java.util.HexFormat;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+
+final class GatewaySignature {
+  private static final long TOLERANCE_SECONDS = 300;
+
+  // Either header: during a rotation one of them is signed with the secret you still hold.
+  static boolean verified(String signature, String previousSignature, byte[] rawBody, String secret)
+      throws Exception {
+    return valid(signature, rawBody, secret) || valid(previousSignature, rawBody, secret);
+  }
+
+  static boolean valid(String header, byte[] rawBody, String secret) throws Exception {
+    if (header == null) {
+      return false;
+    }
+
+    String timestamp = null;
+    String received = null;
+    for (String part : header.split(",")) {
+      if (part.startsWith("t=")) {
+        timestamp = part.substring(2);
+      } else if (part.startsWith("v1=")) {
+        received = part.substring(3);
+      }
+    }
+    if (timestamp == null || received == null) {
+      return false;
+    }
+    if (Math.abs(Instant.now().getEpochSecond() - Long.parseLong(timestamp)) > TOLERANCE_SECONDS) {
+      return false;
+    }
+
+    Mac mac = Mac.getInstance("HmacSHA256");
+    mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+    mac.update((timestamp + ".").getBytes(StandardCharsets.UTF_8));
+    byte[] expected = mac.doFinal(rawBody);
+
+    return MessageDigest.isEqual(
+        HexFormat.of().formatHex(expected).getBytes(StandardCharsets.UTF_8),
+        received.getBytes(StandardCharsets.UTF_8));
+  }
+}
+```
+
+**Listing and redelivering.** Every delivery to your endpoints is visible to your API key, newest first:
+
+```
+GET /v1/webhooks/deliveries?status=DEAD&event_type=payment.completed&aggregate_id=<id>&since=<ISO-8601>&limit=20
+```
+
+```json
+[
+  {
+    "id": "<uuid>",
+    "event_id": "<uuid>",
+    "event_type": "payment.completed",
+    "aggregate_id": "<payment id>",
+    "endpoint_id": "<uuid>",
+    "target_url": "https://<your-host>/webhooks/gateway",
+    "status": "DEAD",
+    "attempts": 5,
+    "last_error": "HTTP 500",
+    "last_error_before_redelivery": null,
+    "next_attempt_at": null,
+    "created_at": "2026-10-05T12:00:00.123456Z",
+    "delivered_at": null,
+    "redelivered_at": null
+  }
+]
+```
+
+`status` is one of `PENDING`, `DELIVERED`, `FAILED` (will retry) and `DEAD`; `limit` defaults to 20, at
+most 100. A full page comes with an `X-Next-Cursor` header: pass its value back as `?after=` for the
+next page (which may be empty). `GET /v1/webhooks/deliveries/{id}` returns the same object plus
+`payload`, the exact JSON body that was sent.
+
+`POST /v1/webhooks/deliveries/{id}/redeliver` schedules one delivery again: `202 {"status":"PENDING"}`,
+`404` for an unknown id, `409 DELIVERY_NOT_REDELIVERABLE` when it is not in a state that can be resent.
+`POST /v1/webhooks/deliveries/redeliver-dead` with `{"since":"<ISO-8601>"}` reschedules every `DEAD`
+delivery created since then: `202 {"scheduled": <n>}`, or `422 WINDOW_TOO_WIDE` when `since` is more
+than 30 days back. Both POSTs require an `Idempotency-Key`.
+
+**Event catalog.** One section per `X-Gateway-Event-Type`. Values are illustrative; the keys are the
+contract (a null value still has its key), and a test (`EventCatalogTest`) fails the build when a
+payload and its example here disagree. In payment events, `pix` is set for `PIX` and `BOLECODE`,
+`boleto` for `BOLECODE`, `card` for `CARD`; the others are `null`.
+
+#### payment.pending
+
+The charge exists at the bank and waits for the payer (Pix QR issued, boleto registered). Example: a Pix payment.
+
+```json
+{
+  "id": "01M46BTW1B92DANHVWJWFB518D",
+  "status": "PENDING",
+  "method": "PIX",
+  "provider": "itau",
+  "environment": "TEST",
+  "amount": 15000,
+  "currency": "BRL",
+  "reference": "order-1234",
+  "order_id": null,
+  "description": "Order 1234",
+  "pix": {
+    "txid": "01M46BTW1B92DANHVWJWFB518D",
+    "copia_e_cola": "00020101021226...6304ABCD",
+    "location": null,
+    "end_to_end_id": null
+  },
+  "boleto": null,
+  "card": null,
+  "expires_at": "2026-10-05T13:00:00Z",
+  "paid_at": null,
+  "paid_amount": null,
+  "refunded_amount": 0,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### payment.authorized
+
+A card was authorized and not yet captured. Example: a card payment.
+
+```json
+{
+  "id": "01M46BTW2RK3BFEYNCD7Q98X70",
+  "status": "AUTHORIZED",
+  "method": "CARD",
+  "provider": "cielo",
+  "environment": "TEST",
+  "amount": 15000,
+  "currency": "BRL",
+  "reference": "order-1234",
+  "order_id": null,
+  "description": "Order 1234",
+  "pix": null,
+  "boleto": null,
+  "card": {
+    "brand": "Visa",
+    "last4": "0004",
+    "installments": 1,
+    "authorization_code": "123456",
+    "tid": "1006993069000A1B2C3D",
+    "captured_amount": null,
+    "card_id": null
+  },
+  "expires_at": null,
+  "paid_at": null,
+  "paid_amount": null,
+  "refunded_amount": 0,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### payment.completed
+
+Money arrived: Pix paid, boleto or bolecode paid, card captured. Example: a bolecode paid through its QR.
+
+```json
+{
+  "id": "01M46BTW2VQYSJA2N886B43CRR",
+  "status": "COMPLETED",
+  "method": "BOLECODE",
+  "provider": "itau",
+  "environment": "TEST",
+  "amount": 4990,
+  "currency": "BRL",
+  "reference": null,
+  "order_id": null,
+  "description": null,
+  "pix": {
+    "txid": "txid-1",
+    "copia_e_cola": "00020101021226...6304ABCD",
+    "location": null,
+    "end_to_end_id": "E00000000202610051203abcdef12345"
+  },
+  "boleto": {
+    "linha_digitavel": "34191.09008 00012.300000 00000.000000 1 00000000004990",
+    "codigo_barras": "34191000000000049901090000012300000000000000",
+    "due_date": "2026-10-08",
+    "payment_limit_date": "2026-11-07",
+    "paid_via": "PIX"
+  },
+  "card": null,
+  "expires_at": "2026-10-08T12:00:00Z",
+  "paid_at": "2026-10-05T12:03:10Z",
+  "paid_amount": 4990,
+  "refunded_amount": 0,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### payment.failed
+
+The payment will not complete (provider refusal, card declined).
+
+```json
+{
+  "id": "01M46BTW2YG23ZWNQQD3ET9717",
+  "status": "FAILED",
+  "method": "CARD",
+  "provider": "cielo",
+  "environment": "TEST",
+  "amount": 15000,
+  "currency": "BRL",
+  "reference": "order-1234",
+  "order_id": null,
+  "description": "Order 1234",
+  "pix": null,
+  "boleto": null,
+  "card": {
+    "brand": "Visa",
+    "last4": "0004",
+    "installments": 1,
+    "authorization_code": null,
+    "tid": null,
+    "captured_amount": null,
+    "card_id": null
+  },
+  "expires_at": null,
+  "paid_at": null,
+  "paid_amount": null,
+  "refunded_amount": 0,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### payment.expired
+
+The Pix or boleto passed `expires_at` unpaid.
+
+```json
+{
+  "id": "01M46BTW2YG23ZWNQQD3ET9719",
+  "status": "EXPIRED",
+  "method": "PIX",
+  "provider": "itau",
+  "environment": "TEST",
+  "amount": 15000,
+  "currency": "BRL",
+  "reference": "order-1234",
+  "order_id": null,
+  "description": "Order 1234",
+  "pix": {
+    "txid": "01M46BTW2YG23ZWNQQD3ET9719",
+    "copia_e_cola": "00020101021226...6304ABCD",
+    "location": null,
+    "end_to_end_id": null
+  },
+  "boleto": null,
+  "card": null,
+  "expires_at": "2026-10-05T13:00:00Z",
+  "paid_at": null,
+  "paid_amount": null,
+  "refunded_amount": 0,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### payment.canceled
+
+The merchant canceled it (`POST /v1/payments/{id}/cancel`).
+
+```json
+{
+  "id": "01M46BTW2ZEETQW1M14JV6W5G5",
+  "status": "CANCELED",
+  "method": "BOLECODE",
+  "provider": "itau",
+  "environment": "TEST",
+  "amount": 4990,
+  "currency": "BRL",
+  "reference": null,
+  "order_id": null,
+  "description": null,
+  "pix": {
+    "txid": "txid-1",
+    "copia_e_cola": "00020101021226...6304ABCD",
+    "location": null,
+    "end_to_end_id": null
+  },
+  "boleto": {
+    "linha_digitavel": "34191.09008 00012.300000 00000.000000 1 00000000004990",
+    "codigo_barras": "34191000000000049901090000012300000000000000",
+    "due_date": "2026-10-08",
+    "payment_limit_date": "2026-11-07",
+    "paid_via": null
+  },
+  "card": null,
+  "expires_at": "2026-10-08T12:00:00Z",
+  "paid_at": null,
+  "paid_amount": null,
+  "refunded_amount": 0,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### refund.requested
+
+A refund was accepted and reserved against the payment. Same partition key as the payment.
+
+```json
+{
+  "id": "01M46BTW2ZEETQW1M14JV6W5GB",
+  "payment_id": "01M46BTW2ZEETQW1M14JV6W5G8",
+  "amount": 5000,
+  "state": "REQUESTED",
+  "reason": null,
+  "requested_at": "2026-10-05T12:00:00Z",
+  "settled_at": null
+}
+```
+
+#### refund.completed
+
+The bank settled the refund.
+
+```json
+{
+  "id": "01M46BTW30SVMZG4DD3R2A3DBS",
+  "payment_id": "01M46BTW30SVMZG4DD3R2A3DBP",
+  "amount": 5000,
+  "state": "COMPLETED",
+  "reason": null,
+  "requested_at": "2026-10-05T12:00:00Z",
+  "settled_at": "2026-10-05T12:05:00Z"
+}
+```
+
+#### refund.failed
+
+The bank refused the refund; `reason` says why and the amount is released.
+
+```json
+{
+  "id": "01M46BTW30SVMZG4DD3R2A3DBX",
+  "payment_id": "01M46BTW30SVMZG4DD3R2A3DBT",
+  "amount": 5000,
+  "state": "FAILED",
+  "reason": "<bank reason>",
+  "requested_at": "2026-10-05T12:00:00Z",
+  "settled_at": "2026-10-05T12:05:00Z"
+}
+```
+
+#### refund.unknown
+
+The bank never answered within the polling budget. The amount stays reserved, and a `refund.completed` or `refund.failed` may still follow.
+
+```json
+{
+  "id": "01M46BTW30SVMZG4DD3R2A3DC1",
+  "payment_id": "01M46BTW30SVMZG4DD3R2A3DBY",
+  "amount": 5000,
+  "state": "UNKNOWN",
+  "reason": null,
+  "requested_at": "2026-10-05T12:00:00Z",
+  "settled_at": null
+}
+```
+
+#### customer.created
+
+A customer was created. `document` is always masked.
+
+```json
+{
+  "id": "01M46BTW36VZY0MRJAY3QCC00B",
+  "name": "Maria Silva",
+  "document": "***.982.***-25",
+  "email": "maria@example.com",
+  "has_address": true,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### customer.updated
+
+A customer changed.
+
+```json
+{
+  "id": "01M46BTW3AH1Q9F80JPXTMYM90",
+  "name": "Maria Silva",
+  "document": "***.982.***-25",
+  "email": "maria.silva@example.com",
+  "has_address": true,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### order.created
+
+An order was created (by the API, or as a subscription invoice — then `subscription_id` and `invoice_number` are set).
+
+```json
+{
+  "id": "01M46BTW3BEX7GFVGWV0XED5HT",
+  "status": "OPEN",
+  "amount": 15000,
+  "currency": "BRL",
+  "reference": "order-1234",
+  "customer_id": "01M46BTW3AH1Q9F80JPXTMYM91",
+  "paid_payment_id": null,
+  "paid_at": null,
+  "expires_at": "2026-10-06T12:00:00Z",
+  "subscription_id": null,
+  "invoice_number": null,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### order.paid
+
+A payment attempt on the order completed.
+
+```json
+{
+  "id": "01M46BTW3D70Y28P8Y68JE95VM",
+  "status": "PAID",
+  "amount": 15000,
+  "currency": "BRL",
+  "reference": "order-1234",
+  "customer_id": "01M46BTW3D70Y28P8Y68JE95VK",
+  "paid_payment_id": "01M46BSGXDBWG32PFFS15HYYNR",
+  "paid_at": "2026-10-05T12:03:10Z",
+  "expires_at": "2026-10-06T12:00:00Z",
+  "subscription_id": null,
+  "invoice_number": null,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### order.canceled
+
+The order was canceled.
+
+```json
+{
+  "id": "01M46BTW3D70Y28P8Y68JE95VP",
+  "status": "CANCELED",
+  "amount": 15000,
+  "currency": "BRL",
+  "reference": "order-1234",
+  "customer_id": "01M46BTW3D70Y28P8Y68JE95VN",
+  "paid_payment_id": null,
+  "paid_at": null,
+  "expires_at": "2026-10-06T12:00:00Z",
+  "subscription_id": null,
+  "invoice_number": null,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### order.expired
+
+The order passed `expires_at` unpaid.
+
+```json
+{
+  "id": "01M46BTW3D70Y28P8Y68JE95VR",
+  "status": "EXPIRED",
+  "amount": 15000,
+  "currency": "BRL",
+  "reference": "order-1234",
+  "customer_id": "01M46BTW3D70Y28P8Y68JE95VQ",
+  "paid_payment_id": null,
+  "paid_at": null,
+  "expires_at": "2026-10-06T12:00:00Z",
+  "subscription_id": null,
+  "invoice_number": null,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### invoice.created
+
+A subscription cycle opened and its invoice was charged or issued. `charged` is true only for a captured card; `reason` and `decline_code` say why it was not.
+
+```json
+{
+  "invoice_id": "01M46BTW3KFJH530ZFTMYR6VTJ",
+  "subscription_id": "01M46BTW3H47WGKMSNGSSE217F",
+  "invoice_number": 1,
+  "amount": 4990,
+  "currency": "BRL",
+  "method": "BOLECODE",
+  "period": {
+    "start": "2026-10-05",
+    "end": "2026-11-04"
+  },
+  "payment_id": "01M46BTW3JXBXY3Q1WZW4H74Q5",
+  "charged": false,
+  "decline_code": null,
+  "reason": null,
+  "pix": {
+    "copia_e_cola": "00020101021226...6304ABCD"
+  },
+  "boleto": {
+    "linha_digitavel": "34191.09008 00012.300000 00000.000000 1 00000000004990",
+    "due_date": "2026-10-08"
+  }
+}
+```
+
+#### invoice.updated
+
+A dunning retry issued a new payment for the same invoice. `attempt` counts the retries.
+
+```json
+{
+  "invoice_id": "01M46BTW3MQGA2WBBRE7SYGW1K",
+  "subscription_id": "01M46BTW3MQGA2WBBRE7SYGW1J",
+  "attempt": 2,
+  "payment_id": "01M46BTW3MQGA2WBBRE7SYGW1M",
+  "method": "BOLECODE",
+  "pix": {
+    "copia_e_cola": "00020101021226...6304ABCD"
+  },
+  "boleto": {
+    "linha_digitavel": "34191.09008 00012.300000 00000.000000 1 00000000004990",
+    "due_date": "2026-10-08"
+  }
+}
+```
+
+#### subscription.created
+
+A subscription was created.
+
+```json
+{
+  "id": "01M46BTW3NHQJ5PAP4SXCH68KV",
+  "status": "ACTIVE",
+  "customer_id": "01M46BTW3NHQJ5PAP4SXCH68KT",
+  "plan_id": "01M46BTW3NHQJ5PAP4SXCH68KS",
+  "method": "BOLECODE",
+  "card_id": null,
+  "current_period": {
+    "start": "2026-10-05",
+    "end": "2026-11-04"
+  },
+  "next_billing_at": "2026-11-05T12:00:00Z",
+  "cancel_at_period_end": false,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### subscription.past_due
+
+An invoice failed and dunning started.
+
+```json
+{
+  "id": "01M46BTW3P1F7TNYP5E0TV4CD5",
+  "status": "PAST_DUE",
+  "customer_id": "01M46BTW3P1F7TNYP5E0TV4CD4",
+  "plan_id": "01M46BTW3P1F7TNYP5E0TV4CD3",
+  "method": "BOLECODE",
+  "card_id": null,
+  "current_period": {
+    "start": "2026-10-05",
+    "end": "2026-11-04"
+  },
+  "next_billing_at": "2026-11-05T12:00:00Z",
+  "cancel_at_period_end": false,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### subscription.recovered
+
+A past-due subscription paid its invoice and is active again.
+
+```json
+{
+  "id": "01M46BTW3P1F7TNYP5E0TV4CD8",
+  "status": "ACTIVE",
+  "customer_id": "01M46BTW3P1F7TNYP5E0TV4CD7",
+  "plan_id": "01M46BTW3P1F7TNYP5E0TV4CD6",
+  "method": "BOLECODE",
+  "card_id": null,
+  "current_period": {
+    "start": "2026-10-05",
+    "end": "2026-11-04"
+  },
+  "next_billing_at": "2026-11-05T12:00:00Z",
+  "cancel_at_period_end": false,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### subscription.dunning_exhausted
+
+Every retry failed. Carries the subscription plus the `invoice_id` that could not be collected.
+
+```json
+{
+  "id": "01M46BTW3Q56QCNKDYFNQD739S",
+  "status": "PAST_DUE",
+  "customer_id": "01M46BTW3Q56QCNKDYFNQD739R",
+  "plan_id": "01M46BTW3Q56QCNKDYFNQD739Q",
+  "method": "BOLECODE",
+  "card_id": null,
+  "current_period": {
+    "start": "2026-10-05",
+    "end": "2026-11-04"
+  },
+  "next_billing_at": "2026-11-05T12:00:00Z",
+  "cancel_at_period_end": false,
+  "created_at": "2026-10-05T12:00:00Z",
+  "invoice_id": "01M46BTW3Q56QCNKDYFNQD739T"
+}
+```
+
+#### subscription.canceled
+
+The subscription was canceled.
+
+```json
+{
+  "id": "01M46BTW3Q56QCNKDYFNQD739X",
+  "status": "CANCELED",
+  "customer_id": "01M46BTW3Q56QCNKDYFNQD739W",
+  "plan_id": "01M46BTW3Q56QCNKDYFNQD739V",
+  "method": "BOLECODE",
+  "card_id": null,
+  "current_period": {
+    "start": "2026-10-05",
+    "end": "2026-11-04"
+  },
+  "next_billing_at": null,
+  "cancel_at_period_end": false,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### subscription.ended
+
+A subscription set to cancel at period end reached it.
+
+```json
+{
+  "id": "01M46BTW3Q56QCNKDYFNQD73A0",
+  "status": "ENDED",
+  "customer_id": "01M46BTW3Q56QCNKDYFNQD739Z",
+  "plan_id": "01M46BTW3Q56QCNKDYFNQD739Y",
+  "method": "BOLECODE",
+  "card_id": null,
+  "current_period": {
+    "start": "2026-10-05",
+    "end": "2026-11-04"
+  },
+  "next_billing_at": null,
+  "cancel_at_period_end": false,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
 ### Idempotency
 
 Every POST that creates a resource or moves money — payments (and their `/cancel`, `/refunds`,
