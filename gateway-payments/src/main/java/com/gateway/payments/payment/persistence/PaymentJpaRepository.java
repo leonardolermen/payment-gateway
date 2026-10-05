@@ -47,6 +47,16 @@ interface PaymentJpaRepository extends JpaRepository<PaymentEntity, String> {
   long countPendingOlderThan(@Param("before") Instant before);
 
   @Query(
+      nativeQuery = true,
+      value =
+          """
+          SELECT status, method, provider, environment, count(*)
+            FROM payments.payments
+           GROUP BY 1, 2, 3, 4
+          """)
+  java.util.List<Object[]> countByStatusMethodProviderEnvironment();
+
+  @Query(
       "SELECT p FROM PaymentEntity p WHERE p.status IN :statuses AND p.createdAt > :after ORDER BY p.createdAt ASC")
   java.util.List<PaymentEntity> findByStatusInAndCreatedAtAfter(
       @Param("statuses") Collection<String> statuses, @Param("after") Instant after, Limit limit);

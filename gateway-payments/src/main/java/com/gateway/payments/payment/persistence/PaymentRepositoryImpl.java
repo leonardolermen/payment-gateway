@@ -6,6 +6,7 @@ import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
+import com.gateway.payments.payment.PaymentCount;
 import com.gateway.payments.payment.PaymentDetailsJson;
 import com.gateway.payments.payment.PaymentEvent;
 import com.gateway.payments.payment.PaymentStatus;
@@ -305,5 +306,19 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   @Override
   public long countPendingOlderThan(Instant expiresBefore) {
     return jpa.countPendingOlderThan(expiresBefore);
+  }
+
+  @Override
+  public List<PaymentCount> countByStatusMethodProviderEnvironment() {
+    return jpa.countByStatusMethodProviderEnvironment().stream()
+        .map(
+            row ->
+                new PaymentCount(
+                    (String) row[0],
+                    (String) row[1],
+                    (String) row[2],
+                    (String) row[3],
+                    ((Number) row[4]).longValue()))
+        .toList();
   }
 }

@@ -73,6 +73,7 @@ import com.gateway.payments.refund.RefundPollingService;
 import com.gateway.payments.refund.RefundService;
 import com.gateway.payments.refund.persistence.RefundRepository;
 import com.gateway.payments.refund.persistence.RefundRepositoryImpl;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.util.List;
 import org.springframework.beans.factory.ObjectProvider;
@@ -134,13 +135,15 @@ public class PaymentsConfiguration {
       ObjectProvider<BoletoMethodProvider> boletoProviders,
       ObjectProvider<CardMethodProvider> cardProviders,
       CredentialLookup credentials,
-      ProviderRequestRepository requests) {
+      ProviderRequestRepository requests,
+      MeterRegistry meters) {
     return new ProviderGateway(
         providers,
         boletoProviders.orderedStream().toList(),
         cardProviders.orderedStream().toList(),
         credentials,
-        requests);
+        requests,
+        meters);
   }
 
   @Bean

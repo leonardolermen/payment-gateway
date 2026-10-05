@@ -114,6 +114,10 @@ gateway:
     card-reconciliation-cap: 200
 
 management:
+  # Its own port, never published: /actuator/prometheus answers without a key and names merchants'
+  # volumes by provider. Prometheus scrapes it from inside the network.
+  server:
+    port: ${GATEWAY_MANAGEMENT_PORT:9090}
   endpoints:
     web:
       exposure:

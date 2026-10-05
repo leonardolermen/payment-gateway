@@ -120,6 +120,11 @@ public class Divergences {
     return divergences.findById(id).orElseThrow(() -> new NotFoundException("divergence", id));
   }
 
+  /** OPEN and UNDER_REVIEW, grouped by (origin, kind): what the operations metrics report. */
+  public List<DivergenceCount> countOpen() {
+    return divergences.countOpenByOriginAndKind();
+  }
+
   public List<ReconciliationDivergence> list(DivergenceQuery query) {
     return divergences.find(query);
   }

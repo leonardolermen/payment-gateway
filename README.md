@@ -997,6 +997,35 @@ resolved_at`. `status` goes `OPEN` → `UNDER_REVIEW` → `RESOLVED` or `REJECTE
 decide straight from `OPEN`), through `/v1/admin/divergences/{id}/review` and `/resolve`: the dispute id is
 the divergence id. Each step, the opening included, emits [`dispute.updated`](#disputeupdated).
 
+### Operations
+
+Admin routes (header `X-Admin-Key`):
+
+- `GET /v1/admin/divergences?status=&origin=&kind=&merchant_id=&since=&after=&limit=` — the divergence queue
+  (reconciliation and disputes); `GET /v1/admin/divergences/{id}`; `POST /v1/admin/divergences/{id}/review`;
+  `POST /v1/admin/divergences/{id}/resolve`.
+- `GET /v1/admin/jobs?status=&type=&limit=` — `DEAD` first; `POST /v1/admin/jobs/{id}/run-now` makes a job due
+  now; `POST /v1/admin/jobs/{id}/give-up` moves a `PENDING` job to `DEAD` with the operator's note.
+- `GET /v1/admin/payments/stuck` — payments left in `CREATED` too long and `PENDING` payments past their expiry.
+
+Metrics are served at `/actuator/prometheus` on the **management port** (`GATEWAY_MANAGEMENT_PORT`, default
+`9090`), not on the API port. That endpoint answers without a key: **never publish the management port** —
+scrape it from inside the network. The gauges are recounted every `gateway.metrics.refresh-ms` (default 30 s),
+not on scrape.
+
+| Metric | Labels | Suggested alert |
+|---|---|---|
+| `gateway_payments` (gauge) | `status`, `method`, `provider`, `environment` | — (volume dashboards) |
+| `gateway_payments_stuck` | `kind` = `created_too_long`, `pending_past_expiry` | `created_too_long` > 0 |
+| `gateway_divergences_open` | `origin` (`SYSTEM`, `MERCHANT`), `kind` | > 0 for 24 h (a divergence open over a day) |
+| `gateway_jobs` | `status` = `PENDING`, `DEAD` | `DEAD` > 0 |
+| `gateway_jobs_overdue` | — | > 10 (`PENDING` jobs due for over 5 minutes: the runner is behind) |
+| `gateway_webhook_deliveries` | `status` | — |
+| `gateway_outbox_pending` | — | — (growing steadily means the relay stopped) |
+| `gateway_provider_call_seconds` (timer) | `provider`, `operation`, `outcome` = `ok`, `provider_error`, `timeout`, `unexpected` | p95 > 5 s |
+
+A label set that stops appearing in the database keeps reporting `0` rather than disappearing.
+
 ### Background jobs
 
 - **Expiration.** A per-payment job expires each charge at its `calendario.expiracao`; a sweep every

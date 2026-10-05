@@ -17,6 +17,7 @@ import com.gateway.kernel.provider.pix.PixIssueRequest;
 import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.kernel.provider.pix.RefundRequest;
 import com.gateway.kernel.provider.pix.RefundResult;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
@@ -42,7 +43,12 @@ class ProviderGatewayTest {
   void resolveBoletoAnswersMethodNotSupportedWhenTheProviderHasNoBoletoProduct() {
     ProviderGateway gateway =
         new ProviderGateway(
-            List.of(new PixOnlyProvider()), List.of(), List.of(), oneCredential, requests);
+            List.of(new PixOnlyProvider()),
+            List.of(),
+            List.of(),
+            oneCredential,
+            requests,
+            new SimpleMeterRegistry());
 
     assertThatThrownBy(() -> gateway.resolveBoleto(MERCHANT, ProviderEnvironment.TEST, "ITAU"))
         .isInstanceOf(DomainException.class)
@@ -55,7 +61,12 @@ class ProviderGatewayTest {
   void resolvePixAnswersCredentialsMissingWhenTheMerchantHasNone() {
     ProviderGateway gateway =
         new ProviderGateway(
-            List.of(new PixOnlyProvider()), List.of(), List.of(), noCredential, requests);
+            List.of(new PixOnlyProvider()),
+            List.of(),
+            List.of(),
+            noCredential,
+            requests,
+            new SimpleMeterRegistry());
 
     assertThatThrownBy(() -> gateway.resolvePix(MERCHANT, ProviderEnvironment.LIVE, "ITAU"))
         .isInstanceOf(DomainException.class)
@@ -68,7 +79,12 @@ class ProviderGatewayTest {
   void anUnknownProviderNameIsProviderUnknown() {
     ProviderGateway gateway =
         new ProviderGateway(
-            List.of(new PixOnlyProvider()), List.of(), List.of(), oneCredential, requests);
+            List.of(new PixOnlyProvider()),
+            List.of(),
+            List.of(),
+            oneCredential,
+            requests,
+            new SimpleMeterRegistry());
 
     assertThatThrownBy(() -> gateway.pixProvider("BRADESCO"))
         .isInstanceOf(DomainException.class)
@@ -81,7 +97,13 @@ class ProviderGatewayTest {
   void resolvePixCarriesTheProviderAndTheCredentialOfTheEnvironmentThatAsked() {
     PixOnlyProvider itau = new PixOnlyProvider();
     ProviderGateway gateway =
-        new ProviderGateway(List.of(itau), List.of(), List.of(), oneCredential, requests);
+        new ProviderGateway(
+            List.of(itau),
+            List.of(),
+            List.of(),
+            oneCredential,
+            requests,
+            new SimpleMeterRegistry());
 
     ProviderGateway.ResolvedProvider<PixMethodProvider> resolved =
         gateway.resolvePix(MERCHANT, ProviderEnvironment.LIVE, "itau");
@@ -95,7 +117,12 @@ class ProviderGatewayTest {
   void aFailedCallIsRecordedToo() {
     ProviderGateway gateway =
         new ProviderGateway(
-            List.of(new PixOnlyProvider()), List.of(), List.of(), oneCredential, requests);
+            List.of(new PixOnlyProvider()),
+            List.of(),
+            List.of(),
+            oneCredential,
+            requests,
+            new SimpleMeterRegistry());
     ProviderGateway.ResolvedProvider<PixMethodProvider> resolved =
         gateway.resolvePix(MERCHANT, ProviderEnvironment.TEST, "ITAU");
 
@@ -118,7 +145,13 @@ class ProviderGatewayTest {
   void cardResolvesToTheNamedAcquirerWithItsCredential() {
     CardMethodProvider cielo = new NamedCardProvider("CIELO");
     ProviderGateway gateway =
-        new ProviderGateway(List.of(), List.of(), List.of(cielo), oneCredential, requests);
+        new ProviderGateway(
+            List.of(),
+            List.of(),
+            List.of(cielo),
+            oneCredential,
+            requests,
+            new SimpleMeterRegistry());
 
     ProviderGateway.ResolvedProvider<CardMethodProvider> resolved =
         gateway.resolveCard(MERCHANT, ProviderEnvironment.TEST, "CIELO");
@@ -131,7 +164,8 @@ class ProviderGatewayTest {
   @Test
   void anAcquirerWithoutCardIsMethodNotSupported() {
     ProviderGateway gateway =
-        new ProviderGateway(List.of(), List.of(), List.of(), oneCredential, requests);
+        new ProviderGateway(
+            List.of(), List.of(), List.of(), oneCredential, requests, new SimpleMeterRegistry());
 
     assertThatThrownBy(() -> gateway.resolveCard(MERCHANT, ProviderEnvironment.TEST, "CIELO"))
         .isInstanceOf(DomainException.class)

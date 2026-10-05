@@ -2,6 +2,7 @@ package com.gateway.payments.payment.persistence;
 
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.payments.payment.Payment;
+import com.gateway.payments.payment.PaymentCount;
 import com.gateway.payments.payment.PaymentEvent;
 import com.gateway.payments.payment.PaymentStatus;
 import java.time.Instant;
@@ -102,4 +103,7 @@ public interface PaymentRepository {
 
   /** The count behind {@link #findPendingOlderThan}, uncapped. */
   long countPendingOlderThan(Instant expiresBefore);
+
+  /** Every payment, grouped; one row per combination that exists. */
+  List<PaymentCount> countByStatusMethodProviderEnvironment();
 }
