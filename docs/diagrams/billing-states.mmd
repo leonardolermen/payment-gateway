@@ -1,0 +1,21 @@
+stateDiagram-v2
+  state "Order" as O {
+    state "OPEN" as O_OPEN
+    state "PAID" as O_PAID
+    state "CANCELED" as O_CANCELED
+    state "EXPIRED" as O_EXPIRED
+    [*] --> O_OPEN
+    O_OPEN --> O_PAID: payment.completed
+    O_OPEN --> O_CANCELED: merchant canceled
+    O_OPEN --> O_EXPIRED: expiry, no live attempt
+  }
+  state "Subscription" as S {
+    [*] --> ACTIVE
+    ACTIVE --> PAST_DUE: invoice failed
+    PAST_DUE --> PAST_DUE: dunning retry (default days 1, 3, 7)
+    PAST_DUE --> ACTIVE: invoice paid
+    ACTIVE --> CANCELED: canceled now
+    PAST_DUE --> CANCELED: canceled now
+    ACTIVE --> ENDED: cancel_at_period_end
+    PAST_DUE --> ENDED: cancel_at_period_end
+  }

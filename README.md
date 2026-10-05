@@ -1,6 +1,8 @@
 # Payment Gateway
 
 Payment orchestrator (model A: the merchant's own credentials; money never passes through here).
+Three methods through two providers: Pix and Bolecode (boleto with Pix) through Itaú, credit card through
+Cielo; customers, orders, plans and subscriptions on top. Architecture: `docs/architecture.md`.
 Spec: `docs/superpowers/specs/2026-09-23-payment-gateway-design.md`. Decisions: `docs/superpowers/DECISOES.md`.
 
 ## Run
@@ -28,14 +30,20 @@ curl -s localhost:8080/v1/merchant -H 'Authorization: Bearer gk_test_…'
 
 ## Modules
 
-`gateway-kernel` (dependency-free types) · `gateway-merchants` (merchant, API keys, encrypted credentials) ·
-`gateway-app` (REST, auth, rate limit, outbound webhooks via `webhook-delivery`, observability).
-`orders`, `payments` and `providers` arrive with plans B and C. The boundary is enforced by `ArchitectureTest`.
+- `gateway-kernel` — dependency-free shared types and the provider contracts.
+- `gateway-merchants` — merchants, API keys, provider credentials encrypted per merchant and environment.
+- `gateway-providers` — the Itaú (Pix, Bolecode) and Cielo (card) clients.
+- `gateway-payments` — payments, refunds, idempotency, outbox, jobs, reconciliation.
+- `gateway-billing` — customers, orders, plans, subscriptions, cycles and dunning (schema `billing`).
+- `gateway-app` — the deployable: REST, auth, rate limit, inbound webhooks, outbox relay, observability.
+- `webhook-delivery` (library, `com.barrier`) — signed outbound webhooks, retries, listing and redelivery.
+
+The boundary is enforced by `ArchitectureTest`; the rules and diagrams are in `docs/architecture.md`.
 
 ## Payments (Pix / Itaú)
 
-Plan B adds Pix charges through Itaú as the only provider (`ProviderGateway` resolves `ITAU`
-unconditionally; see `docs/superpowers/DECISOES.md`). Two environments per merchant, `TEST` and `LIVE`,
+Pix and Bolecode go through Itaú; card goes through Cielo (see "Card (Cielo)" below). `ProviderGateway`
+resolves the provider per method. Two environments per merchant, `TEST` and `LIVE`,
 each with its own credential and its own idempotency-key scope.
 
 ### TEST vs LIVE credentials
@@ -968,6 +976,9 @@ key values. The stored body hash is an HMAC-SHA256 under `GATEWAY_IDEMPOTENCY_HM
   (`gateway.payments.boleto-poll-every`) until the payment limit date plus 2 days; paid completes the payment
   with `paid_via = BOLETO`, anything the gateway cannot act on becomes a divergence. Reconciliation runs the same
   check for every `PENDING` Bolecode older than `reconciliation-min-age`.
+- **Billing jobs.** `EXPIRE_ORDER`, `BILL_SUBSCRIPTION` (one cycle) and `DUNNING_RETRY` run in the same job
+  runner but never go `DEAD`: once the backoff is spent they retry every `gateway.billing.order-expiry-recheck`
+  and log an error for an operator, because a dead row would stop billing or chasing an invoice silently.
 
 ### Card (Cielo)
 
@@ -1130,6 +1141,23 @@ already up, using the sandbox credentials in `.env`, and writes the requests and
 sandbox can and cannot prove is written at the top of that report and in `docs/providers/*/NOTES.md`.
 The sandboxes cannot call back into a gateway, so outbound webhooks are proved by
 `WebhookDeliveryFlowIntegrationTest` (signed delivery, retries into `DEAD`, redelivery, secret rotation).
+
+## Documentation map
+
+- `docs/architecture.md` — modules, import rules, state machines, jobs, with diagrams (`docs/diagrams/`).
+- `docs/superpowers/specs/` — designs, by date:
+  - 2026-09-23 payment gateway — the orchestrator model, modules, payments, webhooks.
+  - 2026-09-25 bolecode — one `BOLECODE` method, settled by QR or by barcode poll.
+  - 2026-09-25 payment method and provider strategy — one flow per method, one provider contract.
+  - 2026-09-28 card via Cielo — authorization, capture, void, refund, saved cards.
+  - 2026-10-02 orders, plans and subscriptions — billing, cycles, dunning without cancel.
+  - 2026-10-04 outbound webhooks — delivery log, redelivery, the documented contract.
+  - 2026-10-04 operations and disputes — design only (plan G).
+  - 2026-10-04 security and operators — design only (plan H).
+- `docs/superpowers/plans/` — how each spec was built; indexed in `docs/superpowers/README.md`.
+- `docs/superpowers/DECISOES.md` — append-only decisions with the rejected alternative and the cost of being wrong.
+- `docs/providers/itau/NOTES.md`, `docs/providers/cielo/NOTES.md` — provider facts and sandbox limits.
+- `docs/e2e/` — sandbox happy-path reports (2026-09-30, 2026-10-02).
 
 ## Build
 

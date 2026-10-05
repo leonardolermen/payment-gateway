@@ -1,15 +1,19 @@
 flowchart TB
-  APP["gateway-app<br/>REST, security, scheduling"]
-  PAY["gateway-payments<br/>charges, refunds, jobs"]
+  APP["gateway-app<br/>REST, security, scheduling, outbox relay"]
+  BIL["gateway-billing<br/>customers, orders, plans, subscriptions, dunning"]
+  PAY["gateway-payments<br/>payments, refunds, outbox, jobs"]
   MER["gateway-merchants<br/>merchants, API keys, encrypted credentials"]
-  PROV["gateway-providers<br/>Itaú Pix client"]
+  PROV["gateway-providers<br/>Itaú Pix + Bolecode, Cielo card"]
   KER["gateway-kernel<br/>shared types and provider contracts"]
-  WD[["webhook-delivery<br/>(library)"]]
+  WD[["webhook-delivery 0.2.0<br/>(library)"]]
 
+  APP --> BIL
   APP --> PAY
   APP --> MER
   APP --> PROV
   APP --> WD
+  BIL --> PAY
+  BIL --> KER
   PAY --> KER
   MER --> KER
   PROV --> KER
