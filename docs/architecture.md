@@ -105,6 +105,15 @@ retried with backoff and goes `DEAD` after its last attempt — except the billi
 | `BILL_SUBSCRIPTION` | billing: one cycle of a subscription (one row per subscription for its life) |
 | `DUNNING_RETRY` | billing: one scheduled retry of a failed invoice |
 
+## Operations and disputes
+
+The operator works through `/v1/admin`: the divergence queue (reconciliation findings and merchant disputes in
+one table, told apart by `origin`), the job queue (`run-now` on a `PENDING` or `DEAD` job, `give-up` on a
+`PENDING` one) and the stuck payments. A dispute is a divergence with `origin = MERCHANT`; resolving any
+divergence never moves money — a refund is always its own act through `/refunds`. Prometheus gauges are
+recounted every 30 s and served, with `/actuator/health`, on the management port (`GATEWAY_MANAGEMENT_PORT`,
+default 9090), which has no authentication of its own and must stay off the public network.
+
 ## Environments
 
 | API key | provider | credential |
