@@ -1,6 +1,7 @@
 package com.gateway.payments.jobs.persistence;
 
 import com.gateway.payments.jobs.Job;
+import com.gateway.payments.jobs.JobCount;
 import com.gateway.payments.jobs.JobQuery;
 import com.gateway.payments.jobs.JobType;
 import jakarta.persistence.EntityManager;
@@ -154,6 +155,18 @@ public class JobRepositoryImpl implements JobRepository {
   @Override
   public long countByStatus(String status) {
     return jpa.countByStatus(status);
+  }
+
+  @Override
+  public List<JobCount> countByStatusAndType() {
+    return jpa.countByStatusAndType().stream()
+        .map(
+            row ->
+                new JobCount(
+                    (String) row[0],
+                    JobType.valueOf((String) row[1]),
+                    ((Number) row[2]).longValue()))
+        .toList();
   }
 
   @Override

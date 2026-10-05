@@ -74,5 +74,16 @@ interface JobJpaRepository extends JpaRepository<JobEntity, String> {
 
   long countByStatus(String status);
 
+  // DONE rows are kept as history and only grow; the gauge is about the queue, not the archive.
+  @Query(
+      nativeQuery = true,
+      value =
+          """
+          SELECT status, type, count(*) FROM payments.jobs
+           WHERE status IN ('PENDING', 'DEAD')
+           GROUP BY status, type
+          """)
+  List<Object[]> countByStatusAndType();
+
   long countByStatusAndNextRunAtBefore(String status, Instant before);
 }

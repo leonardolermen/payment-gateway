@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.gateway.kernel.ids.Ulid;
 import com.gateway.payments.jobs.Job;
+import com.gateway.payments.jobs.JobCount;
 import com.gateway.payments.jobs.JobQuery;
 import com.gateway.payments.jobs.JobRunner;
 import com.gateway.payments.jobs.JobType;
@@ -101,6 +102,28 @@ class JobRepositoryAdminIntegrationTest extends ServiceIntegrationTestBase {
 
     assertThat(jobs.countByStatus("DEAD")).isEqualTo(deadBefore + 1);
     assertThat(jobs.countOverdue(now)).isEqualTo(overdueBefore + 1);
+  }
+
+  @Test
+  void countsByStatusAndTypeLeaveFinishedJobsOut() {
+    Instant now = clock.instant();
+    long deadExpirationsBefore = count("DEAD", JobType.EXPIRE_PAYMENT);
+    long pendingOrdersBefore = count("PENDING", JobType.EXPIRE_ORDER);
+
+    deadExpiration(now);
+    pending(now.plusSeconds(3600), null);
+    jobs.save(deadExpiration(now).done());
+
+    assertThat(count("DEAD", JobType.EXPIRE_PAYMENT)).isEqualTo(deadExpirationsBefore + 1);
+    assertThat(count("PENDING", JobType.EXPIRE_ORDER)).isEqualTo(pendingOrdersBefore + 1);
+    assertThat(jobs.countByStatusAndType()).extracting(JobCount::status).doesNotContain("DONE");
+  }
+
+  private long count(String status, JobType type) {
+    return jobs.countByStatusAndType().stream()
+        .filter(each -> each.status().equals(status) && each.type() == type)
+        .mapToLong(JobCount::count)
+        .sum();
   }
 
   private Job deadExpiration(Instant now) {

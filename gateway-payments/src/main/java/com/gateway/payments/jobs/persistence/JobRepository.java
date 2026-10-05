@@ -1,6 +1,7 @@
 package com.gateway.payments.jobs.persistence;
 
 import com.gateway.payments.jobs.Job;
+import com.gateway.payments.jobs.JobCount;
 import com.gateway.payments.jobs.JobQuery;
 import com.gateway.payments.jobs.JobType;
 import java.time.Duration;
@@ -59,6 +60,9 @@ public interface JobRepository {
   }
 
   long countByStatus(String status);
+
+  /** PENDING and DEAD only; a (status, type) with no rows is absent, not zero. */
+  List<JobCount> countByStatusAndType();
 
   /** PENDING jobs whose {@code next_run_at} is before {@code before}: the runner is behind. */
   long countOverdue(Instant before);

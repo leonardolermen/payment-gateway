@@ -1018,7 +1018,7 @@ not on scrape.
 | `gateway_payments` (gauge) | `status`, `method`, `provider`, `environment` | — (volume dashboards) |
 | `gateway_payments_stuck` | `kind` = `created_too_long`, `pending_past_expiry` | `created_too_long` > 0 |
 | `gateway_divergences_open` | `origin` (`SYSTEM`, `MERCHANT`), `kind` | > 0 for 24 h (a divergence open over a day) |
-| `gateway_jobs` | `status` = `PENDING`, `DEAD` | `DEAD` > 0 |
+| `gateway_jobs` | `status` = `PENDING`, `DEAD`; `type` = every `JobType` (`DONE` rows are history and not counted) | `DEAD` > 0 |
 | `gateway_jobs_overdue` | — | > 10 (`PENDING` jobs due for over 5 minutes: the runner is behind) |
 | `gateway_webhook_deliveries` | `status` | — |
 | `gateway_outbox_pending` | — | — (growing steadily means the relay stopped) |

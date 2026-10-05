@@ -108,7 +108,8 @@ class OperationsMetricsTest {
     assertThat(empty)
         .contains(
             "gateway_payments_stuck{kind=\"created_too_long\"} 0",
-            "gateway_jobs{status=\"DEAD\"} 0",
+            "gateway_jobs{status=\"DEAD\",type=\"EXPIRE_PAYMENT\"} 0",
+            "gateway_jobs{status=\"PENDING\",type=\"POLL_BOLETO\"} 0",
             "gateway_jobs_overdue 0",
             "gateway_webhook_deliveries{status=\"DEAD\"} 0",
             "gateway_outbox_pending 0");

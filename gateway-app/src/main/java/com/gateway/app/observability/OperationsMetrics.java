@@ -1,6 +1,8 @@
 package com.gateway.app.observability;
 
 import com.barrier.webhookdelivery.domain.DeliveryStatus;
+import com.gateway.payments.jobs.JobCount;
+import com.gateway.payments.jobs.JobType;
 import com.gateway.payments.jobs.persistence.JobRepository;
 import com.gateway.payments.payment.PaymentCount;
 import com.gateway.payments.payment.StuckPayments;
@@ -39,7 +41,11 @@ public class OperationsMetrics {
    */
   private static final Duration OVERDUE_GRACE = Duration.ofMinutes(5);
 
-  /** Finished jobs are deleted, so these are the only statuses a row can have. */
+  /**
+   * The statuses of the queue; DONE rows are kept as history and left out of the gauge. Every
+   * (status, type) is seeded at 0, so the family scrapes on an empty table and an alert on DEAD has
+   * a series to watch before the first job ever dies.
+   */
   private static final List<String> JOB_STATUSES = List.of("PENDING", "DEAD");
 
   private final Divergences divergences;
@@ -131,7 +137,13 @@ public class OperationsMetrics {
   private void refreshJobs(Instant now) {
     Map<Tags, Long> counts = new HashMap<>();
     for (String status : JOB_STATUSES) {
-      counts.put(Tags.of("status", status), jobs.countByStatus(status));
+      for (JobType type : JobType.values()) {
+        counts.put(Tags.of("status", status, "type", type.name()), 0L);
+      }
+    }
+
+    for (JobCount count : jobs.countByStatusAndType()) {
+      counts.put(Tags.of("status", count.status(), "type", count.type().name()), count.count());
     }
 
     publish("gateway_jobs", counts);
