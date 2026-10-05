@@ -11,9 +11,7 @@ import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentQueries;
 import com.gateway.payments.payment.PaymentStatus;
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -127,7 +125,7 @@ public class SubscriptionBilling {
         "invoice.created",
         invoice.id(),
         opened.id(),
-        invoiceCreated(opened, invoice, issued, reason));
+        InvoicePayloads.created(opened, invoice, issued, reason));
 
     boolean mustBeChased = issued.declined() || reason != null;
     if (!mustBeChased) {
@@ -137,31 +135,5 @@ public class SubscriptionBilling {
     // Dunning owns PAST_DUE, its event and the schedule, so an expired Pix reaching it through
     // the settlement books exactly what a declined card booked here.
     dunning.firstFailure(opened, invoice, issued.paymentId(), now);
-  }
-
-  private static Map<String, Object> invoiceCreated(
-      Subscription subscription, Order invoice, IssuedInvoice issued, String reason) {
-    Map<String, Object> period = new LinkedHashMap<>();
-    period.put("start", invoice.periodStart().toString());
-    period.put("end", invoice.periodEnd().toString());
-
-    Payment payment = issued.payment();
-
-    Map<String, Object> body = new LinkedHashMap<>();
-    body.put("invoice_id", invoice.id());
-    body.put("subscription_id", subscription.id());
-    body.put("invoice_number", invoice.invoiceNumber());
-    body.put("amount", invoice.amount().cents());
-    body.put("currency", invoice.amount().currency());
-    body.put("method", subscription.method().name());
-    body.put("period", period);
-    body.put("payment_id", issued.paymentId());
-    body.put("charged", issued.charged());
-    body.put("decline_code", issued.declineCode());
-    body.put("reason", reason);
-    body.put("pix", InvoicePayloads.pixOf(payment));
-    body.put("boleto", InvoicePayloads.boletoOf(payment));
-
-    return body;
   }
 }
