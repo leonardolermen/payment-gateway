@@ -1159,6 +1159,7 @@ opening one order per cycle (the invoice), so everything below is the same five 
 | `POST /v1/orders` * | 201 `OPEN` | 400 when both or neither of `customer_id`/`customer` are sent |
 | `POST /v1/orders/{id}/payments` * | 201 payment | 409 `ORDER_CLOSED`; 409 `ORDER_HAS_ACTIVE_PAYMENT` (+`payment_id`); 402 `CARD_DECLINED` |
 | `POST /v1/orders/{id}/cancel` * | 200 `CANCELED` | 409 `ORDER_CLOSED`; 409 `ALREADY_PAID` |
+| `POST /v1/orders/{id}/checkout-token/rotate` * | 200 with a new `checkout_url` | 409 `ORDER_CLOSED` |
 | `GET /v1/orders/{id}`, `GET /v1/orders?reference=&limit=`, `GET /v1/orders/{id}/payments` | 200 | |
 | `POST /v1/plans` * | 201 | 400 on a range error |
 | `GET /v1/plans/{id}`, `GET /v1/plans?active=` | 200 | |
@@ -1237,6 +1238,38 @@ is still being chased.
   finds a live attempt looks again, without spending a retry.
 - The Itaú sandbox cannot settle a Pix or boleto, so a Pix or boleto invoice stays open in TEST until it
   expires and goes to dunning; only card subscriptions can be seen paid end to end in the sandbox.
+
+### Public checkout
+
+Every order is born with a link for the payer: `checkout_url` in the `POST /v1/orders` response,
+`<GATEWAY_CHECKOUT_BASE_URL><token>` (default base `http://localhost:5173/pay/`, the front's `/pay/` route).
+The token is shown **once**: the row keeps only its hash, like an API key. `GET /v1/orders/{id}` returns
+`checkout_url: null`. Lost it? `POST /v1/orders/{id}/checkout-token/rotate` (needs an `Idempotency-Key`; `409
+ORDER_CLOSED` on a closed order) issues a new one and the old link stops working. Orders created before this
+feature have no link until rotated. Logs mask tokens as `chk_****`.
+
+The payer's routes need no key and no `Idempotency-Key` — the token is the authorization — and are limited per
+client IP (`gateway.checkout.rate-limit-per-minute`, 60; see the proxy note under [Run](#run)):
+
+| Route | Success | Errors |
+|---|---|---|
+| `GET /v1/checkout/{token}` | 200 `{order_id, merchant_name, amount, currency, description, status, expires_at, methods, active_payment}` | 404 `NOT_FOUND` |
+| `POST /v1/checkout/{token}/payments` (same body as `POST /v1/orders/{id}/payments`) | 201 payment | 410 `CHECKOUT_ORDER_CLOSED`; 409 `ORDER_HAS_ACTIVE_PAYMENT`; 402 `CARD_DECLINED`; 422 `PROVIDER_CREDENTIALS_MISSING` |
+| `GET /v1/checkout/{token}/payments/{id}` | 200 payment | 404 `NOT_FOUND` |
+| `POST /v1/checkout/{token}/payments/{id}/cancel` | 200 payment `CANCELED` (Pix and boleto) | 410 `CHECKOUT_ORDER_CLOSED`; 422 `CHECKOUT_CANNOT_CANCEL_CARD` |
+
+The payment object is `{id, method, status, pix: {copia_e_cola, expires_at}, boleto: {linha_digitavel,
+due_date, payment_limit_date}, card: {brand, last4, installments}, paid_at, created_at}`, with only the block
+of its method filled. `methods` lists the methods the merchant has a credential for. A closed order still
+answers `GET` with 200 and its `status`; only the `POST`s are `410`. Error bodies never echo the token.
+Responses carry no payer data, no provider ids and no merchant reference.
+
+Payment events of an attempt made through the link currently carry `source: API`, like the merchant's own
+attempts; telling payer-initiated attempts apart in events is not available yet.
+
+A browser front on another origin needs `GATEWAY_CORS_ORIGINS` (comma-separated exact origins; empty = CORS
+off). Allowed request headers are `Content-Type`, `Authorization` and `Idempotency-Key`; `X-Next-Cursor` and
+`Retry-After` are exposed; credentials are not allowed. The merchant key travels as `Authorization: Bearer`.
 
 ### Sandbox
 

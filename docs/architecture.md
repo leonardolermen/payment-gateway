@@ -114,6 +114,14 @@ divergence never moves money — a refund is always its own act through `/refund
 recounted every 30 s and served, with `/actuator/health`, on the management port (`GATEWAY_MANAGEMENT_PORT`,
 default 9090), which has no authentication of its own and must stay off the public network.
 
+## The payer's door
+
+An order carries a link, `/v1/checkout/{token}`, that lets the payer see it and pay without an API key: the
+token is the authorization, stored only as a hash and shown once (rotation replaces it). It is the one public
+surface, so it is rate-limited per IP and masks the token in logs. Billing owns orders but must not import
+`merchants`, where the peppered hashing of API keys lives; it declares a `TokenHasher` port and the app wires
+`PepperedTokenHasher` into it, so the token is hashed the same way as a key without a new module dependency.
+
 ## Environments
 
 | API key | provider | credential |

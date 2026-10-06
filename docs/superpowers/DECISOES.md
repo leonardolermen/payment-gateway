@@ -625,3 +625,44 @@ de aceitar e ignorar se não usar o estado `UNDER_REVIEW`.
 deixar o operador re-enfileirar qualquer job — nem todo handler é idempotente, e rodar de novo um job
 terminado pode agir duas vezes sobre o mesmo pagamento. Custo se errado: o operador que precisa repetir um
 trabalho já feito não tem atalho e depende de um novo job criado pelo próprio fluxo.
+
+## 2026-10-06 — Token do checkout na ordem, com hash no banco, mostrado uma vez
+A ordem nasce com um token `chk_…`; a linha guarda só o hash (com pepper, como a chave de API) e o link
+completo aparece apenas na resposta de `POST /v1/orders` e da rotação. Rejeitado: guardar o token em claro para
+reexibi-lo — um dump do banco passaria a conter links que pagam ordens. Custo se errado: quem perde o link
+precisa rotacionar (o antigo morre), e ordens anteriores a esta mudança não têm link até a primeira rotação.
+
+## 2026-10-06 — Rotas públicas sem `Idempotency-Key`
+`/v1/checkout/**` não exige a chave: o filtro de idempotência não cobre essas rotas. Rejeitado: exigir o header
+do navegador do pagador — o front teria de gerar e persistir chaves, e o merchant não é quem chama. Custo se
+errado: um duplo clique pode criar duas tentativas; a defesa é `ORDER_HAS_ACTIVE_PAYMENT`, que recusa a segunda
+enquanto a primeira estiver viva, não a idempotência.
+
+## 2026-10-06 — Rate limit por IP em memória, última entrada do `X-Forwarded-For`
+60 requisições por minuto por IP em `/v1/checkout/**`, contadas na memória do processo. A chave é a última
+entrada do `X-Forwarded-For`, e só quando a conexão vem de endereço privado ou loopback e a entrada é um IP
+literal; senão, o endereço remoto. Rejeitado: a primeira entrada — é a que o cliente escreve, e qualquer um
+trocaria de IP a cada requisição. Custo se errado: com mais de uma instância o limite efetivo é N vezes
+maior; e um proxy que não acrescente o endereço faz todos os pagadores dividirem o IP do proxy.
+
+## 2026-10-06 — CORS por lista explícita, vazio por default
+`GATEWAY_CORS_ORIGINS` lista origens exatas; vazio desliga o CORS. Sem credenciais e sem curinga. Rejeitado:
+`*` por default — qualquer página abriria a API no navegador de quem estiver logado em outro lugar. Custo se
+errado: o front em origem nova falha no preflight até alguém atualizar a variável e reiniciar.
+
+## 2026-10-06 — `GET` não reexibe o link; rotação em vez de armazenar o token
+A spec dizia que o link voltava em todo `GET`; isso exige o token em claro no banco, o que contradiz a decisão
+do hash. `GET /v1/orders/{id}` devolve `checkout_url: null` e a rotação emite um novo. Rejeitado: cifrar o
+token com a master key para reexibir — uma chave a mais protegendo um segredo que se troca de graça. Custo se
+errado: o merchant que não guardou o link faz uma chamada a mais, e o link antigo, já enviado ao pagador, morre.
+
+## 2026-10-06 — `Authorization: Bearer` no CORS, não `X-Api-Key`
+A spec listava `X-Api-Key` nos headers permitidos; o gateway autentica com `Authorization: Bearer`
+(`ApiKeyAuthFilter`), então o header real venceu. Rejeitado: aceitar também `X-Api-Key` só para casar com a
+spec. Custo se errado: o front que seguir a spec ao pé da letra enviará um header que o preflight recusa.
+
+## 2026-10-06 — O `source` dos eventos de uma tentativa pelo checkout continua `API`
+`EventSource.CHECKOUT` existe, mas os fluxos gravam o `source` fixo e ele não é persistido. Adiado: a
+README diz que distinguir tentativas do pagador nos eventos ainda não é possível. Rejeitado: afirmar
+`CHECKOUT` sem que o evento o carregue. Custo se errado: quem filtrar eventos por origem para achar pagamentos
+iniciados pelo pagador não os encontra até o fluxo propagar a origem.
