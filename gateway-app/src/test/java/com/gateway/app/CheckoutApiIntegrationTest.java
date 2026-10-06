@@ -559,4 +559,34 @@ class CheckoutApiIntegrationTest {
     assertThat(wrongMethod.getStatus().value()).isEqualTo(405);
     assertThat(wrongMethod.getResponseBody().toString()).doesNotContain("chk_");
   }
+
+  // The generic Exception handler runs before DefaultHandlerExceptionResolver, so without a
+  // handler for ErrorResponse every Spring web exception would turn into a 500.
+  @Test
+  @SuppressWarnings("rawtypes")
+  void springsOwnWebErrorsKeepTheirStatus() {
+    String base = "/v1/checkout/" + order(apiKey)[1];
+
+    EntityExchangeResult<Map> wrongType =
+        http()
+            .post()
+            .uri(base + "/payments")
+            .contentType(MediaType.TEXT_PLAIN)
+            .body("x")
+            .exchange()
+            .expectBody(Map.class)
+            .returnResult();
+    EntityExchangeResult<Map> missingParameter =
+        http()
+            .get()
+            .uri("/v1/customers")
+            .header("Authorization", "Bearer " + apiKey)
+            .exchange()
+            .expectBody(Map.class)
+            .returnResult();
+
+    assertThat(wrongType.getStatus().value()).isEqualTo(415);
+    assertThat(wrongType.getResponseBody().toString()).doesNotContain("chk_");
+    assertThat(missingParameter.getStatus().value()).isEqualTo(400);
+  }
 }

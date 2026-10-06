@@ -9,19 +9,18 @@ import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.payments.payment.card.CardDeclinedException;
 import java.net.URI;
+import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
-import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
-import org.springframework.web.servlet.resource.NoResourceFoundException;
 import tools.jackson.databind.exc.InvalidTypeIdException;
 
 /**
@@ -180,26 +179,38 @@ public class ErrorHandler {
   }
 
   /**
-   * The three below exist because anything that falls through to Spring's BasicErrorController
-   * answers with a map whose "path" is the full request URI, and on the public checkout that URI
-   * carries the token. The details are fixed and never name the path.
+   * Spring's own web exceptions (wrong Content-Type, missing parameter, unmapped route, wrong
+   * method, ...) all implement {@link ErrorResponse}. They need a handler here because the generic
+   * {@code Exception} handler below runs before DefaultHandlerExceptionResolver and would turn each
+   * of them into a 500. Anything that reaches Spring's BasicErrorController instead answers with a
+   * "path" holding the full request URI, which on the public checkout carries the token, so the
+   * detail is fixed per status and never e.getMessage(), which can carry that path too.
    */
-  @ExceptionHandler(NoResourceFoundException.class)
-  public ProblemDetail noSuchRoute(NoResourceFoundException e) {
-    return problem(HttpStatus.NOT_FOUND, "NOT_FOUND", "no such route");
-  }
+  @ExceptionHandler(ErrorResponse.class)
+  public ResponseEntity<ProblemDetail> springWebError(ErrorResponse e) {
+    HttpStatus status = HttpStatus.valueOf(e.getStatusCode().value());
+    String code =
+        switch (status) {
+          case BAD_REQUEST -> "INVALID_REQUEST";
+          case NOT_FOUND -> "NOT_FOUND";
+          case METHOD_NOT_ALLOWED -> "METHOD_NOT_ALLOWED";
+          case NOT_ACCEPTABLE -> "NOT_ACCEPTABLE";
+          case UNSUPPORTED_MEDIA_TYPE -> "UNSUPPORTED_MEDIA_TYPE";
+          default -> status.name();
+        };
+    String detail =
+        switch (status) {
+          case BAD_REQUEST -> "the request is not valid";
+          case NOT_FOUND -> "no such route";
+          case METHOD_NOT_ALLOWED -> "method not allowed";
+          case NOT_ACCEPTABLE -> "no acceptable representation";
+          case UNSUPPORTED_MEDIA_TYPE -> "unsupported media type";
+          default -> status.getReasonPhrase().toLowerCase(Locale.ROOT);
+        };
 
-  @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-  public ResponseEntity<ProblemDetail> methodNotAllowed(HttpRequestMethodNotSupportedException e) {
-    ResponseEntity.BodyBuilder response = ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED);
-    if (e.getSupportedHttpMethods() != null) {
-      HttpHeaders headers = new HttpHeaders();
-      headers.setAllow(e.getSupportedHttpMethods());
-      response.headers(headers);
-    }
-
-    return response.body(
-        problem(HttpStatus.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED", "method not allowed"));
+    return ResponseEntity.status(status)
+        .headers(e.getHeaders())
+        .body(problem(status, code, detail));
   }
 
   /** Last resort; every more specific handler above wins over it. */
