@@ -51,6 +51,45 @@
     },
     {
       "request": {
+        "method": "PATCH",
+        "urlPathPattern": "/itau/pix/cob/[A-Za-z0-9]+"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "bodyFileName": "itau_cob_removed.json",
+        "transformers": [
+          "response-template"
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/itau/pix/cob"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "parametros": {
+            "paginacao": {
+              "paginaAtual": 0,
+              "itensPorPagina": 100,
+              "quantidadeDePaginas": 1,
+              "quantidadeTotalDeItens": 0
+            }
+          },
+          "cobs": []
+        }
+      }
+    },
+    {
+      "request": {
         "method": "PUT",
         "urlPathPattern": "/itau/pix/pix/[A-Za-z0-9]+/devolucao/[A-Za-z0-9]+"
       },
@@ -148,6 +187,24 @@
           "Content-Type": "application/json"
         },
         "bodyFileName": "cielo_get_sale_200_credit.json"
+      }
+    },
+    {
+      "request": {
+        "method": "PATCH",
+        "urlPathPattern": "/itau/instruction/boletos/[^/]+/baixa"
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/itau/query/boletos"
+      },
+      "response": {
+        "status": 404
       }
     }
   ]
