@@ -185,9 +185,13 @@ public class ErrorHandler {
    * of them into a 500. Anything that reaches Spring's BasicErrorController instead answers with a
    * "path" holding the full request URI, which on the public checkout carries the token, so the
    * detail is fixed per status and never e.getMessage(), which can carry that path too.
+   *
+   * <p>Not an {@code @ExceptionHandler} of its own: {@code ErrorResponse} is an interface, and
+   * {@code @ExceptionHandler} only takes Throwable classes, while Spring's web exceptions share no
+   * Throwable base (ServletException here, MissingRequestValueException there). So the last-resort
+   * handler branches on the interface before falling back to 500.
    */
-  @ExceptionHandler(ErrorResponse.class)
-  public ResponseEntity<ProblemDetail> springWebError(ErrorResponse e) {
+  private ResponseEntity<ProblemDetail> springWebError(ErrorResponse e) {
     HttpStatus status = HttpStatus.valueOf(e.getStatusCode().value());
     String code =
         switch (status) {
@@ -215,9 +219,14 @@ public class ErrorHandler {
 
   /** Last resort; every more specific handler above wins over it. */
   @ExceptionHandler(Exception.class)
-  public ProblemDetail unexpected(Exception e) {
+  public ResponseEntity<ProblemDetail> unexpected(Exception e) {
+    if (e instanceof ErrorResponse springWeb) {
+      return springWebError(springWeb);
+    }
+
     log.error("unexpected error", e);
-    return problem(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "unexpected error");
+    return ResponseEntity.internalServerError()
+        .body(problem(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "unexpected error"));
   }
 
   private static ProblemDetail problem(HttpStatus status, String code, String detail) {

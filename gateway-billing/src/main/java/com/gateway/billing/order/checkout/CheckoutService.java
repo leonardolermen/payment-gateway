@@ -67,13 +67,16 @@ public class CheckoutService {
   /** Pix and boleto only: a card is voided by the merchant, with its own audit. */
   public Payment cancelAttempt(String rawToken, String paymentId) {
     Order order = resolve(rawToken);
-    requireOpen(order);
 
+    // The card refusal comes before the open check: it does not depend on the order's state, and
+    // right after a card is paid the outbox relay closes the order within milliseconds, so checking
+    // "open" first turned the answer into a 410 or a 422 depending on who won that race.
     Payment attempt = ownAttempt(order, paymentId);
     if (attempt.method() == PaymentMethod.CARD) {
       throw new DomainException(
           "CHECKOUT_CANNOT_CANCEL_CARD", "a card attempt is canceled by the merchant");
     }
+    requireOpen(order);
 
     return cancellation.cancel(order.merchantId(), attempt.id());
   }
