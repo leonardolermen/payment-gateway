@@ -65,6 +65,7 @@ class OrderAttemptServiceIntegrationTest extends BillingIntegrationTestBase {
             customer.id(),
             null,
             null,
+            null,
             clock));
   }
 
@@ -404,6 +405,7 @@ class OrderAttemptServiceIntegrationTest extends BillingIntegrationTestBase {
                 customer.id(),
                 null,
                 null,
+                null,
                 clock));
 
     assertThatThrownBy(
@@ -434,6 +436,7 @@ class OrderAttemptServiceIntegrationTest extends BillingIntegrationTestBase {
                 null,
                 null,
                 payer,
+                null,
                 null,
                 clock));
 

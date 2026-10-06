@@ -11,6 +11,9 @@ import com.gateway.billing.order.OrderAttemptService;
 import com.gateway.billing.order.OrderExpiration;
 import com.gateway.billing.order.OrderService;
 import com.gateway.billing.order.OrderSettlement;
+import com.gateway.billing.order.checkout.CheckoutService;
+import com.gateway.billing.order.checkout.CheckoutTokens;
+import com.gateway.billing.order.checkout.TokenHasher;
 import com.gateway.billing.order.persistence.OrderRepository;
 import com.gateway.billing.order.persistence.OrderRepositoryImpl;
 import com.gateway.billing.plan.PlanService;
@@ -43,6 +46,7 @@ import com.gateway.payments.payment.PaymentCancellation;
 import com.gateway.payments.payment.PaymentQueries;
 import com.gateway.payments.payment.create.PaymentFlows;
 import com.gateway.payments.reconciliation.Divergences;
+import java.security.SecureRandom;
 import java.time.Clock;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
@@ -74,6 +78,11 @@ public class BillingConfiguration {
   }
 
   @Bean
+  CheckoutTokens checkoutTokens(TokenHasher hasher) {
+    return new CheckoutTokens(hasher, new SecureRandom());
+  }
+
+  @Bean
   ActiveSubscriptionsCheck activeSubscriptions(SubscriptionRepository subscriptions) {
     return new ActiveSubscriptions(subscriptions);
   }
@@ -94,6 +103,16 @@ public class BillingConfiguration {
   @Bean
   PlanService planService(PlanRepository plans, UnitOfWork unitOfWork, Clock clock) {
     return new PlanService(plans, unitOfWork, clock);
+  }
+
+  @Bean
+  CheckoutService checkoutService(
+      CheckoutTokens tokens,
+      OrderRepository orders,
+      OrderAttemptService attempts,
+      PaymentQueries payments,
+      PaymentCancellation cancellation) {
+    return new CheckoutService(tokens, orders, attempts, payments, cancellation);
   }
 
   @Bean
@@ -186,9 +205,17 @@ public class BillingConfiguration {
       JobRepository jobs,
       BillingEvents events,
       BillingProperties properties,
+      CheckoutTokens checkoutTokens,
       Clock clock) {
     return new CycleOpener(
-        subscriptions, orders, plans, jobs, events, properties.billingHour(), clock);
+        subscriptions,
+        orders,
+        plans,
+        jobs,
+        events,
+        properties.billingHour(),
+        checkoutTokens,
+        clock);
   }
 
   @Bean

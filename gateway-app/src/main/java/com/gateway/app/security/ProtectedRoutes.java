@@ -18,7 +18,15 @@ final class ProtectedRoutes {
    * URI.
    */
   static boolean requiresApiKey(String path) {
-    return path.startsWith("/v1/") && !isAdmin(path) && !path.startsWith("/v1/providers/");
+    return path.startsWith("/v1/")
+        && !isAdmin(path)
+        && !path.startsWith("/v1/providers/")
+        && !isCheckout(path);
+  }
+
+  /** The payer's routes: no key, a token in the path, limited per IP by CheckoutRateLimitFilter. */
+  static boolean isCheckout(String path) {
+    return path.startsWith("/v1/checkout/");
   }
 
   static boolean isAdmin(String path) {

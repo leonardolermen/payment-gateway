@@ -65,6 +65,27 @@ public class OrderService {
     return orders.find(merchantId, id).orElseThrow(() -> new NotFoundException("order", id));
   }
 
+  /**
+   * A new token in place of the old one. Only an OPEN order: a closed order's link is dead already,
+   * and issuing a fresh one would say otherwise.
+   */
+  public Order rotateCheckoutToken(MerchantId merchantId, String id, String newHash) {
+    return unitOfWork.inTransaction(
+        () -> {
+          Order order = get(merchantId, id);
+          if (!order.isOpen()) {
+            throw new DomainException("ORDER_CLOSED", "order " + id + " is " + order.status());
+          }
+
+          order.rotateCheckoutToken(newHash, clock.instant());
+          if (!orders.update(order)) {
+            throw new DomainException("CONFLICT", "order " + id + " changed concurrently");
+          }
+
+          return order;
+        });
+  }
+
   public List<Order> listByReference(MerchantId merchantId, String reference, int limit) {
     return orders.findByReference(merchantId, reference, limit);
   }

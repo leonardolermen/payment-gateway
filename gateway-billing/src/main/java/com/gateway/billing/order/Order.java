@@ -24,6 +24,7 @@ public final class Order {
   private final Instant createdAt;
 
   private OrderStatus status;
+  private String checkoutTokenHash;
   private String paidPaymentId;
   private Instant paidAt;
   private long version;
@@ -43,6 +44,7 @@ public final class Order {
       Integer invoiceNumber,
       LocalDate periodStart,
       LocalDate periodEnd,
+      String checkoutTokenHash,
       Instant createdAt) {
     this.id = id;
     this.merchantId = merchantId;
@@ -57,6 +59,7 @@ public final class Order {
     this.invoiceNumber = invoiceNumber;
     this.periodStart = periodStart;
     this.periodEnd = periodEnd;
+    this.checkoutTokenHash = checkoutTokenHash;
     this.createdAt = createdAt;
     this.status = OrderStatus.OPEN;
     this.version = 1;
@@ -76,6 +79,17 @@ public final class Order {
 
   public void markExpired(Instant at) {
     transition(OrderStatus.EXPIRED, at);
+  }
+
+  /**
+   * The merchant lost the link or wants the old one dead: a new hash replaces it in place, and the
+   * previous token stops resolving the moment this row is written. Bumps the version like any other
+   * change so a concurrent cancel still loses or wins cleanly.
+   */
+  public void rotateCheckoutToken(String newHash, Instant at) {
+    this.checkoutTokenHash = newHash;
+    this.version++;
+    this.updatedAt = at;
   }
 
   private void transition(OrderStatus to, Instant at) {
@@ -160,6 +174,10 @@ public final class Order {
     return periodEnd;
   }
 
+  public String checkoutTokenHash() {
+    return checkoutTokenHash;
+  }
+
   public long version() {
     return version;
   }
@@ -191,7 +209,8 @@ public final class Order {
       LocalDate periodEnd,
       long version,
       Instant createdAt,
-      Instant updatedAt) {
+      Instant updatedAt,
+      String checkoutTokenHash) {
     Order order =
         new Order(
             id,
@@ -207,6 +226,7 @@ public final class Order {
             invoiceNumber,
             periodStart,
             periodEnd,
+            checkoutTokenHash,
             createdAt);
 
     order.status = status;

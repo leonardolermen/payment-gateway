@@ -35,6 +35,7 @@ class OrderExpirationIntegrationTest extends BillingIntegrationTestBase {
             customerId,
             null,
             clock.instant().plus(Duration.ofHours(1)),
+            null,
             clock));
   }
 

@@ -23,7 +23,11 @@ public record CreateOrderRequest(
     CustomerRequest customer,
     Instant expiresAt) {
 
-  public Order toOrder(MerchantId merchantId, ProviderEnvironment environment, Clock clock) {
+  public Order toOrder(
+      MerchantId merchantId,
+      ProviderEnvironment environment,
+      String checkoutTokenHash,
+      Clock clock) {
     if ((customerId == null) == (customer == null)) {
       throw new IllegalArgumentException("exactly one of customer_id or customer is required");
     }
@@ -40,6 +44,7 @@ public record CreateOrderRequest(
         customerId,
         payer,
         expiresAt,
+        checkoutTokenHash,
         clock);
   }
 }

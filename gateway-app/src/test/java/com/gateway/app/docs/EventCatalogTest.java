@@ -210,6 +210,7 @@ class EventCatalogTest {
         customer().id(),
         null,
         CLOCK.instant().plusSeconds(86_400),
+        null,
         CLOCK);
   }
 
@@ -245,6 +246,7 @@ class EventCatalogTest {
         TODAY,
         TODAY.plusMonths(1).minusDays(1),
         CLOCK.instant().plusSeconds(3 * 86_400),
+        null,
         CLOCK);
   }
 

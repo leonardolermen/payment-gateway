@@ -4,6 +4,7 @@ import com.gateway.billing.BillingEvents;
 import com.gateway.billing.order.Order;
 import com.gateway.billing.order.OrderFactory;
 import com.gateway.billing.order.OrderService;
+import com.gateway.billing.order.checkout.CheckoutTokens;
 import com.gateway.billing.order.persistence.OrderRepository;
 import com.gateway.billing.plan.Plan;
 import com.gateway.billing.plan.PlanService;
@@ -32,6 +33,7 @@ public class CycleOpener {
   private final JobRepository jobs;
   private final BillingEvents events;
   private final int billingHour;
+  private final CheckoutTokens checkoutTokens;
   private final Clock clock;
 
   public CycleOpener(
@@ -41,6 +43,7 @@ public class CycleOpener {
       JobRepository jobs,
       BillingEvents events,
       int billingHour,
+      CheckoutTokens checkoutTokens,
       Clock clock) {
     this.subscriptions = subscriptions;
     this.orders = orders;
@@ -48,6 +51,7 @@ public class CycleOpener {
     this.jobs = jobs;
     this.events = events;
     this.billingHour = billingHour;
+    this.checkoutTokens = checkoutTokens;
     this.clock = clock;
   }
 
@@ -107,6 +111,9 @@ public class CycleOpener {
             period.start(),
             period.end(),
             expiresAt,
+            // Nobody sees this token: it only guarantees every order has a hash, and the payer's
+            // link comes later by rotation.
+            checkoutTokens.issue().hash(),
             clock);
     Optional<Order> existing = orders.insertInvoiceIfAbsent(draft);
 

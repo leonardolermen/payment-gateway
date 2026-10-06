@@ -45,6 +45,7 @@ class OrderSettlementIntegrationTest extends BillingIntegrationTestBase {
             customerId,
             null,
             null,
+            null,
             clock));
   }
 

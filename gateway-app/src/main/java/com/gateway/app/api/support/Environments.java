@@ -13,4 +13,9 @@ public final class Environments {
   public static ProviderEnvironment toProvider(ApiKeyEnvironment env) {
     return env == ApiKeyEnvironment.LIVE ? ProviderEnvironment.LIVE : ProviderEnvironment.TEST;
   }
+
+  /** The way back, for code that holds an order (a provider environment) and reads credentials. */
+  public static ApiKeyEnvironment toApiKey(ProviderEnvironment env) {
+    return env == ProviderEnvironment.LIVE ? ApiKeyEnvironment.LIVE : ApiKeyEnvironment.TEST;
+  }
 }

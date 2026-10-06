@@ -67,6 +67,7 @@ public class OrderRepositoryImpl implements OrderRepository {
     entity.invoiceNumber = order.invoiceNumber();
     entity.periodStart = order.periodStart();
     entity.periodEnd = order.periodEnd();
+    entity.checkoutTokenHash = order.checkoutTokenHash();
     entity.version = order.version();
     entity.createdAt = order.createdAt();
     entity.updatedAt = order.updatedAt();
@@ -93,6 +94,11 @@ public class OrderRepositoryImpl implements OrderRepository {
   }
 
   @Override
+  public Optional<Order> findByCheckoutTokenHash(String hash) {
+    return jpa.findByCheckoutTokenHash(hash).map(this::toDomain);
+  }
+
+  @Override
   @Transactional
   public boolean update(Order order) {
     int updated =
@@ -102,6 +108,7 @@ public class OrderRepositoryImpl implements OrderRepository {
             order.status().name(),
             order.paidPaymentId(),
             order.paidAt(),
+            order.checkoutTokenHash(),
             order.version(),
             order.updatedAt());
 
@@ -224,7 +231,8 @@ public class OrderRepositoryImpl implements OrderRepository {
         entity.periodEnd,
         entity.version,
         entity.createdAt,
-        entity.updatedAt);
+        entity.updatedAt,
+        entity.checkoutTokenHash);
   }
 
   private String payerJson(MerchantId merchantId, OrderPayer payer) {

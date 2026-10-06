@@ -10,6 +10,7 @@ import java.util.regex.Pattern;
 public final class Masker {
   private static final Pattern CPF = Pattern.compile("\\b\\d{3}\\.?\\d{3}\\.?\\d{3}-?\\d{2}\\b");
   private static final Pattern API_KEY = Pattern.compile("gk_(live|test)_[0-9A-Za-z]+");
+  private static final Pattern CHECKOUT_TOKEN = Pattern.compile("chk_[A-Za-z0-9_-]{43}");
   private static final Pattern BEARER = Pattern.compile("(?i)(Bearer\\s+)\\S+");
   private static final Pattern FIELDS =
       Pattern.compile(
@@ -32,6 +33,7 @@ public final class Masker {
     r = CARD_SECURITY_CODE.matcher(r).replaceAll("$1***$2");
     r = BEARER.matcher(r).replaceAll("$1***");
     r = API_KEY.matcher(r).replaceAll("***");
+    r = CHECKOUT_TOKEN.matcher(r).replaceAll("chk_****");
     r = CPF.matcher(r).replaceAll("***");
     r = FIELDS.matcher(r).replaceAll("$1***$2");
     return r;

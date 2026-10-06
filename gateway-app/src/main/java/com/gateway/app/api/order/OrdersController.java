@@ -1,5 +1,6 @@
 package com.gateway.app.api.order;
 
+import com.gateway.app.api.checkout.CheckoutProperties;
 import com.gateway.app.api.order.dto.CreateOrderRequest;
 import com.gateway.app.api.order.dto.OrderAttemptRequest;
 import com.gateway.app.api.order.dto.OrderResponse;
@@ -10,6 +11,7 @@ import com.gateway.app.security.MerchantContext;
 import com.gateway.billing.order.Order;
 import com.gateway.billing.order.OrderAttemptService;
 import com.gateway.billing.order.OrderService;
+import com.gateway.billing.order.checkout.CheckoutTokens;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
@@ -36,11 +38,20 @@ public class OrdersController {
 
   private final OrderService orders;
   private final OrderAttemptService attempts;
+  private final CheckoutTokens checkoutTokens;
+  private final CheckoutProperties checkout;
   private final Clock clock;
 
-  public OrdersController(OrderService orders, OrderAttemptService attempts, Clock clock) {
+  public OrdersController(
+      OrderService orders,
+      OrderAttemptService attempts,
+      CheckoutTokens checkoutTokens,
+      CheckoutProperties checkout,
+      Clock clock) {
     this.orders = orders;
     this.attempts = attempts;
+    this.checkoutTokens = checkoutTokens;
+    this.checkout = checkout;
     this.clock = clock;
   }
 
@@ -48,11 +59,36 @@ public class OrdersController {
   public ResponseEntity<OrderResponse> create(@RequestBody CreateOrderRequest request) {
     MerchantContext.Current caller = MerchantContext.current();
 
+    // Only the hash goes into the order; the plain token never touches the service, which logs and
+    // emits. The url built from it is returned once, here and on rotation.
+    CheckoutTokens.Issued issued = checkoutTokens.issue();
     Order order =
-        request.toOrder(caller.merchantId(), Environments.toProvider(caller.environment()), clock);
+        request.toOrder(
+            caller.merchantId(),
+            Environments.toProvider(caller.environment()),
+            issued.hash(),
+            clock);
     Order created = orders.create(order);
 
-    return withResource(HttpStatus.CREATED, created.id(), OrderResponse.from(created, List.of()));
+    return withResource(
+        HttpStatus.CREATED,
+        created.id(),
+        OrderResponse.from(created, List.of(), checkout.urlFor(issued.token().value())));
+  }
+
+  /** The old link dies here; the new one is in the body, once. */
+  @PostMapping("/{id}/checkout-token/rotate")
+  public ResponseEntity<OrderResponse> rotateCheckoutToken(@PathVariable String id) {
+    MerchantId merchantId = MerchantContext.current().merchantId();
+    CheckoutTokens.Issued issued = checkoutTokens.issue();
+
+    Order rotated = orders.rotateCheckoutToken(merchantId, id, issued.hash());
+
+    return withResource(
+        HttpStatus.OK,
+        rotated.id(),
+        OrderResponse.from(
+            rotated, orders.attemptsOf(merchantId, id), checkout.urlFor(issued.token().value())));
   }
 
   @PostMapping("/{id}/payments")

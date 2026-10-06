@@ -9,12 +9,15 @@ import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.payments.payment.card.CardDeclinedException;
 import java.net.URI;
+import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -44,8 +47,9 @@ public class ErrorHandler {
    * DIVERGENCE_CLOSED (the row was already decided) and DISPUTE_ALREADY_OPEN (one dispute per
    * payment at a time). JOB_IN_FLIGHT and JOB_NOT_PENDING are 409: a worker holds the job inside
    * its lease, or it is already DONE or DEAD. JOB_NOT_RERUNNABLE is 409: run-now on a DONE job,
-   * refused because not every handler is idempotent. {@code Map.ofEntries}: {@code Map.of} stops at
-   * ten pairs.
+   * refused because not every handler is idempotent. CHECKOUT_ORDER_CLOSED is 410, not 409: for the
+   * payer the link is gone, nothing they do changes that. {@code Map.ofEntries}: {@code Map.of}
+   * stops at ten pairs.
    */
   private static final Map<String, HttpStatus> STATUS_BY_CODE =
       Map.ofEntries(
@@ -55,6 +59,7 @@ public class ErrorHandler {
           Map.entry("CUSTOMER_EXISTS", HttpStatus.CONFLICT),
           Map.entry("CUSTOMER_HAS_ACTIVE_SUBSCRIPTION", HttpStatus.CONFLICT),
           Map.entry("ORDER_CLOSED", HttpStatus.CONFLICT),
+          Map.entry("CHECKOUT_ORDER_CLOSED", HttpStatus.GONE),
           Map.entry("ORDER_HAS_ACTIVE_PAYMENT", HttpStatus.CONFLICT),
           Map.entry("SUBSCRIPTION_NOT_ACTIVE", HttpStatus.CONFLICT),
           Map.entry("CONFLICT", HttpStatus.CONFLICT),
@@ -171,6 +176,57 @@ public class ErrorHandler {
         HttpStatus.BAD_GATEWAY,
         "PROVIDER_ERROR",
         "the payment provider could not complete the request");
+  }
+
+  /**
+   * Spring's own web exceptions (wrong Content-Type, missing parameter, unmapped route, wrong
+   * method, ...) all implement {@link ErrorResponse}. They need a handler here because the generic
+   * {@code Exception} handler below runs before DefaultHandlerExceptionResolver and would turn each
+   * of them into a 500. Anything that reaches Spring's BasicErrorController instead answers with a
+   * "path" holding the full request URI, which on the public checkout carries the token, so the
+   * detail is fixed per status and never e.getMessage(), which can carry that path too.
+   *
+   * <p>Not an {@code @ExceptionHandler} of its own: {@code ErrorResponse} is an interface, and
+   * {@code @ExceptionHandler} only takes Throwable classes, while Spring's web exceptions share no
+   * Throwable base (ServletException here, MissingRequestValueException there). So the last-resort
+   * handler branches on the interface before falling back to 500.
+   */
+  private ResponseEntity<ProblemDetail> springWebError(ErrorResponse e) {
+    HttpStatus status = HttpStatus.valueOf(e.getStatusCode().value());
+    String code =
+        switch (status) {
+          case BAD_REQUEST -> "INVALID_REQUEST";
+          case NOT_FOUND -> "NOT_FOUND";
+          case METHOD_NOT_ALLOWED -> "METHOD_NOT_ALLOWED";
+          case NOT_ACCEPTABLE -> "NOT_ACCEPTABLE";
+          case UNSUPPORTED_MEDIA_TYPE -> "UNSUPPORTED_MEDIA_TYPE";
+          default -> status.name();
+        };
+    String detail =
+        switch (status) {
+          case BAD_REQUEST -> "the request is not valid";
+          case NOT_FOUND -> "no such route";
+          case METHOD_NOT_ALLOWED -> "method not allowed";
+          case NOT_ACCEPTABLE -> "no acceptable representation";
+          case UNSUPPORTED_MEDIA_TYPE -> "unsupported media type";
+          default -> status.getReasonPhrase().toLowerCase(Locale.ROOT);
+        };
+
+    return ResponseEntity.status(status)
+        .headers(e.getHeaders())
+        .body(problem(status, code, detail));
+  }
+
+  /** Last resort; every more specific handler above wins over it. */
+  @ExceptionHandler(Exception.class)
+  public ResponseEntity<ProblemDetail> unexpected(Exception e) {
+    if (e instanceof ErrorResponse springWeb) {
+      return springWebError(springWeb);
+    }
+
+    log.error("unexpected error", e);
+    return ResponseEntity.internalServerError()
+        .body(problem(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "unexpected error"));
   }
 
   private static ProblemDetail problem(HttpStatus status, String code, String detail) {

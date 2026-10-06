@@ -20,6 +20,7 @@ public final class OrderFactory {
       String customerId,
       OrderPayer payer,
       Instant expiresAt,
+      String checkoutTokenHash,
       Clock clock) {
     if ((customerId == null) == (payer == null)) {
       throw new IllegalArgumentException("exactly one of customer_id or customer is required");
@@ -42,6 +43,7 @@ public final class OrderFactory {
         null,
         null,
         null,
+        checkoutTokenHash,
         clock.instant());
   }
 
@@ -55,6 +57,7 @@ public final class OrderFactory {
       LocalDate periodStart,
       LocalDate periodEnd,
       Instant expiresAt,
+      String checkoutTokenHash,
       Clock clock) {
     return new Order(
         Ulid.next(),
@@ -70,6 +73,7 @@ public final class OrderFactory {
         invoiceNumber,
         periodStart,
         periodEnd,
+        checkoutTokenHash,
         clock.instant());
   }
 }

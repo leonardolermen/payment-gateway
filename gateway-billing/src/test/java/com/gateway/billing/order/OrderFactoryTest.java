@@ -25,6 +25,7 @@ class OrderFactoryTest {
                     null,
                     null,
                     null,
+                    null,
                     Clock.systemUTC()))
         .hasMessageContaining("customer_id or customer");
   }
@@ -39,6 +40,7 @@ class OrderFactoryTest {
             "r",
             null,
             "01CUSTOMER",
+            null,
             null,
             null,
             Clock.systemUTC());

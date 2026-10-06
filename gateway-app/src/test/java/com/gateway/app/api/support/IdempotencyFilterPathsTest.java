@@ -26,6 +26,7 @@ class IdempotencyFilterPathsTest {
     "POST, /v1/payments/pay_1/disputes, true",
     "POST, /v1/orders/ord_1/payments, true",
     "POST, /v1/orders/ord_1/cancel, true",
+    "POST, /v1/orders/01ABC/checkout-token/rotate, true",
     "POST, /v1/subscriptions/sub_1/cancel, true",
     "POST, /v1/webhooks/deliveries/dlv_1/redeliver, true",
     "POST, /v1/webhooks/deliveries/redeliver-dead, true",
@@ -34,6 +35,8 @@ class IdempotencyFilterPathsTest {
     "POST, /v1/subscriptions/sub_1/orders, false",
     "POST, /v1/webhooks/endpoints, false",
     "POST, /v1/webhooks/deliveries, false",
+    "POST, /v1/checkout/chk_x/payments, false",
+    "POST, /v1/checkout/chk_x/payments/pay_1/cancel, false",
     "GET, /v1/orders, false",
     "PATCH, /v1/customers/abc, false",
     "DELETE, /v1/customers/abc, false"
