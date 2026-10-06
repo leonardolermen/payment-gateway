@@ -140,7 +140,7 @@ public class PaymentEvents {
    * {@code refund.unknown}) means the bank never settled it within the polling budget: the amount
    * stays reserved and a later {@code refund.completed} or {@code refund.failed} may still follow.
    */
-  static Map<String, Object> refundJson(Refund refund) {
+  public static Map<String, Object> refundJson(Refund refund) {
     Map<String, Object> json = new LinkedHashMap<>();
     json.put("id", refund.id());
     json.put("payment_id", refund.paymentId());

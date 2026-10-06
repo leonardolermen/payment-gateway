@@ -159,7 +159,7 @@ public class CustomerService {
     return merchantId.value() + "|customer";
   }
 
-  static Map<String, Object> json(Customer customer) {
+  public static Map<String, Object> json(Customer customer) {
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("id", customer.id());
     body.put("name", customer.name().value());

@@ -12,7 +12,6 @@ import com.gateway.billing.subscription.SubscriptionStatus;
 import com.gateway.billing.subscription.persistence.SubscriptionRepository;
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.payments.UnitOfWork;
-import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentQueries;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -219,7 +218,11 @@ public class Dunning implements DunningStarter, InvoiceSettlementHook {
         "invoice.updated",
         context.invoice().id(),
         context.subscription().id(),
-        invoiceUpdated(context, issued.payment()));
+        InvoicePayloads.updated(
+            context.invoice(),
+            context.subscription(),
+            context.attempt().attempt(),
+            issued.payment()));
     ledger.scheduleNext(context.subscription(), context.invoice(), attempt.attempt(), now);
   }
 
@@ -267,19 +270,6 @@ public class Dunning implements DunningStarter, InvoiceSettlementHook {
     }
 
     events.emit(subscription.merchantId(), type, subscription.id(), subscription.id(), body);
-  }
-
-  private static Map<String, Object> invoiceUpdated(RetryContext context, Payment payment) {
-    Map<String, Object> body = new LinkedHashMap<>();
-    body.put("invoice_id", context.invoice().id());
-    body.put("subscription_id", context.subscription().id());
-    body.put("attempt", context.attempt().attempt());
-    body.put("payment_id", payment.id());
-    body.put("method", context.subscription().method().name());
-    body.put("pix", InvoicePayloads.pixOf(payment));
-    body.put("boleto", InvoicePayloads.boletoOf(payment));
-
-    return body;
   }
 
   private record RetryContext(DunningAttempt attempt, Order invoice, Subscription subscription) {}

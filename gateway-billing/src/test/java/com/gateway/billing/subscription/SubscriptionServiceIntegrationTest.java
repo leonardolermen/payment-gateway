@@ -129,15 +129,38 @@ class SubscriptionServiceIntegrationTest extends BillingIntegrationTestBase {
 
     Subscription read = queries.get(merchant, created.id());
 
-    // Started today: billed at 03:00 São Paulo, or right now if that hour already passed.
-    Instant firstBilling =
-        BillingCalendar.billingInstant(BillingCalendar.today(clock.instant()), 3);
-    Instant expected = firstBilling.isBefore(clock.instant()) ? clock.instant() : firstBilling;
+    // Started today: billed right now, whatever the hour.
+    Instant expected = clock.instant();
     assertThat(read.status()).isEqualTo(SubscriptionStatus.ACTIVE);
     assertThat(read.nextBillingAt()).isEqualTo(expected);
     assertThat(read.currentPeriod()).isNull();
     assertThat(jobsFor(created.id())).isEqualTo(1);
     assertThat(eventsOf(created.id())).containsExactly("subscription.created");
+  }
+
+  @Test
+  void aStartTodayBillsNowEvenBeforeTheBillingHour() {
+    Instant oneAmSaoPaulo =
+        BillingCalendar.billingInstant(BillingCalendar.today(clock.instant()), 1);
+    clock.advance(Duration.between(clock.instant(), oneAmSaoPaulo));
+    Instant now = clock.instant();
+
+    Subscription created = pix(ana());
+
+    assertThat(queries.get(merchant, created.id()).nextBillingAt()).isEqualTo(now);
+  }
+
+  @Test
+  void aStartTomorrowBillsAtTheBillingHourEvenWhenCreatedAfterMidnight() {
+    Instant oneAmSaoPaulo =
+        BillingCalendar.billingInstant(BillingCalendar.today(clock.instant()), 1);
+    clock.advance(Duration.between(clock.instant(), oneAmSaoPaulo));
+    LocalDate tomorrow = BillingCalendar.today(clock.instant()).plusDays(1);
+
+    Subscription created = subscribe(ana(), PaymentMethod.PIX, null, tomorrow);
+
+    assertThat(queries.get(merchant, created.id()).nextBillingAt())
+        .isEqualTo(BillingCalendar.billingInstant(tomorrow, 3));
   }
 
   @Test
@@ -191,9 +214,10 @@ class SubscriptionServiceIntegrationTest extends BillingIntegrationTestBase {
   }
 
   /**
-   * A subscription started today first bills at 03:00 São Paulo; before that hour billOne is not
-   * due and creates nothing. Moving the clock to the cycle, as SubscriptionBillingIntegrationTest
-   * does, keeps the test independent of the hour it runs at.
+   * A subscription started today bills now; one starting on a future day first bills at the billing
+   * hour of that day, and until then billOne is not due and creates nothing. Moving the clock to
+   * the cycle, as SubscriptionBillingIntegrationTest does, keeps the test independent of the hour
+   * it runs at.
    */
   Order billedInvoiceOf(Subscription subscription) {
     if (subscription.nextBillingAt().isAfter(clock.instant())) {

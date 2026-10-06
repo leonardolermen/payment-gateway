@@ -1,11 +1,15 @@
 stateDiagram-v2
   [*] --> CREATED
-  CREATED --> PENDING: bank accepted
-  CREATED --> FAILED: bank refused
+  CREATED --> PENDING: bank accepted (Pix, Bolecode)
+  CREATED --> AUTHORIZED: card authorized, no capture
+  CREATED --> COMPLETED: card captured
+  CREATED --> FAILED: refused / declined
   PENDING --> COMPLETED: paid
   PENDING --> EXPIRED: not paid in time
   PENDING --> CANCELED: merchant canceled
   EXPIRED --> COMPLETED: late payment (bank wins)
+  AUTHORIZED --> COMPLETED: captured
+  AUTHORIZED --> CANCELED: voided
   COMPLETED --> [*]
   CANCELED --> [*]
   FAILED --> [*]
