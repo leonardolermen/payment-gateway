@@ -6,6 +6,11 @@ package com.gateway.payments.payment;
  */
 public enum EventSource {
   API,
+  /**
+   * The payer, through the public checkout link; the merchant reads it on the payment events to
+   * tell its own API calls from the payer's.
+   */
+  CHECKOUT,
   PROVIDER_WEBHOOK,
   RECONCILIATION,
   EXPIRATION_JOB,

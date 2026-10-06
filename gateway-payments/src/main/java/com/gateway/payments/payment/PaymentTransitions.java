@@ -19,8 +19,8 @@ public final class PaymentTransitions {
           // SYSTEM: the stuck-CREATED sweeper adopts a charge the bank confirms exists (the
           // createCharge
           // response was lost). Not RECONCILIATION: that source means "the bank says it was paid".
-          new Transition(CREATED, PENDING, EnumSet.of(API, SYSTEM)),
-          new Transition(CREATED, FAILED, EnumSet.of(API, SYSTEM)),
+          new Transition(CREATED, PENDING, EnumSet.of(API, CHECKOUT, SYSTEM)),
+          new Transition(CREATED, FAILED, EnumSet.of(API, CHECKOUT, SYSTEM)),
           new Transition(
               PENDING, COMPLETED, EnumSet.of(PROVIDER_WEBHOOK, RECONCILIATION, PROVIDER_POLL)),
           new Transition(PENDING, EXPIRED, EnumSet.of(EXPIRATION_JOB)),
@@ -34,8 +34,8 @@ public final class PaymentTransitions {
           // never passes through PENDING nor EXPIRED: an authorization does not expire at the
           // Cielo,
           // and cancelling it on our own would free a limit the merchant may still want (§11).
-          new Transition(CREATED, COMPLETED, EnumSet.of(API, SYSTEM)),
-          new Transition(CREATED, AUTHORIZED, EnumSet.of(API, SYSTEM)),
+          new Transition(CREATED, COMPLETED, EnumSet.of(API, CHECKOUT, SYSTEM)),
+          new Transition(CREATED, AUTHORIZED, EnumSet.of(API, CHECKOUT, SYSTEM)),
           new Transition(AUTHORIZED, COMPLETED, EnumSet.of(API, PROVIDER_WEBHOOK, RECONCILIATION)),
           new Transition(AUTHORIZED, CANCELED, EnumSet.of(API, PROVIDER_WEBHOOK, RECONCILIATION)));
 

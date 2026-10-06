@@ -11,6 +11,7 @@ import com.gateway.billing.order.OrderAttemptService;
 import com.gateway.billing.order.OrderExpiration;
 import com.gateway.billing.order.OrderService;
 import com.gateway.billing.order.OrderSettlement;
+import com.gateway.billing.order.checkout.CheckoutService;
 import com.gateway.billing.order.checkout.CheckoutTokens;
 import com.gateway.billing.order.checkout.TokenHasher;
 import com.gateway.billing.order.persistence.OrderRepository;
@@ -102,6 +103,16 @@ public class BillingConfiguration {
   @Bean
   PlanService planService(PlanRepository plans, UnitOfWork unitOfWork, Clock clock) {
     return new PlanService(plans, unitOfWork, clock);
+  }
+
+  @Bean
+  CheckoutService checkoutService(
+      CheckoutTokens tokens,
+      OrderRepository orders,
+      OrderAttemptService attempts,
+      PaymentQueries payments,
+      PaymentCancellation cancellation) {
+    return new CheckoutService(tokens, orders, attempts, payments, cancellation);
   }
 
   @Bean
