@@ -71,6 +71,10 @@ class OrderEntity {
   @Column(name = "period_end")
   LocalDate periodEnd;
 
+  @Column(name = "checkout_token_hash", length = 64)
+  @JdbcTypeCode(SqlTypes.CHAR)
+  String checkoutTokenHash;
+
   @Column(name = "attempt_in_progress_at")
   Instant attemptInProgressAt;
 

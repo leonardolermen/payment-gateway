@@ -43,6 +43,7 @@ class OrderServiceIntegrationTest extends BillingIntegrationTestBase {
             customer().id(),
             null,
             null,
+            null,
             clock));
   }
 
@@ -78,6 +79,7 @@ class OrderServiceIntegrationTest extends BillingIntegrationTestBase {
                 null,
                 null,
                 payer,
+                null,
                 null,
                 clock));
 

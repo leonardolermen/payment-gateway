@@ -9,6 +9,8 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 interface OrderJpaRepository extends JpaRepository<OrderEntity, String> {
+  Optional<OrderEntity> findByCheckoutTokenHash(String checkoutTokenHash);
+
   Optional<OrderEntity> findByIdAndMerchantId(String id, String merchantId);
 
   List<OrderEntity> findByMerchantIdAndReferenceOrderByCreatedAtDesc(
@@ -29,7 +31,7 @@ interface OrderJpaRepository extends JpaRepository<OrderEntity, String> {
   @Modifying(clearAutomatically = true, flushAutomatically = true)
   @Query(
       "update OrderEntity o set o.status = :status, o.paidPaymentId = :paidPaymentId, "
-          + "o.paidAt = :paidAt, o.version = :version, o.updatedAt = :updatedAt "
+          + "o.paidAt = :paidAt, o.checkoutTokenHash = :checkoutTokenHash, o.version = :version, o.updatedAt = :updatedAt "
           + "where o.id = :id and o.version = :expectedVersion")
   int updateIfVersion(
       String id,
@@ -37,6 +39,7 @@ interface OrderJpaRepository extends JpaRepository<OrderEntity, String> {
       String status,
       String paidPaymentId,
       Instant paidAt,
+      String checkoutTokenHash,
       long version,
       Instant updatedAt);
 }

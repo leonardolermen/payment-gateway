@@ -26,6 +26,9 @@ public interface OrderRepository {
   /** Without the merchant: the outbox consumer knows only the order id. */
   Optional<Order> findById(String id);
 
+  /** The public checkout lookup: a peppered SHA-256, never the token itself. */
+  Optional<Order> findByCheckoutTokenHash(String hash);
+
   List<Order> findByReference(MerchantId merchantId, String reference, int limit);
 
   List<Order> findBySubscription(String subscriptionId, int limit);

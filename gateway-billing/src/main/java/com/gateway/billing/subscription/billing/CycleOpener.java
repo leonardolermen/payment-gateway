@@ -107,6 +107,7 @@ public class CycleOpener {
             period.start(),
             period.end(),
             expiresAt,
+            null,
             clock);
     Optional<Order> existing = orders.insertInvoiceIfAbsent(draft);
 
