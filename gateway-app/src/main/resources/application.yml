@@ -1,6 +1,11 @@
 spring:
   application:
     name: payment-gateway
+  # The repo root's .env, when there is one: the IDE runs from the root, spring-boot:run from
+  # gateway-app/. Optional because a deployment gets its variables from the environment.
+  # Properties format: no quotes and no inline comments — both become part of the value.
+  config:
+    import: optional:file:.env[.properties],optional:file:../.env[.properties]
   threads:
     virtual:
       enabled: true

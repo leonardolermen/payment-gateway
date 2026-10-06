@@ -1,0 +1,124 @@
+{
+  "codigo_canal_operacao": "API",
+  "codigo_operador": "150012345",
+  "etapa_processo_boleto": "efetivacao",
+  "beneficiario": {
+    "id_beneficiario": "150000123450",
+    "nome_cobranca": "Empresa Beneficiária LTDA",
+    "tipo_pessoa": {
+      "codigo_tipo_pessoa": "J",
+      "numero_cadastro_nacional_pessoa_juridica": "12345678000190"
+    },
+    "endereco": {
+      "nome_logradouro": "Av Paulista",
+      "nome_bairro": "Bela Vista",
+      "nome_cidade": "São Paulo",
+      "sigla_UF": "SP",
+      "numero_CEP": "01310100",
+      "numero": "1000",
+      "complemento": "Andar 10"
+    }
+  },
+  "dado_boleto": {
+    "descricao_instrumento_cobranca": "boleto_pix",
+    "tipo_boleto": "a vista",
+    "codigo_carteira": "109",
+    "codigo_especie": "16",
+    "codigo_tipo_vencimento": 3,
+    "valor_total_titulo": "1234.56",
+    "data_emissao": "2026-01-15",
+    "pagamento_parcial": false,
+    "quantidade_maximo_parcial": "0",
+    "desconto_expresso": false,
+    "pagador": {
+      "pessoa": {
+        "nome_pessoa": "João da Silva",
+        "tipo_pessoa": {
+          "codigo_tipo_pessoa": "F",
+          "numero_cadastro_pessoa_fisica": "12345678901"
+        }
+      },
+      "endereco": {
+        "nome_logradouro": "Rua das Flores",
+        "nome_bairro": "Centro",
+        "nome_cidade": "São Paulo",
+        "sigla_UF": "SP",
+        "numero_CEP": "01310100"
+      }
+    },
+    "sacador_avalista": {
+      "pessoa": {
+        "nome_pessoa": "Maria dos Santos",
+        "tipo_pessoa": {
+          "codigo_tipo_pessoa": "F",
+          "numero_cadastro_pessoa_fisica": "98765432100"
+        }
+      },
+      "endereco": {
+        "nome_logradouro": "Av Brasil",
+        "nome_bairro": "Jardins",
+        "nome_cidade": "São Paulo",
+        "sigla_UF": "SP",
+        "numero_CEP": "01430000"
+      }
+    },
+    "dados_individuais_boleto": [
+      {
+        "id_boleto_individual": "550e8400-e29b-41d4-a716-446655440000",
+        "numero_nosso_numero": "12345678",
+        "dac_titulo": "9",
+        "data_vencimento": "2026-12-31",
+        "valor_titulo": "1234.56",
+        "texto_seu_numero": "REF123456",
+        "codigo_barras": "34191234567890123456789012345678901234567890",
+        "numero_linha_digitavel": "34101234567890123456789012345678901234567890123",
+        "data_limite_pagamento": "2027-01-31",
+        "lista_mensagens_cobranca": [
+          {
+            "mensagem": "Não receber após o vencimento"
+          },
+          {
+            "mensagem": "Multa de 2% após vencimento"
+          }
+        ]
+      }
+    ],
+    "recebimento_divergente": {
+      "codigo_tipo_autorizacao": "03",
+      "codigo_tipo_recebimento": "P",
+      "percentual_minimo": "0.00000",
+      "percentual_maximo": "0.00000"
+    },
+    "instrucao_cobranca": [
+      {
+        "codigo_instrucao_cobranca": "4",
+        "dia_util": false
+      },
+      {
+        "codigo_instrucao_cobranca": "7",
+        "dia_util": true
+      }
+    ],
+    "juros": {
+      "codigo_tipo_juros": "93",
+      "data_juros": "2027-01-01",
+      "valor_juros": "10.50",
+      "percentual_juros": "0.00350"
+    },
+    "multa": {
+      "codigo_tipo_multa": "02",
+      "data_multa": "2027-01-01",
+      "percentual_multa": "2.00000",
+      "valor_multa": "24.69"
+    }
+  },
+  "dados_qrcode": {
+    "chave": "12345678000190",
+    "txid": "BL1234567890123456789012345678901",
+    "id_location": 123456789,
+    "location": "https://api.itau.com.br/pix/qr/v2/550e8400-e29b-41d4-a716-446655440000",
+    "emv": "00020126580014br.gov.bcb.pix0136550e8400e29b41d4a716446655440000520400005303986540512.345802BR5925Empresa Beneficiaria LTDA6009SAO PAULO62070503***63041D3A",
+    "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+    "tipo_cobranca": "cob"
+  }
+}

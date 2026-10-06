@@ -1,0 +1,211 @@
+{
+  "mappings": [
+    {
+      "request": {
+        "method": "POST",
+        "urlPath": "/itau/oauth"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "access_token": "mock-token",
+          "token_type": "Bearer",
+          "expires_in": 300
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "urlPathPattern": "/itau/pix/cob/[A-Za-z0-9]+"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "bodyFileName": "itau_cob.json",
+        "transformers": [
+          "response-template"
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPathPattern": "/itau/pix/cob/[A-Za-z0-9]+"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "bodyFileName": "itau_cob_get.json",
+        "transformers": [
+          "response-template"
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "PATCH",
+        "urlPathPattern": "/itau/pix/cob/[A-Za-z0-9]+"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "bodyFileName": "itau_cob_removed.json",
+        "transformers": [
+          "response-template"
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/itau/pix/cob"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "parametros": {
+            "paginacao": {
+              "paginaAtual": 0,
+              "itensPorPagina": 100,
+              "quantidadeDePaginas": 1,
+              "quantidadeTotalDeItens": 0
+            }
+          },
+          "cobs": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "urlPathPattern": "/itau/pix/pix/[A-Za-z0-9]+/devolucao/[A-Za-z0-9]+"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "bodyFileName": "itau_put_devolucao_201_processing.json"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "urlPath": "/itau/issue/boletos-pix"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "bodyFileName": "itau_post_boletos_pix_200.json"
+      }
+    },
+    {
+      "priority": 1,
+      "request": {
+        "method": "POST",
+        "urlPath": "/cielo/api/1/sales",
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": "$[?(@.Payment.CreditCard.CardNumber == '4024007153760052')]"
+          }
+        ]
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "bodyFileName": "cielo_post_sales_201_denied.json"
+      }
+    },
+    {
+      "priority": 5,
+      "request": {
+        "method": "POST",
+        "urlPath": "/cielo/api/1/sales"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "bodyFileName": "cielo_sale_authorized.json",
+        "transformers": [
+          "response-template"
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "urlPathPattern": "/cielo/api/1/sales/[^/]+/capture"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "bodyFileName": "cielo_put_capture_200.json"
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "urlPathPattern": "/cielo/api/1/sales/[^/]+/void"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "bodyFileName": "cielo_put_void_200.json"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPathPattern": "/cielo/query/1/sales/[^/]+"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "bodyFileName": "cielo_get_sale_200_credit.json"
+      }
+    },
+    {
+      "request": {
+        "method": "PATCH",
+        "urlPathPattern": "/itau/instruction/boletos/[^/]+/baixa"
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/itau/query/boletos"
+      },
+      "response": {
+        "status": 404
+      }
+    }
+  ]
+}
