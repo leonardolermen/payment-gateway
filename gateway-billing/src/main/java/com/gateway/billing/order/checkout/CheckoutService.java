@@ -89,8 +89,8 @@ public class CheckoutService {
   // the merchant API keeps ORDER_CLOSED as a 409.
   private void requireOpen(Order order) {
     if (!order.isOpen()) {
-      throw new DomainException(
-          "CHECKOUT_ORDER_CLOSED", "order " + order.id() + " is " + order.status());
+      // Fixed: the GET already tells the payer the status, and the order id is not theirs to see.
+      throw new DomainException("CHECKOUT_ORDER_CLOSED", "this order can no longer be paid");
     }
   }
 

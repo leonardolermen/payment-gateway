@@ -425,6 +425,7 @@ class CheckoutApiIntegrationTest {
     assertThat(second.getResponseBody())
         .containsEntry("type", "urn:gateway:ORDER_HAS_ACTIVE_PAYMENT")
         .containsEntry("payment_id", first);
+    assertThat(second.getResponseBody().toString()).doesNotContain("chk_");
   }
 
   @Test
@@ -453,6 +454,7 @@ class CheckoutApiIntegrationTest {
     assertThat(cancel.getStatus().value()).isEqualTo(422);
     assertThat(cancel.getResponseBody())
         .containsEntry("type", "urn:gateway:CHECKOUT_CANNOT_CANCEL_CARD");
+    assertThat(cancel.getResponseBody().toString()).doesNotContain("chk_");
   }
 
   @Test
@@ -479,6 +481,7 @@ class CheckoutApiIntegrationTest {
 
     assertThat(again.getStatus().value()).isEqualTo(410);
     assertThat(again.getResponseBody()).containsEntry("type", "urn:gateway:CHECKOUT_ORDER_CLOSED");
+    assertThat(again.getResponseBody().toString()).doesNotContain("chk_");
   }
 
   @Test
@@ -539,5 +542,21 @@ class CheckoutApiIntegrationTest {
 
     assertThat(read.getStatus().value()).isEqualTo(404);
     assertThat(cancel.getStatus().value()).isEqualTo(404);
+  }
+
+  // Spring's fallback /error body echoes the request path, which carries the token; these three
+  // never reach a controller, so only the advice stands between the token and the response.
+  @Test
+  @SuppressWarnings("rawtypes")
+  void errorsOutsideTheControllersNeverEchoTheToken() {
+    String base = "/v1/checkout/" + order(apiKey)[1];
+
+    EntityExchangeResult<Map> unmapped = publicGet(base + "/foo");
+    EntityExchangeResult<Map> wrongMethod = publicGet(base + "/payments");
+
+    assertThat(unmapped.getStatus().value()).isEqualTo(404);
+    assertThat(unmapped.getResponseBody().toString()).doesNotContain("chk_");
+    assertThat(wrongMethod.getStatus().value()).isEqualTo(405);
+    assertThat(wrongMethod.getResponseBody().toString()).doesNotContain("chk_");
   }
 }

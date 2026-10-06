@@ -12,12 +12,16 @@ import java.net.URI;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import tools.jackson.databind.exc.InvalidTypeIdException;
 
 /**
@@ -173,6 +177,36 @@ public class ErrorHandler {
         HttpStatus.BAD_GATEWAY,
         "PROVIDER_ERROR",
         "the payment provider could not complete the request");
+  }
+
+  /**
+   * The three below exist because anything that falls through to Spring's BasicErrorController
+   * answers with a map whose "path" is the full request URI, and on the public checkout that URI
+   * carries the token. The details are fixed and never name the path.
+   */
+  @ExceptionHandler(NoResourceFoundException.class)
+  public ProblemDetail noSuchRoute(NoResourceFoundException e) {
+    return problem(HttpStatus.NOT_FOUND, "NOT_FOUND", "no such route");
+  }
+
+  @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+  public ResponseEntity<ProblemDetail> methodNotAllowed(HttpRequestMethodNotSupportedException e) {
+    ResponseEntity.BodyBuilder response = ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED);
+    if (e.getSupportedHttpMethods() != null) {
+      HttpHeaders headers = new HttpHeaders();
+      headers.setAllow(e.getSupportedHttpMethods());
+      response.headers(headers);
+    }
+
+    return response.body(
+        problem(HttpStatus.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED", "method not allowed"));
+  }
+
+  /** Last resort; every more specific handler above wins over it. */
+  @ExceptionHandler(Exception.class)
+  public ProblemDetail unexpected(Exception e) {
+    log.error("unexpected error", e);
+    return problem(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "unexpected error");
   }
 
   private static ProblemDetail problem(HttpStatus status, String code, String detail) {
