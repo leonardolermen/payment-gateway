@@ -10,15 +10,22 @@ Spec: `docs/superpowers/specs/2026-09-23-payment-gateway-design.md`. Decisions: 
 ```bash
 docker compose up -d
 ./mvnw -DskipTests install          # first run, and after changing a sibling module
-export GATEWAY_ADMIN_KEY=dev-admin GATEWAY_API_KEY_PEPPER=dev-pepper
-export GATEWAY_MASTER_KEY=$(openssl rand -base64 32)
-export WEBHOOK_MTLS_PORT=0          # no inbound bank webhook connector locally
+cp .env.example .env                # then fill in the values below
 ./mvnw -pl gateway-app spring-boot:run
 ```
 
+The app reads the repo root's `.env` on startup, so the IDE's run configuration needs no environment
+variables. The minimum for a local run:
+
+```properties
+GATEWAY_ADMIN_KEY=dev-admin
+GATEWAY_API_KEY_PEPPER=dev-pepper
+GATEWAY_MASTER_KEY=<output of: openssl rand -base64 32>
+WEBHOOK_MTLS_PORT=0
+```
+
 Without `GATEWAY_MASTER_KEY` the app does not start (the master key encrypts merchant credentials).
-A key generated on every run cannot decrypt the credentials saved by the previous one: to keep local
-merchants across restarts, pin it in `.env`.
+Keep the same key across runs: a new one cannot decrypt the credentials saved under the previous one.
 Without `GATEWAY_ADMIN_KEY` the admin API answers 403 — closed by default (the header is `X-Admin-Key`).
 
 `-pl gateway-app` resolves the sibling modules from `~/.m2`, hence the `install` first. Do not add `-am`
