@@ -44,8 +44,9 @@ public class ErrorHandler {
    * DIVERGENCE_CLOSED (the row was already decided) and DISPUTE_ALREADY_OPEN (one dispute per
    * payment at a time). JOB_IN_FLIGHT and JOB_NOT_PENDING are 409: a worker holds the job inside
    * its lease, or it is already DONE or DEAD. JOB_NOT_RERUNNABLE is 409: run-now on a DONE job,
-   * refused because not every handler is idempotent. {@code Map.ofEntries}: {@code Map.of} stops at
-   * ten pairs.
+   * refused because not every handler is idempotent. CHECKOUT_ORDER_CLOSED is 410, not 409: for the
+   * payer the link is gone, nothing they do changes that. {@code Map.ofEntries}: {@code Map.of}
+   * stops at ten pairs.
    */
   private static final Map<String, HttpStatus> STATUS_BY_CODE =
       Map.ofEntries(
@@ -55,6 +56,7 @@ public class ErrorHandler {
           Map.entry("CUSTOMER_EXISTS", HttpStatus.CONFLICT),
           Map.entry("CUSTOMER_HAS_ACTIVE_SUBSCRIPTION", HttpStatus.CONFLICT),
           Map.entry("ORDER_CLOSED", HttpStatus.CONFLICT),
+          Map.entry("CHECKOUT_ORDER_CLOSED", HttpStatus.GONE),
           Map.entry("ORDER_HAS_ACTIVE_PAYMENT", HttpStatus.CONFLICT),
           Map.entry("SUBSCRIPTION_NOT_ACTIVE", HttpStatus.CONFLICT),
           Map.entry("CONFLICT", HttpStatus.CONFLICT),

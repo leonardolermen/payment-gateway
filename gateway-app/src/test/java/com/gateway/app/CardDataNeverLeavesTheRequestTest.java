@@ -346,6 +346,30 @@ class CardDataNeverLeavesTheRequestTest {
     orderAttempt.remove("customer");
     post(apiKey, "p10", "/v1/orders/" + orderId + "/payments", orderAttempt, 201);
 
+    // The payer's own checkout: the same CardAttemptBody, reached with no key through the token.
+    String checkoutUrl =
+        (String)
+            post(
+                    apiKey,
+                    "p11",
+                    "/v1/orders",
+                    Map.of("amount", 12990, "currency", "BRL", "customer_id", customerId),
+                    201)
+                .get("checkout_url");
+    String token = checkoutUrl.substring(checkoutUrl.lastIndexOf('/') + 1);
+    Map<String, Object> checkoutAttempt = new HashMap<>(newCard(NUMBER, true, false));
+    checkoutAttempt.remove("amount");
+    checkoutAttempt.remove("currency");
+    checkoutAttempt.remove("customer");
+    http()
+        .post()
+        .uri("/v1/checkout/" + token + "/payments")
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(checkoutAttempt)
+        .exchange()
+        .expectStatus()
+        .isEqualTo(201);
+
     // The scan is not vacuous: every step reached the Cielo, and the numbers only the Cielo. The
     // refused card never leaves the gateway.
     for (String number : List.of(NUMBER, DECLINED_NUMBER, CIELO_REFUSES)) {

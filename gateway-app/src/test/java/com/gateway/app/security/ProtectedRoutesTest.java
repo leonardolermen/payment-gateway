@@ -25,4 +25,18 @@ class ProtectedRoutesTest {
   void actuatorDoesNot() {
     assertThat(ProtectedRoutes.requiresApiKey("/actuator/health")).isFalse();
   }
+
+  @Test
+  void checkoutRoutesDoNot() {
+    assertThat(ProtectedRoutes.requiresApiKey("/v1/checkout/chk_x")).isFalse();
+    assertThat(ProtectedRoutes.requiresApiKey("/v1/checkout/chk_x/payments")).isFalse();
+  }
+
+  @Test
+  void checkoutIsThePayersPrefixOnly() {
+    assertThat(ProtectedRoutes.isCheckout("/v1/checkout/chk_x")).isTrue();
+    assertThat(ProtectedRoutes.isCheckout("/v1/checkout/chk_x/payments/pay_1/cancel")).isTrue();
+    assertThat(ProtectedRoutes.isCheckout("/v1/checkouts/chk_x")).isFalse();
+    assertThat(ProtectedRoutes.isCheckout("/v1/orders/ord_1/checkout-token/rotate")).isFalse();
+  }
 }
