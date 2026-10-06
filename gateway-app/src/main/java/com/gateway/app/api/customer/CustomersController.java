@@ -32,6 +32,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/v1/customers")
 public class CustomersController {
+  private static final int MAX_PAGE = 100;
+
   private final CustomerService customers;
   private final Clock clock;
 
@@ -65,8 +67,23 @@ public class CustomersController {
    * would echo the full document back into a response and its logs.
    */
   @GetMapping
-  public List<CustomerResponse> findByDocument(@RequestParam String document) {
+  public List<CustomerResponse> list(
+      @RequestParam(required = false) String document,
+      @RequestParam(required = false) String cursor,
+      @RequestParam(defaultValue = "20") int limit) {
     MerchantContext.Current caller = MerchantContext.current();
+
+    if (document == null) {
+      if (limit <= 0 || limit > MAX_PAGE) {
+        throw new IllegalArgumentException("limit must be between 1 and " + MAX_PAGE);
+      }
+
+      return customers
+          .list(caller.merchantId(), Environments.toProvider(caller.environment()), cursor, limit)
+          .stream()
+          .map(CustomerResponse::from)
+          .toList();
+    }
 
     // Document.of throws InvalidValue, which no handler maps: unconverted it would be a 500.
     try {

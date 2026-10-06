@@ -579,7 +579,7 @@ class CheckoutApiIntegrationTest {
     EntityExchangeResult<Map> missingParameter =
         http()
             .get()
-            .uri("/v1/customers")
+            .uri("/v1/subscriptions")
             .header("Authorization", "Bearer " + apiKey)
             .exchange()
             .expectBody(Map.class)

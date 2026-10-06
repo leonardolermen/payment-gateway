@@ -11,6 +11,7 @@ import com.gateway.app.security.MerchantContext;
 import com.gateway.billing.order.Order;
 import com.gateway.billing.order.OrderAttemptService;
 import com.gateway.billing.order.OrderService;
+import com.gateway.billing.order.OrderStatus;
 import com.gateway.billing.order.checkout.CheckoutTokens;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.payments.payment.EventSource;
@@ -119,15 +120,31 @@ public class OrdersController {
   }
 
   @GetMapping
-  public List<OrderResponse> listByReference(
-      @RequestParam String reference, @RequestParam(defaultValue = "20") int limit) {
+  public List<OrderResponse> list(
+      @RequestParam(required = false) String reference,
+      @RequestParam(required = false) OrderStatus status,
+      @RequestParam(required = false) String cursor,
+      @RequestParam(defaultValue = "20") int limit) {
     if (limit <= 0 || limit > MAX_PAGE) {
       throw new IllegalArgumentException("limit must be between 1 and " + MAX_PAGE);
     }
 
-    MerchantId merchantId = MerchantContext.current().merchantId();
+    MerchantContext.Current caller = MerchantContext.current();
+    MerchantId merchantId = caller.merchantId();
 
-    return orders.listByReference(merchantId, reference, limit).stream()
+    if (reference != null) {
+      if (cursor != null) {
+        throw new IllegalArgumentException("cursor and reference cannot be combined");
+      }
+
+      return orders.listByReference(merchantId, reference, limit).stream()
+          .map(order -> response(merchantId, order))
+          .toList();
+    }
+
+    return orders
+        .list(merchantId, Environments.toProvider(caller.environment()), status, cursor, limit)
+        .stream()
         .map(order -> response(merchantId, order))
         .toList();
   }

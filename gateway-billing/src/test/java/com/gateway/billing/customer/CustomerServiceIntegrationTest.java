@@ -168,6 +168,12 @@ class CustomerServiceIntegrationTest extends BillingIntegrationTestBase {
     }
 
     @Override
+    public java.util.List<Customer> listActive(
+        MerchantId merchantId, ProviderEnvironment environment, String cursorIdOrNull, int limit) {
+      return real.listActive(merchantId, environment, cursorIdOrNull, limit);
+    }
+
+    @Override
     public Optional<Customer> findActiveByDocumentHash(
         MerchantId merchantId, ProviderEnvironment environment, String documentHash) {
       return real.findActiveByDocumentHash(merchantId, environment, documentHash);

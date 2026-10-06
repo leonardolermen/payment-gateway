@@ -1153,6 +1153,7 @@ opening one order per cycle (the invoice), so everything below is the same five 
 | `POST /v1/customers` * | 201 | 409 `CUSTOMER_EXISTS` (+`customer_id`); 422 `CUSTOMER_INVALID` |
 | `GET /v1/customers/{id}` | 200 | 404 `NOT_FOUND` |
 | `GET /v1/customers?document=` | 200, a list of 0 or 1 | 400 on an invalid document |
+| `GET /v1/customers?limit=&cursor=` | 200, active customers of the key's environment, newest first (`cursor` = id of the last one seen, `limit` 1..100, default 20) | 400 on a bad `limit` |
 | `PATCH /v1/customers/{id}` (`name`, `email`, `address`) | 200 | 400 on an empty body or an unknown field (`document` is immutable) |
 | `DELETE /v1/customers/{id}` | 204 | 409 `CUSTOMER_HAS_ACTIVE_SUBSCRIPTION` |
 | `GET /v1/customers/{id}/cards` | 200 | |
@@ -1160,7 +1161,7 @@ opening one order per cycle (the invoice), so everything below is the same five 
 | `POST /v1/orders/{id}/payments` * | 201 payment | 409 `ORDER_CLOSED`; 409 `ORDER_HAS_ACTIVE_PAYMENT` (+`payment_id`); 402 `CARD_DECLINED` |
 | `POST /v1/orders/{id}/cancel` * | 200 `CANCELED` | 409 `ORDER_CLOSED`; 409 `ALREADY_PAID` |
 | `POST /v1/orders/{id}/checkout-token/rotate` * | 200 with a new `checkout_url` | 409 `ORDER_CLOSED` |
-| `GET /v1/orders/{id}`, `GET /v1/orders?reference=&limit=`, `GET /v1/orders/{id}/payments` | 200 | |
+| `GET /v1/orders/{id}`, `GET /v1/orders?reference=&limit=`, `GET /v1/orders?status=&limit=&cursor=` (the key's environment, newest first, `status` one of OPEN, PAID, CANCELED, EXPIRED), `GET /v1/orders/{id}/payments` | 200 | 400 on an unknown `status`, a bad `limit`, or `cursor` with `reference` |
 | `POST /v1/plans` * | 201 | 400 on a range error |
 | `GET /v1/plans/{id}`, `GET /v1/plans?active=` | 200 | |
 | `PATCH /v1/plans/{id}` (`name`, `active`) | 200 | 422 `PLAN_IMMUTABLE` naming the field |

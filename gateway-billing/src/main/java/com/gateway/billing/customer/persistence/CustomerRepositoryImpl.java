@@ -13,8 +13,10 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -78,6 +80,16 @@ public class CustomerRepositoryImpl implements CustomerRepository {
   @Override
   public Optional<Customer> findActive(MerchantId merchantId, String id) {
     return jpa.findByIdAndMerchantIdAndDeletedAtIsNull(id, merchantId.value()).map(this::toDomain);
+  }
+
+  @Override
+  public List<Customer> listActive(
+      MerchantId merchantId, ProviderEnvironment environment, String cursorIdOrNull, int limit) {
+    return jpa
+        .listActive(merchantId.value(), environment.name(), cursorIdOrNull, Limit.of(limit))
+        .stream()
+        .map(this::toDomain)
+        .toList();
   }
 
   @Override
