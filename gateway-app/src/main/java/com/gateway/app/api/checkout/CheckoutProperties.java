@@ -19,6 +19,11 @@ public record CheckoutProperties(String baseUrl, List<String> corsOrigins, int r
       corsOrigins = List.of();
     }
 
+    // GATEWAY_CORS_ORIGINS= or a trailing comma binds an empty string; registering it as an
+    // origin would turn "CORS off" into a configuration that looks on.
+    corsOrigins =
+        corsOrigins.stream().map(String::strip).filter(origin -> !origin.isEmpty()).toList();
+
     if (rateLimitPerMinute <= 0) {
       rateLimitPerMinute = 60;
     }

@@ -27,6 +27,15 @@ class MaskerTest {
             "{\"client_secret\":\"***\",\"secret\":\"***\",\"pix_copia_e_cola\":\"***\",\"name\":\"ok\"}");
   }
 
+  /** The checkout token travels in the path, so request-URI logging would otherwise record it. */
+  @Test
+  void masksCheckoutToken() {
+    String token = "chk_" + "A".repeat(20) + "-_" + "b".repeat(21);
+
+    assertThat(Masker.mask("/v1/checkout/" + token + "/payments"))
+        .isEqualTo("/v1/checkout/chk_****/payments");
+  }
+
   @Test
   void leavesTheRestAlone() {
     assertThat(Masker.mask("payment pay_01ARZ3 COMPLETED at 15990 cents"))
