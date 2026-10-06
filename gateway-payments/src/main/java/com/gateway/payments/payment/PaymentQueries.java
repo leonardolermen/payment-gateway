@@ -3,6 +3,7 @@ package com.gateway.payments.payment;
 import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.payments.payment.persistence.PaymentRepository;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -40,6 +41,10 @@ public class PaymentQueries {
 
   public List<Payment> listByOrder(MerchantId merchantId, String orderId) {
     return payments.listByMerchantAndOrder(merchantId, orderId);
+  }
+
+  public List<Payment> listByOrders(MerchantId merchantId, Collection<String> orderIds) {
+    return payments.listByMerchantAndOrders(merchantId, orderIds);
   }
 
   public List<PaymentEvent> events(MerchantId merchantId, String id) {

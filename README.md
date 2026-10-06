@@ -1152,7 +1152,8 @@ opening one order per cycle (the invoice), so everything below is the same five 
 |---|---|---|
 | `POST /v1/customers` * | 201 | 409 `CUSTOMER_EXISTS` (+`customer_id`); 422 `CUSTOMER_INVALID` |
 | `GET /v1/customers/{id}` | 200 | 404 `NOT_FOUND` |
-| `GET /v1/customers?document=` | 200, a list of 0 or 1 | 400 on an invalid document |
+| `GET /v1/customers?limit=&cursor=` | 200, active customers of the key's environment, newest first | 400 on a `limit` outside 1–100 |
+| `GET /v1/customers?document=` | 200, a list of 0 or 1 | 400 on an invalid document, or with `cursor` |
 | `PATCH /v1/customers/{id}` (`name`, `email`, `address`) | 200 | 400 on an empty body or an unknown field (`document` is immutable) |
 | `DELETE /v1/customers/{id}` | 204 | 409 `CUSTOMER_HAS_ACTIVE_SUBSCRIPTION` |
 | `GET /v1/customers/{id}/cards` | 200 | |
@@ -1160,7 +1161,8 @@ opening one order per cycle (the invoice), so everything below is the same five 
 | `POST /v1/orders/{id}/payments` * | 201 payment | 409 `ORDER_CLOSED`; 409 `ORDER_HAS_ACTIVE_PAYMENT` (+`payment_id`); 402 `CARD_DECLINED` |
 | `POST /v1/orders/{id}/cancel` * | 200 `CANCELED` | 409 `ORDER_CLOSED`; 409 `ALREADY_PAID` |
 | `POST /v1/orders/{id}/checkout-token/rotate` * | 200 with a new `checkout_url` | 409 `ORDER_CLOSED` |
-| `GET /v1/orders/{id}`, `GET /v1/orders?reference=&limit=`, `GET /v1/orders/{id}/payments` | 200 | |
+| `GET /v1/orders?limit=&cursor=&status=` | 200, orders of the key's environment, newest first | 400 on an unknown `status` |
+| `GET /v1/orders/{id}`, `GET /v1/orders?reference=&limit=`, `GET /v1/orders/{id}/payments` | 200 | 400 when `reference` comes with `cursor` or `status` |
 | `POST /v1/plans` * | 201 | 400 on a range error |
 | `GET /v1/plans/{id}`, `GET /v1/plans?active=` | 200 | |
 | `PATCH /v1/plans/{id}` (`name`, `active`) | 200 | 422 `PLAN_IMMUTABLE` naming the field |
@@ -1171,6 +1173,10 @@ opening one order per cycle (the invoice), so everything below is the same five 
 | `GET /v1/subscriptions/{id}/orders` | 200, newest first | |
 
 `*` requires an `Idempotency-Key` (400 `IDEMPOTENCY_KEY_REQUIRED` otherwise).
+
+Lists page by `cursor`, the `id` of the last item of the previous page (ids are time-ordered), like
+`GET /v1/payments`. A TEST key lists only TEST orders and customers, a LIVE key only LIVE ones. Every
+order carries `customer_name`, null when it has no customer or the customer was deleted.
 
 ```bash
 curl -X POST localhost:8080/v1/customers -H "Authorization: Bearer $TEST_KEY" \

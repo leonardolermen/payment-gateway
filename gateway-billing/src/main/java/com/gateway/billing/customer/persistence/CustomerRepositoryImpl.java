@@ -12,9 +12,13 @@ import com.gateway.kernel.security.Sealer;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.nio.charset.StandardCharsets;
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -86,6 +90,29 @@ public class CustomerRepositoryImpl implements CustomerRepository {
     return jpa.findByMerchantIdAndEnvironmentAndDocumentHashAndDeletedAtIsNull(
             merchantId.value(), environment.name(), documentHash)
         .map(this::toDomain);
+  }
+
+  @Override
+  public List<Customer> listActive(
+      MerchantId merchantId, ProviderEnvironment environment, String cursorId, int limit) {
+    return jpa
+        .findActivePage(merchantId.value(), environment.name(), cursorId, Limit.of(limit))
+        .stream()
+        .map(this::toDomain)
+        .toList();
+  }
+
+  @Override
+  public Map<String, String> activeNames(MerchantId merchantId, Collection<String> ids) {
+    if (ids.isEmpty()) {
+      return Map.of();
+    }
+
+    return jpa.findActiveNames(merchantId.value(), ids).stream()
+        .collect(
+            Collectors.toMap(
+                CustomerJpaRepository.CustomerName::getId,
+                CustomerJpaRepository.CustomerName::getName));
   }
 
   private Customer toDomain(CustomerEntity entity) {

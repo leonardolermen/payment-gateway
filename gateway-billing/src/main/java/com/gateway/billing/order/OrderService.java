@@ -5,6 +5,7 @@ import com.gateway.billing.order.persistence.OrderRepository;
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.kernel.ids.MerchantId;
+import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.payments.UnitOfWork;
 import com.gateway.payments.jobs.Job;
 import com.gateway.payments.jobs.persistence.JobRepository;
@@ -16,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -90,10 +92,29 @@ public class OrderService {
     return orders.findByReference(merchantId, reference, limit);
   }
 
+  public List<Order> list(
+      MerchantId merchantId,
+      ProviderEnvironment environment,
+      OrderStatus status,
+      String cursor,
+      int limit) {
+    return orders.list(merchantId, environment, status, cursor, limit);
+  }
+
   public List<Payment> attemptsOf(MerchantId merchantId, String id) {
     get(merchantId, id);
 
     return payments.listByOrder(merchantId, id);
+  }
+
+  /**
+   * The attempts of a page of orders, by order id, from one query; an order with none is absent.
+   */
+  public Map<String, List<Payment>> attemptsOf(MerchantId merchantId, List<Order> page) {
+    List<String> ids = page.stream().map(Order::id).toList();
+
+    return payments.listByOrders(merchantId, ids).stream()
+        .collect(Collectors.groupingBy(Payment::orderId));
   }
 
   /**

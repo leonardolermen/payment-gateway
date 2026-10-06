@@ -15,6 +15,7 @@ import com.gateway.payments.card.SavedCard;
 import com.gateway.payments.card.SavedCards;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -92,6 +93,16 @@ public class CustomerService {
       MerchantId merchantId, ProviderEnvironment environment, String document) {
     return customers.findActiveByDocumentHash(
         merchantId, environment, documentHash(Document.of(document)));
+  }
+
+  public List<Customer> list(
+      MerchantId merchantId, ProviderEnvironment environment, String cursor, int limit) {
+    return customers.listActive(merchantId, environment, cursor, limit);
+  }
+
+  /** Id to name of the active customers among {@code ids}; a deleted one has no name to show. */
+  public Map<String, String> namesOf(MerchantId merchantId, Collection<String> ids) {
+    return customers.activeNames(merchantId, ids);
   }
 
   public Customer update(

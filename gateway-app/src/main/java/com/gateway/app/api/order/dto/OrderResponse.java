@@ -10,6 +10,9 @@ import java.util.List;
  * An order with its attempts summarised; the full payment is GET /v1/payments/{id}. {@code
  * subscription_id}, {@code invoice_number} and {@code period} are null on a standalone order.
  *
+ * <p>{@code customerName} is null without a customer or once the customer is deleted: deleting is
+ * the merchant saying the name should no longer be on display.
+ *
  * <p>{@code checkoutUrl} is non-null only on create and rotate: the token is not stored (only its
  * hash), so GET has nothing to rebuild the url from and always returns null there.
  */
@@ -21,6 +24,7 @@ public record OrderResponse(
     String reference,
     String description,
     String customerId,
+    String customerName,
     String paidPaymentId,
     Instant paidAt,
     Instant expiresAt,
@@ -41,12 +45,13 @@ public record OrderResponse(
     }
   }
 
-  public static OrderResponse from(Order order, List<Payment> attempts) {
-    return from(order, attempts, null);
+  public static OrderResponse from(Order order, List<Payment> attempts, String customerName) {
+    return from(order, attempts, customerName, null);
   }
 
   /** {@code checkoutUrl} is non-null only where the plain token is in hand: creation, rotation. */
-  public static OrderResponse from(Order order, List<Payment> attempts, String checkoutUrl) {
+  public static OrderResponse from(
+      Order order, List<Payment> attempts, String customerName, String checkoutUrl) {
     Period period =
         order.periodStart() == null ? null : new Period(order.periodStart(), order.periodEnd());
 
@@ -58,6 +63,7 @@ public record OrderResponse(
         order.reference(),
         order.description(),
         order.customerId(),
+        customerName,
         order.paidPaymentId(),
         order.paidAt(),
         order.expiresAt(),

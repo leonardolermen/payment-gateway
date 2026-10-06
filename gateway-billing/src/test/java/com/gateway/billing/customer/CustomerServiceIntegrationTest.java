@@ -19,6 +19,9 @@ import com.gateway.payments.payment.create.CardCustomerData;
 import com.gateway.payments.payment.create.CardDataFactory;
 import com.gateway.payments.payment.create.CreateCardPayment;
 import java.time.YearMonth;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -171,6 +174,17 @@ class CustomerServiceIntegrationTest extends BillingIntegrationTestBase {
     public Optional<Customer> findActiveByDocumentHash(
         MerchantId merchantId, ProviderEnvironment environment, String documentHash) {
       return real.findActiveByDocumentHash(merchantId, environment, documentHash);
+    }
+
+    @Override
+    public List<Customer> listActive(
+        MerchantId merchantId, ProviderEnvironment environment, String cursorId, int limit) {
+      return real.listActive(merchantId, environment, cursorId, limit);
+    }
+
+    @Override
+    public Map<String, String> activeNames(MerchantId merchantId, Collection<String> ids) {
+      return real.activeNames(merchantId, ids);
     }
   }
 

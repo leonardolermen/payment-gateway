@@ -1,7 +1,9 @@
 package com.gateway.billing.order.persistence;
 
 import com.gateway.billing.order.Order;
+import com.gateway.billing.order.OrderStatus;
 import com.gateway.kernel.ids.MerchantId;
+import com.gateway.kernel.provider.ProviderEnvironment;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -30,6 +32,14 @@ public interface OrderRepository {
   Optional<Order> findByCheckoutTokenHash(String hash);
 
   List<Order> findByReference(MerchantId merchantId, String reference, int limit);
+
+  /** Newest first, one environment; {@code status} and {@code cursorId} are optional. */
+  List<Order> list(
+      MerchantId merchantId,
+      ProviderEnvironment environment,
+      OrderStatus status,
+      String cursorId,
+      int limit);
 
   List<Order> findBySubscription(String subscriptionId, int limit);
 

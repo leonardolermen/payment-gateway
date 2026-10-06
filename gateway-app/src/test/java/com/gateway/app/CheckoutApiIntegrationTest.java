@@ -579,7 +579,8 @@ class CheckoutApiIntegrationTest {
     EntityExchangeResult<Map> missingParameter =
         http()
             .get()
-            .uri("/v1/customers")
+            // customer_id is required: a missing one is Spring's own 400, not ours.
+            .uri("/v1/subscriptions")
             .header("Authorization", "Bearer " + apiKey)
             .exchange()
             .expectBody(Map.class)

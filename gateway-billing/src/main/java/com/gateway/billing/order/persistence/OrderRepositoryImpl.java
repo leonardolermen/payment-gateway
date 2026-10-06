@@ -22,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.springframework.data.domain.Limit;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
@@ -130,6 +131,25 @@ public class OrderRepositoryImpl implements OrderRepository {
     return jpa
         .findByMerchantIdAndReferenceOrderByCreatedAtDesc(
             merchantId.value(), reference, PageRequest.of(0, limit))
+        .stream()
+        .map(this::toDomain)
+        .toList();
+  }
+
+  @Override
+  public List<Order> list(
+      MerchantId merchantId,
+      ProviderEnvironment environment,
+      OrderStatus status,
+      String cursorId,
+      int limit) {
+    return jpa
+        .findPage(
+            merchantId.value(),
+            environment.name(),
+            status == null ? null : status.name(),
+            cursorId,
+            Limit.of(limit))
         .stream()
         .map(this::toDomain)
         .toList();

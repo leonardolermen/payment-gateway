@@ -6,6 +6,7 @@ import com.gateway.payments.payment.PaymentCount;
 import com.gateway.payments.payment.PaymentEvent;
 import com.gateway.payments.payment.PaymentStatus;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -70,6 +71,9 @@ public interface PaymentRepository {
 
   /** Every attempt of a billing order, oldest first. */
   List<Payment> listByMerchantAndOrder(MerchantId merchantId, String orderId);
+
+  /** The attempts of several orders in one query, oldest first: a list page, not one per row. */
+  List<Payment> listByMerchantAndOrders(MerchantId merchantId, Collection<String> orderIds);
 
   /**
    * {@code SELECT ... FOR UPDATE}; requires an active transaction. For the refund reserve: two
