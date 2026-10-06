@@ -1,5 +1,6 @@
 package com.gateway.app.api.order;
 
+import com.gateway.app.api.checkout.CheckoutProperties;
 import com.gateway.app.api.order.dto.CreateOrderRequest;
 import com.gateway.app.api.order.dto.OrderAttemptRequest;
 import com.gateway.app.api.order.dto.OrderResponse;
@@ -38,16 +39,19 @@ public class OrdersController {
   private final OrderService orders;
   private final OrderAttemptService attempts;
   private final CheckoutTokens checkoutTokens;
+  private final CheckoutProperties checkout;
   private final Clock clock;
 
   public OrdersController(
       OrderService orders,
       OrderAttemptService attempts,
       CheckoutTokens checkoutTokens,
+      CheckoutProperties checkout,
       Clock clock) {
     this.orders = orders;
     this.attempts = attempts;
     this.checkoutTokens = checkoutTokens;
+    this.checkout = checkout;
     this.clock = clock;
   }
 
@@ -56,7 +60,7 @@ public class OrdersController {
     MerchantContext.Current caller = MerchantContext.current();
 
     // Only the hash goes into the order; the plain token never touches the service, which logs and
-    // emits. The checkout url built from it joins the response in a later task.
+    // emits. The url built from it is returned once, here and on rotation.
     CheckoutTokens.Issued issued = checkoutTokens.issue();
     Order order =
         request.toOrder(
@@ -67,7 +71,24 @@ public class OrdersController {
     Order created = orders.create(order);
 
     return withResource(
-        HttpStatus.CREATED, created.id(), OrderResponse.from(created, List.of(), null));
+        HttpStatus.CREATED,
+        created.id(),
+        OrderResponse.from(created, List.of(), checkout.urlFor(issued.token().value())));
+  }
+
+  /** The old link dies here; the new one is in the body, once. */
+  @PostMapping("/{id}/checkout-token/rotate")
+  public ResponseEntity<OrderResponse> rotateCheckoutToken(@PathVariable String id) {
+    MerchantId merchantId = MerchantContext.current().merchantId();
+    CheckoutTokens.Issued issued = checkoutTokens.issue();
+
+    Order rotated = orders.rotateCheckoutToken(merchantId, id, issued.hash());
+
+    return withResource(
+        HttpStatus.OK,
+        rotated.id(),
+        OrderResponse.from(
+            rotated, orders.attemptsOf(merchantId, id), checkout.urlFor(issued.token().value())));
   }
 
   @PostMapping("/{id}/payments")

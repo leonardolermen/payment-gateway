@@ -57,6 +57,7 @@ public class IdempotencyFilter extends OncePerRequestFilter {
           "^/v1/(payments|customers|orders|plans|subscriptions)$"
               + "|^/v1/payments/[^/]+/(cancel|refunds|capture|disputes)$"
               + "|^/v1/orders/[^/]+/(payments|cancel)$"
+              + "|^/v1/orders/[^/]+/checkout-token/rotate$"
               + "|^/v1/subscriptions/[^/]+/cancel$"
               + "|^/v1/webhooks/deliveries/([^/]+/redeliver|redeliver-dead)$");
 
