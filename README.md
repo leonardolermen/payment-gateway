@@ -9,13 +9,37 @@ Spec: `docs/superpowers/specs/2026-09-23-payment-gateway-design.md`. Decisions: 
 
 ```bash
 docker compose up -d
+./mvnw -DskipTests install          # first run, and after changing a sibling module
 export GATEWAY_ADMIN_KEY=dev-admin GATEWAY_API_KEY_PEPPER=dev-pepper
 export GATEWAY_MASTER_KEY=$(openssl rand -base64 32)
+export WEBHOOK_MTLS_PORT=0          # no inbound bank webhook connector locally
 ./mvnw -pl gateway-app spring-boot:run
 ```
 
 Without `GATEWAY_MASTER_KEY` the app does not start (the master key encrypts merchant credentials).
-Without `GATEWAY_ADMIN_KEY` the admin API answers 403 — closed by default.
+A key generated on every run cannot decrypt the credentials saved by the previous one: to keep local
+merchants across restarts, pin it in `.env`.
+Without `GATEWAY_ADMIN_KEY` the admin API answers 403 — closed by default (the header is `X-Admin-Key`).
+
+`-pl gateway-app` resolves the sibling modules from `~/.m2`, hence the `install` first. Do not add `-am`
+to the `spring-boot:run` line: the goal then runs on the parent pom too and fails with "Unable to find a
+suitable main class".
+
+Without `WEBHOOK_MTLS_PORT=0` the app refuses to start unless `WEBHOOK_MTLS_KEYSTORE` and
+`WEBHOOK_MTLS_TRUSTSTORE` are set: the inbound connector (default `8443`) needs the key material for the
+bank's mTLS webhooks.
+
+`com.barrier:webhook-delivery` comes from GitHub Packages, which asks for a token even to read
+public packages. Either put a PAT (classic, `read:packages`) in `~/.m2/settings.xml` under the server id
+`github-webhook-delivery`, or install it from source — the repo is public:
+
+```bash
+git clone --depth 1 --branch v0.2.0 https://github.com/leonardolermen/webhook-delivery.git
+cd webhook-delivery && ./mvnw -DskipTests install
+```
+
+Keep the tag in step with `webhook-delivery.version` in the root `pom.xml`. With the artifact in
+`~/.m2`, the remaining 401 warnings for `maven-metadata.xml` during the build are harmless.
 
 Behind a reverse proxy, the edge proxy must append the connecting address to (or overwrite) `X-Forwarded-For`: the gateway rate-limits `/v1/checkout` per IP using the last entry of that header, and only when the connection comes from a private or loopback address. `GATEWAY_CORS_ORIGINS` (comma-separated exact origins) enables CORS; empty means off.
 
