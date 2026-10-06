@@ -17,6 +17,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import tools.jackson.databind.exc.InvalidTypeIdException;
 
 /**
@@ -38,19 +39,31 @@ public class ErrorHandler {
    * resource is in a state the call cannot change (the cancel lost to the payer; the sale was
    * captured already, or is not an authorization). CARD_DECLINED has its own handler (402). The
    * billing codes are 409 for the same reason: a customer, order or subscription whose state the
-   * call cannot change, or a concurrent write that won (CONFLICT).
+   * call cannot change, or a concurrent write that won (CONFLICT). DELIVERY_NOT_REDELIVERABLE is
+   * 409 too: the delivery is PENDING or DELIVERED, or its endpoint was deactivated. So are
+   * DIVERGENCE_CLOSED (the row was already decided) and DISPUTE_ALREADY_OPEN (one dispute per
+   * payment at a time). JOB_IN_FLIGHT and JOB_NOT_PENDING are 409: a worker holds the job inside
+   * its lease, or it is already DONE or DEAD. JOB_NOT_RERUNNABLE is 409: run-now on a DONE job,
+   * refused because not every handler is idempotent. {@code Map.ofEntries}: {@code Map.of} stops at
+   * ten pairs.
    */
   private static final Map<String, HttpStatus> STATUS_BY_CODE =
-      Map.of(
-          "ALREADY_PAID", HttpStatus.CONFLICT,
-          "CAPTURE_NOT_ALLOWED", HttpStatus.CONFLICT,
-          "ALREADY_CAPTURED", HttpStatus.CONFLICT,
-          "CUSTOMER_EXISTS", HttpStatus.CONFLICT,
-          "CUSTOMER_HAS_ACTIVE_SUBSCRIPTION", HttpStatus.CONFLICT,
-          "ORDER_CLOSED", HttpStatus.CONFLICT,
-          "ORDER_HAS_ACTIVE_PAYMENT", HttpStatus.CONFLICT,
-          "SUBSCRIPTION_NOT_ACTIVE", HttpStatus.CONFLICT,
-          "CONFLICT", HttpStatus.CONFLICT);
+      Map.ofEntries(
+          Map.entry("ALREADY_PAID", HttpStatus.CONFLICT),
+          Map.entry("CAPTURE_NOT_ALLOWED", HttpStatus.CONFLICT),
+          Map.entry("ALREADY_CAPTURED", HttpStatus.CONFLICT),
+          Map.entry("CUSTOMER_EXISTS", HttpStatus.CONFLICT),
+          Map.entry("CUSTOMER_HAS_ACTIVE_SUBSCRIPTION", HttpStatus.CONFLICT),
+          Map.entry("ORDER_CLOSED", HttpStatus.CONFLICT),
+          Map.entry("ORDER_HAS_ACTIVE_PAYMENT", HttpStatus.CONFLICT),
+          Map.entry("SUBSCRIPTION_NOT_ACTIVE", HttpStatus.CONFLICT),
+          Map.entry("CONFLICT", HttpStatus.CONFLICT),
+          Map.entry("DELIVERY_NOT_REDELIVERABLE", HttpStatus.CONFLICT),
+          Map.entry("DIVERGENCE_CLOSED", HttpStatus.CONFLICT),
+          Map.entry("DISPUTE_ALREADY_OPEN", HttpStatus.CONFLICT),
+          Map.entry("JOB_IN_FLIGHT", HttpStatus.CONFLICT),
+          Map.entry("JOB_NOT_PENDING", HttpStatus.CONFLICT),
+          Map.entry("JOB_NOT_RERUNNABLE", HttpStatus.CONFLICT));
 
   @ExceptionHandler(DomainException.class)
   public ProblemDetail domainError(DomainException e) {
@@ -89,6 +102,16 @@ public class ErrorHandler {
   @ExceptionHandler(IllegalArgumentException.class)
   public ProblemDetail invalidRequest(IllegalArgumentException e) {
     return problem(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e.getMessage());
+  }
+
+  /**
+   * A query or path parameter that does not convert ({@code ?status=NOPE}, a malformed UUID or
+   * instant). Spring's own message names the Java type, so the detail is built from the parameter
+   * name the client sent instead.
+   */
+  @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+  public ProblemDetail parameterTypeMismatch(MethodArgumentTypeMismatchException e) {
+    return problem(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e.getName() + " is not valid");
   }
 
   /**

@@ -55,9 +55,10 @@ public class IdempotencyFilter extends OncePerRequestFilter {
   private static final Pattern IDEMPOTENT_POST =
       Pattern.compile(
           "^/v1/(payments|customers|orders|plans|subscriptions)$"
-              + "|^/v1/payments/[^/]+/(cancel|refunds|capture)$"
+              + "|^/v1/payments/[^/]+/(cancel|refunds|capture|disputes)$"
               + "|^/v1/orders/[^/]+/(payments|cancel)$"
-              + "|^/v1/subscriptions/[^/]+/cancel$");
+              + "|^/v1/subscriptions/[^/]+/cancel$"
+              + "|^/v1/webhooks/deliveries/([^/]+/redeliver|redeliver-dead)$");
 
   private final IdempotencyService idempotency;
   private final byte[] hmacKey;

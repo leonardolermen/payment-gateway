@@ -8,6 +8,8 @@ import com.gateway.kernel.security.Sealer;
 import com.gateway.payments.card.SavedCards;
 import com.gateway.payments.card.persistence.SavedCardRepository;
 import com.gateway.payments.card.persistence.SavedCardRepositoryImpl;
+import com.gateway.payments.dispute.DisputeEvents;
+import com.gateway.payments.dispute.DisputeService;
 import com.gateway.payments.idempotency.IdempotencyService;
 import com.gateway.payments.idempotency.persistence.IdempotencyRepository;
 import com.gateway.payments.idempotency.persistence.IdempotencyRepositoryImpl;
@@ -16,6 +18,7 @@ import com.gateway.payments.inbox.WebhookInboxService;
 import com.gateway.payments.inbox.persistence.WebhookInboxRepository;
 import com.gateway.payments.inbox.persistence.WebhookInboxRepositoryImpl;
 import com.gateway.payments.jobs.ExpirePaymentJob;
+import com.gateway.payments.jobs.JobAdministration;
 import com.gateway.payments.jobs.JobBackoff;
 import com.gateway.payments.jobs.JobHandler;
 import com.gateway.payments.jobs.JobHandlers;
@@ -36,6 +39,7 @@ import com.gateway.payments.payment.PaymentQueries;
 import com.gateway.payments.payment.PaymentService;
 import com.gateway.payments.payment.PixSettlement;
 import com.gateway.payments.payment.StuckCreatedSweep;
+import com.gateway.payments.payment.StuckPayments;
 import com.gateway.payments.payment.boleto.BoletoPollingService;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepository;
 import com.gateway.payments.payment.boleto.persistence.BoletoNumberRepositoryImpl;
@@ -59,6 +63,7 @@ import com.gateway.payments.provider.ProviderGateway;
 import com.gateway.payments.provider.persistence.ProviderRequestRepository;
 import com.gateway.payments.provider.persistence.ProviderRequestRepositoryImpl;
 import com.gateway.payments.reconciliation.CardReconciliation;
+import com.gateway.payments.reconciliation.DivergenceAdministration;
 import com.gateway.payments.reconciliation.Divergences;
 import com.gateway.payments.reconciliation.ReconciliationService;
 import com.gateway.payments.reconciliation.persistence.ReconciliationDivergenceRepository;
@@ -68,6 +73,7 @@ import com.gateway.payments.refund.RefundPollingService;
 import com.gateway.payments.refund.RefundService;
 import com.gateway.payments.refund.persistence.RefundRepository;
 import com.gateway.payments.refund.persistence.RefundRepositoryImpl;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.util.List;
 import org.springframework.beans.factory.ObjectProvider;
@@ -129,13 +135,15 @@ public class PaymentsConfiguration {
       ObjectProvider<BoletoMethodProvider> boletoProviders,
       ObjectProvider<CardMethodProvider> cardProviders,
       CredentialLookup credentials,
-      ProviderRequestRepository requests) {
+      ProviderRequestRepository requests,
+      MeterRegistry meters) {
     return new ProviderGateway(
         providers,
         boletoProviders.orderedStream().toList(),
         cardProviders.orderedStream().toList(),
         credentials,
-        requests);
+        requests,
+        meters);
   }
 
   @Bean
@@ -157,8 +165,29 @@ public class PaymentsConfiguration {
   }
 
   @Bean
-  Divergences divergences(ReconciliationDivergenceRepository divergences, Clock clock) {
-    return new Divergences(divergences, clock);
+  Divergences divergences(
+      ReconciliationDivergenceRepository divergences, UnitOfWork unitOfWork, Clock clock) {
+    return new Divergences(divergences, unitOfWork, clock);
+  }
+
+  @Bean
+  DisputeEvents disputeEvents(OutboxRepository outbox, Clock clock) {
+    return new DisputeEvents(outbox, clock);
+  }
+
+  @Bean
+  DisputeService disputeService(
+      Divergences divergences,
+      PaymentRepository payments,
+      DisputeEvents disputeEvents,
+      UnitOfWork unitOfWork) {
+    return new DisputeService(divergences, payments, disputeEvents, unitOfWork);
+  }
+
+  @Bean
+  DivergenceAdministration divergenceAdministration(
+      Divergences divergences, PaymentRepository payments, DisputeEvents disputeEvents) {
+    return new DivergenceAdministration(divergences, payments, disputeEvents);
   }
 
   @Bean
@@ -533,6 +562,17 @@ public class PaymentsConfiguration {
   @Bean
   JobHandlers jobHandlers(List<JobHandler> handlers) {
     return new JobHandlers(handlers);
+  }
+
+  @Bean
+  JobAdministration jobAdministration(
+      JobRepository jobs, PaymentsProperties properties, Clock clock) {
+    return new JobAdministration(jobs, properties, clock);
+  }
+
+  @Bean
+  StuckPayments stuckPayments(PaymentRepository payments, PaymentsProperties properties) {
+    return new StuckPayments(payments, properties);
   }
 
   @Bean

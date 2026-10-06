@@ -2,12 +2,14 @@ package com.gateway.app.api.support;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.barrier.webhookdelivery.domain.DeliveryStatus;
 import com.gateway.billing.customer.CustomerExistsException;
 import com.gateway.billing.order.OrderHasActivePaymentException;
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.payments.payment.card.CardDeclinedException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ProblemDetail;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 /**
  * The status a merchant's code branches on. ALREADY_PAID was only ever asserted through the
@@ -107,5 +109,29 @@ class ErrorHandlerTest {
     assertThat(problem.getStatus()).isEqualTo(409);
     assertThat(problem.getType()).hasToString("urn:gateway:ORDER_HAS_ACTIVE_PAYMENT");
     assertThat(problem.getProperties()).containsEntry("payment_id", "pay_1");
+  }
+
+  @Test
+  void aDeliveryThatCannotBeRedeliveredIsAConflict() {
+    ProblemDetail problem =
+        handler.domainError(new DomainException("DELIVERY_NOT_REDELIVERABLE", "x"));
+
+    assertThat(problem.getStatus()).isEqualTo(409);
+  }
+
+  /**
+   * {@code GET /v1/webhooks/deliveries?status=NOPE}: the detail names the query parameter, never
+   * the Java enum Spring failed to convert to.
+   */
+  @Test
+  void anUnconvertibleParameterIsAnInvalidRequest() {
+    ProblemDetail problem =
+        handler.parameterTypeMismatch(
+            new MethodArgumentTypeMismatchException(
+                "NOPE", DeliveryStatus.class, "status", null, new IllegalArgumentException()));
+
+    assertThat(problem.getStatus()).isEqualTo(400);
+    assertThat(problem.getType()).hasToString("urn:gateway:INVALID_REQUEST");
+    assertThat(problem.getDetail()).isEqualTo("status is not valid");
   }
 }

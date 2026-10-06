@@ -535,3 +535,93 @@ marcador, senão um segundo chamador passaria pela leitura antes do primeiro com
 (`recoverIfNothingElseIsChased`), na mesma transação do fechamento. Rejeitado: lock pessimista na ordem
 durante a chamada ao banco (prenderia uma conexão por até o timeout do provedor). Custo se errado: um
 `attempt-lock` menor que a chamada mais lenta ao banco reabre a janela de cobrança dupla.
+
+## 2026-10-05 — O gateway evolui a biblioteca de entrega em vez de ler a tabela dela
+Listar, inspecionar e reentregar entregas (`/v1/webhooks/deliveries`) passa pela API pública do
+`webhook-delivery` 0.2.0 (`DeliveryQuery`, `redeliver`, `redeliverDead`), não por consulta direta a
+`webhook_delivery.deliveries`. Rejeitado: um repositório JPA próprio no gateway sobre a tabela da lib — mais
+rápido hoje, mas acopla o gateway ao esquema interno de outra biblioteca, e a próxima migração dela quebra o
+gateway sem aviso de compilação. Custo se errado: cada mudança de consulta (um filtro novo, outra ordenação)
+exige uma release da lib antes de chegar à API.
+
+## 2026-10-05 — Reentrega assina com o segredo vigente
+Uma reentrega manual é assinada com o segredo atual do endpoint (e com o anterior em
+`X-Gateway-Signature-Previous` durante `secret-rotation-overlap`), com `t=` novo; o `X-Gateway-Event-Id` é o
+mesmo da entrega original. Rejeitado: guardar e reenviar a assinatura original — ela teria um `t=` velho que
+a checagem de tolerância do merchant recusa, e um segredo que ele pode já ter descartado. Custo se errado: um
+merchant que rotacionou o segredo e reentrega um evento antigo recebe assinatura com o segredo novo — que é o
+esperado, mas quem verifica contra o segredo da época vê falha.
+
+## 2026-10-05 — Corpo do webhook sem envelope
+O corpo entregue continua sendo o JSON do recurso, exatamente o que já saía; tipo e id do evento vão em
+`X-Gateway-Event-Type` e `X-Gateway-Event-Id`. Rejeitado: envelope `{"type","id","data"}` — quebraria todo
+merchant já integrado em troca de conveniência. Custo se errado: quem loga só o corpo perde o tipo do evento,
+e um consumidor que roteia por tipo precisa ler header.
+
+## 2026-10-05 — O catálogo de eventos do README é verificado por teste
+`EventCatalogTest` gera as chaves de cada payload a partir do código que as produz e compara com as seções do
+README. Rejeitado: catálogo escrito à mão e revisado em PR — já divergiu do código antes sem ninguém notar.
+Custo se errado: o README passa a ser parcialmente ditado por código, e mudar um payload exige atualizar a
+documentação no mesmo commit (que é o objetivo).
+
+## 2026-10-05 — Valor malformado em path ou query vira 400 `INVALID_REQUEST "<param> is not valid"`
+O handler de `MethodArgumentTypeMismatchException` no `ErrorHandler` responde 400 `INVALID_REQUEST` com
+`detail` `<param> is not valid` (ex.: `status is not valid`). Isso muda o corpo do 400 para valor malformado
+de path/query em **todas** as rotas, não só nas de entregas: é texto de contrato e mudou de propósito.
+Rejeitado: manter o corpo padrão do Spring — sem código estável e com nome de classe Java na mensagem.
+Custo se errado: um cliente que interpretava o corpo antigo do 400 deixa de reconhecê-lo; status 400 continua
+o mesmo para quem decide por ele.
+
+## 2026-10-05 — Assinatura que começa hoje cobra na hora, qualquer que seja o horário
+Uma assinatura cujo dia de início é hoje tem o primeiro ciclo devido imediatamente (commit 6772f9c).
+Rejeitado: cobrar às 03:00 de São Paulo do mesmo dia — criada depois das 03:00, a cobrança ficava para o
+passado e só rodava no próximo poll; criada antes, abria um buraco de até 3 h sem fatura, e o teste que
+cobria isso passava ou falhava conforme a hora em que rodava. Custo se errado: um merchant que esperava todas
+as cobranças no mesmo horário vê a primeira no horário da criação.
+
+## 2026-10-05 — Contestação é uma divergência com `origin = MERCHANT`
+A contestação do merchant entra na mesma tabela e na mesma fila do operador que as divergências da
+reconciliação, distinguida por `origin`. Rejeitado: tabela própria de contestações — duas filas para o mesmo
+operador olhar e duas máquinas de estado quase iguais. Custo se errado: a tabela de divergências ganha colunas
+que só um lado usa (`reason`, `note`), e uma contestação que precise de ciclo de vida muito diferente terá de
+sair dela.
+
+## 2026-10-05 — Resolver uma divergência não move dinheiro
+`resolve` só fecha a linha com uma decisão e uma nota; reembolso é sempre um ato separado por `/refunds`.
+Rejeitado: `resolve` com `refund: true`. Custo se errado: dois cliques para o caso comum "cobrança duplicada →
+reembolsa", e um operador que fecha a contestação e esquece o reembolso.
+
+## 2026-10-05 — Métricas por gauge agregado a cada 30 s
+`OperationsMetrics` reconta pagamentos, divergências, jobs, entregas e outbox com `GROUP BY` a cada
+`gateway.metrics.refresh-ms` (30 s). Rejeitado: contador incrementado em cada transição — exige instrumentar
+cada `transition` e diverge do banco no primeiro restart. Custo se errado: 30 s de atraso nos alertas e uma
+consulta periódica no banco.
+
+## 2026-10-05 — Porta de gestão separada, sem autenticação própria
+`/actuator/health` e `/actuator/prometheus` saem da porta da API e vão para `GATEWAY_MANAGEMENT_PORT` (9090),
+que responde sem chave. Health check externo que apontava para 8080 tem de passar a apontar para 9090.
+Rejeitado: proteger `/actuator` com a chave admin — o scraper do Prometheus passaria a carregar a chave mais
+poderosa do sistema. Custo se errado: a proteção depende da rede; o README diz para nunca publicar a porta, e
+quem publicar expõe volumes de pagamento por merchant.
+
+## 2026-10-05 — `resolved_by = "admin"` até existirem operadores
+Quem revisa ou resolve uma divergência é gravado como o literal `admin`: a API admin tem uma chave só e
+nenhum operador nomeado. Rejeitado: pedir um nome de operador no corpo — texto livre, sem autenticação, que
+pareceria auditoria sem ser. Custo se errado: até o plano "segurança e operadores" (H) não há como saber quem
+decidiu cada caso, e as linhas antigas ficarão com `admin` para sempre.
+
+## 2026-10-05 — Contagem de entregas de webhook lida por SQL na tabela da lib
+O gauge `gateway_webhook_deliveries` faz `SELECT status, count(*)` direto em `webhook_delivery.deliveries`.
+Rejeitado: uma API de contagem na lib `webhook-delivery` — uma release da lib para um `COUNT`. Custo se errado:
+se a lib renomear a tabela ou a coluna, a família de métricas loga WARN e fica parada sem quebrar o build.
+
+## 2026-10-05 — `review` de uma contestação também emite `dispute.updated`
+Toda transição da contestação — abertura, revisão e decisão — emite `dispute.updated`. Rejeitado: avisar o
+merchant só na abertura e na decisão. Custo se errado: um evento a mais por contestação, que o merchant tem
+de aceitar e ignorar se não usar o estado `UNDER_REVIEW`.
+
+## 2026-10-05 — `run-now` recusa job `DONE`
+`forceDue` só toca linhas `PENDING` ou `DEAD`; em um `DONE` a resposta é `409 JOB_NOT_RERUNNABLE`. Rejeitado:
+deixar o operador re-enfileirar qualquer job — nem todo handler é idempotente, e rodar de novo um job
+terminado pode agir duas vezes sobre o mesmo pagamento. Custo se errado: o operador que precisa repetir um
+trabalho já feito não tem atalho e depende de um novo job criado pelo próprio fluxo.

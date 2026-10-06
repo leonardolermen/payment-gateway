@@ -1,12 +1,18 @@
 sequenceDiagram
   participant M as Merchant
   participant GW as Payment Gateway
-  participant B as Itaú
+  participant P as Provider
 
-  M->>GW: POST /v1/payments (Idempotency-Key)
+  M->>GW: POST /v1/payments (Idempotency-Key, method)
+  GW->>GW: PaymentFlows.forMethod(method)
   GW->>GW: store payment CREATED
-  GW->>B: create Pix charge
-  B-->>GW: QR code (copia e cola)
-  GW->>GW: PENDING + outbox event
-  GW-->>M: 201 { id, pix.copia_e_cola, expires_at }
-  GW-)M: webhook payment.pending
+  alt PIX · BOLECODE (Itaú)
+    GW->>P: create charge / boleto + Pix QR
+    P-->>GW: QR (and barcode)
+    GW->>GW: PENDING + outbox event
+  else CARD (Cielo)
+    GW->>P: authorize (capture or not)
+    P-->>GW: approved / declined
+    GW->>GW: COMPLETED · AUTHORIZED · FAILED + outbox event
+  end
+  GW-->>M: 201 { id, status, pix · boleto · card }

@@ -1,6 +1,8 @@
 # Payment Gateway
 
 Payment orchestrator (model A: the merchant's own credentials; money never passes through here).
+Three methods through two providers: Pix and Bolecode (boleto with Pix) through Itaú, credit card through
+Cielo; customers, orders, plans and subscriptions on top. Architecture: `docs/architecture.md`.
 Spec: `docs/superpowers/specs/2026-09-23-payment-gateway-design.md`. Decisions: `docs/superpowers/DECISOES.md`.
 
 ## Run
@@ -15,6 +17,9 @@ export GATEWAY_MASTER_KEY=$(openssl rand -base64 32)
 Without `GATEWAY_MASTER_KEY` the app does not start (the master key encrypts merchant credentials).
 Without `GATEWAY_ADMIN_KEY` the admin API answers 403 — closed by default.
 
+`/actuator/health` and `/actuator/prometheus` are served on the management port (`GATEWAY_MANAGEMENT_PORT`,
+default `9090`), not on `8080`: point health checks there, and keep that port off the public network.
+
 If port 5432 is already taken on your machine, map `5433:5432` in `docker-compose.yml` and set
 `DB_URL=jdbc:postgresql://localhost:5433/gateway` before starting the app.
 
@@ -28,14 +33,20 @@ curl -s localhost:8080/v1/merchant -H 'Authorization: Bearer gk_test_…'
 
 ## Modules
 
-`gateway-kernel` (dependency-free types) · `gateway-merchants` (merchant, API keys, encrypted credentials) ·
-`gateway-app` (REST, auth, rate limit, outbound webhooks via `webhook-delivery`, observability).
-`orders`, `payments` and `providers` arrive with plans B and C. The boundary is enforced by `ArchitectureTest`.
+- `gateway-kernel` — dependency-free shared types and the provider contracts.
+- `gateway-merchants` — merchants, API keys, provider credentials encrypted per merchant and environment.
+- `gateway-providers` — the Itaú (Pix, Bolecode) and Cielo (card) clients.
+- `gateway-payments` — payments, refunds, idempotency, outbox, jobs, reconciliation.
+- `gateway-billing` — customers, orders, plans, subscriptions, cycles and dunning (schema `billing`).
+- `gateway-app` — the deployable: REST, auth, rate limit, inbound webhooks, outbox relay, observability.
+- `webhook-delivery` (library, `com.barrier`) — signed outbound webhooks, retries, listing and redelivery.
+
+The boundary is enforced by `ArchitectureTest`; the rules and diagrams are in `docs/architecture.md`.
 
 ## Payments (Pix / Itaú)
 
-Plan B adds Pix charges through Itaú as the only provider (`ProviderGateway` resolves `ITAU`
-unconditionally; see `docs/superpowers/DECISOES.md`). Two environments per merchant, `TEST` and `LIVE`,
+Pix and Bolecode go through Itaú; card goes through Cielo (see "Card (Cielo)" below). `ProviderGateway`
+resolves the provider per method. Two environments per merchant, `TEST` and `LIVE`,
 each with its own credential and its own idempotency-key scope.
 
 ### TEST vs LIVE credentials
@@ -176,10 +187,792 @@ env vars, read as `gateway.webhooks.mtls.*`:
 - `ITAU_CA_PEM` — the same CA chain (from `ca-cert.zip`), used outbound as
   `gateway.providers.itau.trust-store-pem` to trust Itaú's API endpoints.
 
+### Outbound webhooks
+
+Register an endpoint with `POST /v1/webhooks/endpoints`; the response carries its signing secret once.
+
+```
+POST /v1/webhooks/endpoints
+{"url": "https://merchant.example.com/hooks", "events": ["payment.*"]}
+
+201 → {"id": "...", "url": "...", "events": ["payment.*"], "active": true, "secret": "..."}
+```
+
+`POST /v1/webhooks/endpoints/{id}/rotate-secret` issues a new one. Every state change listed in the
+event catalog below is written to an outbox in the same transaction as the change, and delivered by
+`webhook-delivery` to each active endpoint as an HTTP `POST` whose body is the event JSON.
+
+**Delivery semantics.**
+
+- **At least once.** A delivery can arrive twice (a timeout after your server already processed it, a
+  redelivery). `X-Gateway-Event-Id` is the same on every attempt of the same event: store it and ignore
+  repeats.
+- **Ordered per partition key.** Events for one payment (including its refunds), one order, one customer
+  or one subscription (including its invoices) are delivered in the order they happened while they are
+  being retried: a failing event holds back the ones behind it on that key. There is no order across keys.
+  **Once an event goes `DEAD`, the newer ones on that key are delivered**, so a later redelivery (manual or
+  bulk) arrives OUT of order. Do not infer state from arrival order: use the payload (`status`,
+  timestamps) and the event id.
+- **Success is any 2xx.** Anything else, a connection error or a timeout (2 s to connect, 10 s to read)
+  is a failed attempt. Answer fast and do the work afterwards.
+- **Retries.** Up to `webhook-delivery.max-attempts` (5) attempts, waiting `base-backoff` (30 s) × 2^n,
+  capped at 64×, between them. After the last one the delivery is `DEAD` and stays so until redelivered.
+- **Private targets are refused.** A URL resolving to a loopback, private or link-local address is
+  rejected unless `webhook-delivery.allow-private-targets` is true (only for local development).
+
+**Headers.**
+
+```
+X-Gateway-Event-Id: <uuid, the same on every attempt>
+X-Gateway-Event-Type: payment.completed
+X-Gateway-Signature: t=<epoch-seconds>,v1=<hex HMAC-SHA256(secret, t + "." + body)>
+X-Gateway-Signature-Previous: t=<epoch-seconds>,v1=<same, under the previous secret>
+```
+
+`X-Gateway-Signature-Previous` is only sent during the 24 h after a secret rotation, so a receiver that
+has not switched to the new secret yet keeps validating.
+
+**Verifying the signature.** Compute the HMAC over the **raw request body bytes**, before any JSON
+parsing — a re-serialized body (different spacing, key order or escaping) will not match. Compare in
+constant time, and reject a `t` more than 5 minutes away from your clock, which stops a captured request
+from being replayed later. During a rotation, accept the request if either header validates under the
+secret you hold.
+
+```
+signed   = t + "." + raw_body
+expected = hex(HMAC-SHA256(secret, signed))
+valid    = constant_time_equals(expected, v1) and |now - t| <= 300
+```
+
+Python:
+
+```python
+import hashlib
+import hmac
+import time
+
+TOLERANCE_SECONDS = 300
+
+
+def signature_valid(header, raw_body: bytes, secret: str) -> bool:
+    if not header:
+        return False
+    try:
+        parts = dict(item.split("=", 1) for item in header.split(","))
+        timestamp, received = parts["t"], parts["v1"]
+        age = abs(time.time() - int(timestamp))
+    except (ValueError, KeyError):  # a malformed header is invalid, never an exception
+        return False
+    if age > TOLERANCE_SECONDS:
+        return False
+    signed = timestamp.encode() + b"." + raw_body
+    expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected.encode(), received.encode())
+
+
+def verified(headers, raw_body: bytes, secret: str) -> bool:
+    # Either header: during a rotation one of them is signed with the secret you still hold.
+    return signature_valid(headers.get("X-Gateway-Signature"), raw_body, secret) or signature_valid(
+        headers.get("X-Gateway-Signature-Previous"), raw_body, secret
+    )
+```
+
+Java:
+
+```java
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Instant;
+import java.util.HexFormat;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+
+final class GatewaySignature {
+  private static final long TOLERANCE_SECONDS = 300;
+
+  // Either header: during a rotation one of them is signed with the secret you still hold.
+  static boolean verified(String signature, String previousSignature, byte[] rawBody, String secret)
+      throws Exception {
+    return valid(signature, rawBody, secret) || valid(previousSignature, rawBody, secret);
+  }
+
+  static boolean valid(String header, byte[] rawBody, String secret) throws Exception {
+    if (header == null) {
+      return false;
+    }
+
+    String timestamp = null;
+    String received = null;
+    for (String part : header.split(",")) {
+      if (part.startsWith("t=")) {
+        timestamp = part.substring(2);
+      } else if (part.startsWith("v1=")) {
+        received = part.substring(3);
+      }
+    }
+    if (timestamp == null || received == null) {
+      return false;
+    }
+    long signedAt;
+    try {
+      signedAt = Long.parseLong(timestamp);
+    } catch (NumberFormatException e) { // a malformed header is invalid, never an exception
+      return false;
+    }
+    if (Math.abs(Instant.now().getEpochSecond() - signedAt) > TOLERANCE_SECONDS) {
+      return false;
+    }
+
+    Mac mac = Mac.getInstance("HmacSHA256");
+    mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+    mac.update((timestamp + ".").getBytes(StandardCharsets.UTF_8));
+    byte[] expected = mac.doFinal(rawBody);
+
+    return MessageDigest.isEqual(
+        HexFormat.of().formatHex(expected).getBytes(StandardCharsets.UTF_8),
+        received.getBytes(StandardCharsets.UTF_8));
+  }
+}
+```
+
+**Listing and redelivering.** Every delivery to your endpoints is visible to your API key, newest first:
+
+```
+GET /v1/webhooks/deliveries?status=DEAD&event_type=payment.completed&aggregate_id=<id>&since=<ISO-8601>&limit=20
+```
+
+```json
+[
+  {
+    "id": "<uuid>",
+    "event_id": "<uuid>",
+    "event_type": "payment.completed",
+    "aggregate_id": "<payment id>",
+    "endpoint_id": "<uuid>",
+    "target_url": "https://<your-host>/webhooks/gateway",
+    "status": "DEAD",
+    "attempts": 5,
+    "last_error": "HTTP 500",
+    "last_error_before_redelivery": null,
+    "next_attempt_at": null,
+    "created_at": "2026-10-05T12:00:00.123456Z",
+    "delivered_at": null,
+    "redelivered_at": null
+  }
+]
+```
+
+`status` is one of `PENDING`, `DELIVERED`, `FAILED` (will retry) and `DEAD`; `limit` defaults to 20, at
+most 100. A full page comes with an `X-Next-Cursor` header: pass its value back as `?after=` for the
+next page (which may be empty). `GET /v1/webhooks/deliveries/{id}` returns the same object plus
+`payload`, the exact JSON body that was sent.
+
+`POST /v1/webhooks/deliveries/{id}/redeliver` schedules one delivery again: `202 {"status":"PENDING"}`,
+`404` for an unknown id, `409 DELIVERY_NOT_REDELIVERABLE` when it is not in a state that can be resent.
+`POST /v1/webhooks/deliveries/redeliver-dead` with `{"since":"<ISO-8601>"}` reschedules at most 1000 `DEAD`
+deliveries created since then per call, oldest first: `202 {"scheduled": <n>}`. Call again until
+`scheduled < 1000`. A missing `since` is `400 INVALID_REQUEST`; `since` more than 30 days back is
+`422 WINDOW_TOO_WIDE`. Both POSTs require an `Idempotency-Key`.
+
+**Event catalog.** One section per `X-Gateway-Event-Type`. Values are illustrative; the keys are the
+contract (a null value still has its key), and a test (`EventCatalogTest`) fails the build when a
+payload and its example here disagree. In payment events, `pix` is set for `PIX` and `BOLECODE`,
+`boleto` for `BOLECODE`, `card` for `CARD`; the others are `null`.
+
+#### payment.pending
+
+The charge exists at the bank and waits for the payer (Pix QR issued, boleto registered). Example: a Pix payment.
+
+```json
+{
+  "id": "01M46BTW1B92DANHVWJWFB518D",
+  "status": "PENDING",
+  "method": "PIX",
+  "provider": "itau",
+  "environment": "TEST",
+  "amount": 15000,
+  "currency": "BRL",
+  "reference": "order-1234",
+  "order_id": null,
+  "description": "Order 1234",
+  "pix": {
+    "txid": "01M46BTW1B92DANHVWJWFB518D",
+    "copia_e_cola": "00020101021226...6304ABCD",
+    "location": null,
+    "end_to_end_id": null
+  },
+  "boleto": null,
+  "card": null,
+  "expires_at": "2026-10-05T13:00:00Z",
+  "paid_at": null,
+  "paid_amount": null,
+  "refunded_amount": 0,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### payment.authorized
+
+A card was authorized and not yet captured. Example: a card payment.
+
+```json
+{
+  "id": "01M46BTW2RK3BFEYNCD7Q98X70",
+  "status": "AUTHORIZED",
+  "method": "CARD",
+  "provider": "cielo",
+  "environment": "TEST",
+  "amount": 15000,
+  "currency": "BRL",
+  "reference": "order-1234",
+  "order_id": null,
+  "description": "Order 1234",
+  "pix": null,
+  "boleto": null,
+  "card": {
+    "brand": "Visa",
+    "last4": "0004",
+    "installments": 1,
+    "authorization_code": "123456",
+    "tid": "1006993069000A1B2C3D",
+    "captured_amount": null,
+    "card_id": null
+  },
+  "expires_at": null,
+  "paid_at": null,
+  "paid_amount": null,
+  "refunded_amount": 0,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### payment.completed
+
+Money arrived: Pix paid, boleto or bolecode paid, card captured. Example: a bolecode paid through its QR.
+
+```json
+{
+  "id": "01M46BTW2VQYSJA2N886B43CRR",
+  "status": "COMPLETED",
+  "method": "BOLECODE",
+  "provider": "itau",
+  "environment": "TEST",
+  "amount": 4990,
+  "currency": "BRL",
+  "reference": null,
+  "order_id": null,
+  "description": null,
+  "pix": {
+    "txid": "txid-1",
+    "copia_e_cola": "00020101021226...6304ABCD",
+    "location": null,
+    "end_to_end_id": "E00000000202610051203abcdef12345"
+  },
+  "boleto": {
+    "linha_digitavel": "34191.09008 00012.300000 00000.000000 1 00000000004990",
+    "codigo_barras": "34191000000000049901090000012300000000000000",
+    "due_date": "2026-10-08",
+    "payment_limit_date": "2026-11-07",
+    "paid_via": "PIX"
+  },
+  "card": null,
+  "expires_at": "2026-10-08T12:00:00Z",
+  "paid_at": "2026-10-05T12:03:10Z",
+  "paid_amount": 4990,
+  "refunded_amount": 0,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### payment.failed
+
+The payment will not complete (provider refusal, card declined).
+
+```json
+{
+  "id": "01M46BTW2YG23ZWNQQD3ET9717",
+  "status": "FAILED",
+  "method": "CARD",
+  "provider": "cielo",
+  "environment": "TEST",
+  "amount": 15000,
+  "currency": "BRL",
+  "reference": "order-1234",
+  "order_id": null,
+  "description": "Order 1234",
+  "pix": null,
+  "boleto": null,
+  "card": {
+    "brand": "Visa",
+    "last4": "0004",
+    "installments": 1,
+    "authorization_code": null,
+    "tid": null,
+    "captured_amount": null,
+    "card_id": null
+  },
+  "expires_at": null,
+  "paid_at": null,
+  "paid_amount": null,
+  "refunded_amount": 0,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### payment.expired
+
+The Pix or boleto passed `expires_at` unpaid.
+
+```json
+{
+  "id": "01M46BTW2YG23ZWNQQD3ET9719",
+  "status": "EXPIRED",
+  "method": "PIX",
+  "provider": "itau",
+  "environment": "TEST",
+  "amount": 15000,
+  "currency": "BRL",
+  "reference": "order-1234",
+  "order_id": null,
+  "description": "Order 1234",
+  "pix": {
+    "txid": "01M46BTW2YG23ZWNQQD3ET9719",
+    "copia_e_cola": "00020101021226...6304ABCD",
+    "location": null,
+    "end_to_end_id": null
+  },
+  "boleto": null,
+  "card": null,
+  "expires_at": "2026-10-05T13:00:00Z",
+  "paid_at": null,
+  "paid_amount": null,
+  "refunded_amount": 0,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### payment.canceled
+
+The merchant canceled it (`POST /v1/payments/{id}/cancel`).
+
+```json
+{
+  "id": "01M46BTW2ZEETQW1M14JV6W5G5",
+  "status": "CANCELED",
+  "method": "BOLECODE",
+  "provider": "itau",
+  "environment": "TEST",
+  "amount": 4990,
+  "currency": "BRL",
+  "reference": null,
+  "order_id": null,
+  "description": null,
+  "pix": {
+    "txid": "txid-1",
+    "copia_e_cola": "00020101021226...6304ABCD",
+    "location": null,
+    "end_to_end_id": null
+  },
+  "boleto": {
+    "linha_digitavel": "34191.09008 00012.300000 00000.000000 1 00000000004990",
+    "codigo_barras": "34191000000000049901090000012300000000000000",
+    "due_date": "2026-10-08",
+    "payment_limit_date": "2026-11-07",
+    "paid_via": null
+  },
+  "card": null,
+  "expires_at": "2026-10-08T12:00:00Z",
+  "paid_at": null,
+  "paid_amount": null,
+  "refunded_amount": 0,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### refund.requested
+
+A refund was accepted and reserved against the payment. Same partition key as the payment.
+
+```json
+{
+  "id": "01M46BTW2ZEETQW1M14JV6W5GB",
+  "payment_id": "01M46BTW2ZEETQW1M14JV6W5G8",
+  "amount": 5000,
+  "state": "REQUESTED",
+  "reason": null,
+  "requested_at": "2026-10-05T12:00:00Z",
+  "settled_at": null
+}
+```
+
+#### refund.completed
+
+The bank settled the refund.
+
+```json
+{
+  "id": "01M46BTW30SVMZG4DD3R2A3DBS",
+  "payment_id": "01M46BTW30SVMZG4DD3R2A3DBP",
+  "amount": 5000,
+  "state": "COMPLETED",
+  "reason": null,
+  "requested_at": "2026-10-05T12:00:00Z",
+  "settled_at": "2026-10-05T12:05:00Z"
+}
+```
+
+#### refund.failed
+
+The bank refused the refund; `reason` says why and the amount is released.
+
+```json
+{
+  "id": "01M46BTW30SVMZG4DD3R2A3DBX",
+  "payment_id": "01M46BTW30SVMZG4DD3R2A3DBT",
+  "amount": 5000,
+  "state": "FAILED",
+  "reason": "<bank reason>",
+  "requested_at": "2026-10-05T12:00:00Z",
+  "settled_at": "2026-10-05T12:05:00Z"
+}
+```
+
+#### refund.unknown
+
+The bank never answered within the polling budget. The amount stays reserved, and a `refund.completed` or `refund.failed` may still follow.
+
+```json
+{
+  "id": "01M46BTW30SVMZG4DD3R2A3DC1",
+  "payment_id": "01M46BTW30SVMZG4DD3R2A3DBY",
+  "amount": 5000,
+  "state": "UNKNOWN",
+  "reason": null,
+  "requested_at": "2026-10-05T12:00:00Z",
+  "settled_at": null
+}
+```
+
+#### customer.created
+
+A customer was created. `document` is always masked.
+
+```json
+{
+  "id": "01M46BTW36VZY0MRJAY3QCC00B",
+  "name": "Maria Silva",
+  "document": "***.982.***-25",
+  "email": "maria@example.com",
+  "has_address": true,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### customer.updated
+
+A customer changed.
+
+```json
+{
+  "id": "01M46BTW3AH1Q9F80JPXTMYM90",
+  "name": "Maria Silva",
+  "document": "***.982.***-25",
+  "email": "maria.silva@example.com",
+  "has_address": true,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### order.created
+
+An order was created (by the API, or as a subscription invoice — then `subscription_id` and `invoice_number` are set).
+
+```json
+{
+  "id": "01M46BTW3BEX7GFVGWV0XED5HT",
+  "status": "OPEN",
+  "amount": 15000,
+  "currency": "BRL",
+  "reference": "order-1234",
+  "customer_id": "01M46BTW3AH1Q9F80JPXTMYM91",
+  "paid_payment_id": null,
+  "paid_at": null,
+  "expires_at": "2026-10-06T12:00:00Z",
+  "subscription_id": null,
+  "invoice_number": null,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### order.paid
+
+A payment attempt on the order completed.
+
+```json
+{
+  "id": "01M46BTW3D70Y28P8Y68JE95VM",
+  "status": "PAID",
+  "amount": 15000,
+  "currency": "BRL",
+  "reference": "order-1234",
+  "customer_id": "01M46BTW3D70Y28P8Y68JE95VK",
+  "paid_payment_id": "01M46BSGXDBWG32PFFS15HYYNR",
+  "paid_at": "2026-10-05T12:03:10Z",
+  "expires_at": "2026-10-06T12:00:00Z",
+  "subscription_id": null,
+  "invoice_number": null,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### order.canceled
+
+The order was canceled.
+
+```json
+{
+  "id": "01M46BTW3D70Y28P8Y68JE95VP",
+  "status": "CANCELED",
+  "amount": 15000,
+  "currency": "BRL",
+  "reference": "order-1234",
+  "customer_id": "01M46BTW3D70Y28P8Y68JE95VN",
+  "paid_payment_id": null,
+  "paid_at": null,
+  "expires_at": "2026-10-06T12:00:00Z",
+  "subscription_id": null,
+  "invoice_number": null,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### order.expired
+
+The order passed `expires_at` unpaid.
+
+```json
+{
+  "id": "01M46BTW3D70Y28P8Y68JE95VR",
+  "status": "EXPIRED",
+  "amount": 15000,
+  "currency": "BRL",
+  "reference": "order-1234",
+  "customer_id": "01M46BTW3D70Y28P8Y68JE95VQ",
+  "paid_payment_id": null,
+  "paid_at": null,
+  "expires_at": "2026-10-06T12:00:00Z",
+  "subscription_id": null,
+  "invoice_number": null,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### invoice.created
+
+A subscription cycle opened and its invoice was charged or issued. `charged` is true only for a captured card; `reason` and `decline_code` say why it was not.
+
+```json
+{
+  "invoice_id": "01M46BTW3KFJH530ZFTMYR6VTJ",
+  "subscription_id": "01M46BTW3H47WGKMSNGSSE217F",
+  "invoice_number": 1,
+  "amount": 4990,
+  "currency": "BRL",
+  "method": "BOLECODE",
+  "period": {
+    "start": "2026-10-05",
+    "end": "2026-11-04"
+  },
+  "payment_id": "01M46BTW3JXBXY3Q1WZW4H74Q5",
+  "charged": false,
+  "decline_code": null,
+  "reason": null,
+  "pix": {
+    "copia_e_cola": "00020101021226...6304ABCD"
+  },
+  "boleto": {
+    "linha_digitavel": "34191.09008 00012.300000 00000.000000 1 00000000004990",
+    "due_date": "2026-10-08"
+  }
+}
+```
+
+#### invoice.updated
+
+A dunning retry issued a new payment for the same invoice. `attempt` counts the retries.
+
+```json
+{
+  "invoice_id": "01M46BTW3MQGA2WBBRE7SYGW1K",
+  "subscription_id": "01M46BTW3MQGA2WBBRE7SYGW1J",
+  "attempt": 2,
+  "payment_id": "01M46BTW3MQGA2WBBRE7SYGW1M",
+  "method": "BOLECODE",
+  "pix": {
+    "copia_e_cola": "00020101021226...6304ABCD"
+  },
+  "boleto": {
+    "linha_digitavel": "34191.09008 00012.300000 00000.000000 1 00000000004990",
+    "due_date": "2026-10-08"
+  }
+}
+```
+
+#### subscription.created
+
+A subscription was created.
+
+```json
+{
+  "id": "01M46BTW3NHQJ5PAP4SXCH68KV",
+  "status": "ACTIVE",
+  "customer_id": "01M46BTW3NHQJ5PAP4SXCH68KT",
+  "plan_id": "01M46BTW3NHQJ5PAP4SXCH68KS",
+  "method": "BOLECODE",
+  "card_id": null,
+  "current_period": {
+    "start": "2026-10-05",
+    "end": "2026-11-04"
+  },
+  "next_billing_at": "2026-11-05T12:00:00Z",
+  "cancel_at_period_end": false,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### subscription.past_due
+
+An invoice failed and dunning started.
+
+```json
+{
+  "id": "01M46BTW3P1F7TNYP5E0TV4CD5",
+  "status": "PAST_DUE",
+  "customer_id": "01M46BTW3P1F7TNYP5E0TV4CD4",
+  "plan_id": "01M46BTW3P1F7TNYP5E0TV4CD3",
+  "method": "BOLECODE",
+  "card_id": null,
+  "current_period": {
+    "start": "2026-10-05",
+    "end": "2026-11-04"
+  },
+  "next_billing_at": "2026-11-05T12:00:00Z",
+  "cancel_at_period_end": false,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### subscription.recovered
+
+A past-due subscription paid its invoice and is active again.
+
+```json
+{
+  "id": "01M46BTW3P1F7TNYP5E0TV4CD8",
+  "status": "ACTIVE",
+  "customer_id": "01M46BTW3P1F7TNYP5E0TV4CD7",
+  "plan_id": "01M46BTW3P1F7TNYP5E0TV4CD6",
+  "method": "BOLECODE",
+  "card_id": null,
+  "current_period": {
+    "start": "2026-10-05",
+    "end": "2026-11-04"
+  },
+  "next_billing_at": "2026-11-05T12:00:00Z",
+  "cancel_at_period_end": false,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### subscription.dunning_exhausted
+
+Every retry failed. Carries the subscription plus the `invoice_id` that could not be collected.
+
+```json
+{
+  "id": "01M46BTW3Q56QCNKDYFNQD739S",
+  "status": "PAST_DUE",
+  "customer_id": "01M46BTW3Q56QCNKDYFNQD739R",
+  "plan_id": "01M46BTW3Q56QCNKDYFNQD739Q",
+  "method": "BOLECODE",
+  "card_id": null,
+  "current_period": {
+    "start": "2026-10-05",
+    "end": "2026-11-04"
+  },
+  "next_billing_at": "2026-11-05T12:00:00Z",
+  "cancel_at_period_end": false,
+  "created_at": "2026-10-05T12:00:00Z",
+  "invoice_id": "01M46BTW3Q56QCNKDYFNQD739T"
+}
+```
+
+#### subscription.canceled
+
+The subscription was canceled.
+
+```json
+{
+  "id": "01M46BTW3Q56QCNKDYFNQD739X",
+  "status": "CANCELED",
+  "customer_id": "01M46BTW3Q56QCNKDYFNQD739W",
+  "plan_id": "01M46BTW3Q56QCNKDYFNQD739V",
+  "method": "BOLECODE",
+  "card_id": null,
+  "current_period": {
+    "start": "2026-10-05",
+    "end": "2026-11-04"
+  },
+  "next_billing_at": null,
+  "cancel_at_period_end": false,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### subscription.ended
+
+A subscription set to cancel at period end reached it.
+
+```json
+{
+  "id": "01M46BTW3Q56QCNKDYFNQD73A0",
+  "status": "ENDED",
+  "customer_id": "01M46BTW3Q56QCNKDYFNQD739Z",
+  "plan_id": "01M46BTW3Q56QCNKDYFNQD739Y",
+  "method": "BOLECODE",
+  "card_id": null,
+  "current_period": {
+    "start": "2026-10-05",
+    "end": "2026-11-04"
+  },
+  "next_billing_at": null,
+  "cancel_at_period_end": false,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### dispute.updated
+
+A merchant's dispute was opened (`status: OPEN`) or the operator moved it: `UNDER_REVIEW`, then
+`RESOLVED` or `REJECTED` with a `resolution` and `resolution_note`. Same partition as the payment's own
+events, so it arrives in order with them.
+
+```json
+{
+  "id": "01M46BTW3Q56QCNKDYFNQD73A1",
+  "payment_id": "01M46BTW3Q56QCNKDYFNQD73A2",
+  "reason": "DUPLICATE",
+  "status": "OPEN",
+  "resolution": null,
+  "resolution_note": null,
+  "updated_at": "2026-10-05T12:00:00Z"
+}
+```
+
 ### Idempotency
 
 Every POST that creates a resource or moves money — payments (and their `/cancel`, `/refunds`,
-`/capture`), customers, orders (and their `/payments`, `/cancel`), plans and subscriptions (and their
+`/capture`, `/disputes`), customers, orders (and their `/payments`, `/cancel`), plans and subscriptions (and their
 `/cancel`) — requires an `Idempotency-Key` header, at most 123
 characters. A repeated key with the same request body and method replays the stored response
 (`Idempotent-Replayed: true`); the same key with a different body is `422 IDEMPOTENCY_KEY_REUSED`; a key
@@ -188,6 +981,94 @@ still being processed, or one whose first attempt failed with a 5xx and is held 
 (TEST and LIVE never share a key row), so it is safe to script tests against TEST and LIVE with the same
 key values. The stored body hash is an HMAC-SHA256 under `GATEWAY_IDEMPOTENCY_HMAC_KEY` (falling back to
 `GATEWAY_API_KEY_PEPPER` when unset), because card request bodies carry PAN and CVV.
+
+### Disputes
+
+A merchant who disagrees with a payment opens a dispute; an operator reviews and decides it. Opening
+never moves money: a confirmed double charge is refunded through `/refunds` as a separate act.
+
+- `POST /v1/payments/{id}/disputes` (`Idempotency-Key` required) with `{"reason", "note"}` → `201`.
+  `reason` is `AMOUNT_MISMATCH`, `NOT_SETTLED`, `DUPLICATE` or `OTHER` (anything else is `400`); `note` is
+  optional, up to 500 characters. A payment holds one open dispute at a time: a second one while the first
+  is `OPEN` or `UNDER_REVIEW` is `409 DISPUTE_ALREADY_OPEN`. Another merchant's payment is `404`.
+- `GET /v1/disputes?status=&since=&after=&limit=` lists the merchant's disputes, newest first; a full page
+  carries `X-Next-Cursor`, which goes back as `after`.
+- `GET /v1/disputes/{id}`.
+
+The response is `id, payment_id, reason, note, status, resolution, resolution_note, created_at,
+resolved_at`. `status` goes `OPEN` → `UNDER_REVIEW` → `RESOLVED` or `REJECTED` (the operator may also
+decide straight from `OPEN`), through `/v1/admin/divergences/{id}/review` and `/resolve`: the dispute id is
+the divergence id. Each step, the opening included, emits [`dispute.updated`](#disputeupdated).
+
+### Operations
+
+Admin routes (header `X-Admin-Key`):
+
+- `GET /v1/admin/divergences?status=&origin=&kind=&merchant_id=&since=&after=&limit=` — the divergence queue
+  (reconciliation and disputes); `GET /v1/admin/divergences/{id}`; `POST /v1/admin/divergences/{id}/review`;
+  `POST /v1/admin/divergences/{id}/resolve`.
+- `GET /v1/admin/jobs?status=&type=&limit=` — `DEAD` first; `POST /v1/admin/jobs/{id}/run-now` makes a
+  `PENDING` or `DEAD` job due now (a `DONE` job is `409 JOB_NOT_RERUNNABLE`: not every handler is idempotent);
+  `POST /v1/admin/jobs/{id}/give-up` moves a `PENDING` job to `DEAD` with the operator's note.
+- `GET /v1/admin/payments/stuck` — payments left in `CREATED` too long and `PENDING` payments past their expiry.
+
+Metrics are served at `/actuator/prometheus` on the **management port** (`GATEWAY_MANAGEMENT_PORT`, default
+`9090`), not on the API port. That endpoint answers without a key: **never publish the management port** —
+scrape it from inside the network. The gauges are recounted every `gateway.metrics.refresh-ms` (default 30 s),
+not on scrape.
+
+| Metric | Labels | Suggested alert |
+|---|---|---|
+| `gateway_payments` (gauge) | `status`, `method`, `provider`, `environment` | — (volume dashboards) |
+| `gateway_payments_stuck` | `kind` = `created_too_long`, `pending_past_expiry` | `created_too_long` > 0 |
+| `gateway_divergences_open` | `origin` (`SYSTEM`, `MERCHANT`), `kind` | > 0 for 24 h (a divergence open over a day) |
+| `gateway_jobs` | `status` = `PENDING`, `DEAD`; `type` = every `JobType` (`DONE` rows are history and not counted) | `DEAD` > 0 |
+| `gateway_jobs_overdue` | — | > 10 (`PENDING` jobs due for over 5 minutes: the runner is behind) |
+| `gateway_webhook_deliveries` | `status` | — |
+| `gateway_outbox_pending` | — | — (growing steadily means the relay stopped) |
+| `gateway_provider_call_seconds` (timer: `_count`, `_sum`, `_max`, `_bucket`) | `provider`, `operation`, `outcome` = `ok`, `provider_error`, `timeout`, `unexpected` | p95 > 5 s (`histogram_quantile` over `_bucket`) |
+
+A label set that stops appearing in the database keeps reporting `0` rather than disappearing.
+
+#### Runbook: divergence kinds
+
+A divergence never moves money or a payment's state by itself: the operator checks the bank or the Cielo, acts
+through the normal API (a refund, a capture, a cancel) when money has to move, and then closes the row with
+`resolve` — `CONFIRMED` or `FALSE_POSITIVE` for a `SYSTEM` row, `RESOLVED` or `REJECTED` for a dispute.
+
+| Kind | What happened | What the operator does |
+|---|---|---|
+| `AMOUNT_MISMATCH` | A Pix or a paid boleto arrived with an amount different from the charge; the payment was not completed. | Agree the amount with the merchant; refund the payer or settle the difference outside the gateway. |
+| `BOLETO_PAID` | A boleto was paid at the bank while the payment is `FAILED` or `CANCELED`. | Tell the merchant the money arrived; refund the payer if the sale is not going ahead. |
+| `BOLETO_REJECTED` | The bank refused one payment attempt of a boleto; the boleto is still open for the payer. | Usually nothing: watch for the next attempt; `FALSE_POSITIVE` once paid or expired. |
+| `CANCELED_AT_BANK` | The boleto was written off (baixa) at the bank outside the gateway; the gateway did not move the payment. | Find out who wrote it off; cancel the payment through the API if that is what the merchant wants. |
+| `CARD_ACTIVE_AT_PROVIDER` | The Cielo shows the sale authorized or paid while the gateway has it `FAILED` or `CANCELED`. | Void or refund the sale at the Cielo so the cardholder is not charged. |
+| `CAPTURE_OVERDUE` | A card authorization older than the capture deadline is still only authorized at the Cielo. | Ask the merchant to capture or void before the authorization lapses. |
+| `DOUBLE_PAYMENT` | Two payments settled one order, or a Bolecode was paid both by Pix and by boleto. | Confirm both credits at the bank and refund one of them. |
+| `FRAUD_ALERT` | The Cielo notified a fraud alert (ChangeType 8) on the sale. | Review the sale with the merchant; refund or void it if it is fraudulent. |
+| `NOT_FOUND_AT_BANK` | Two or more boleto polls found the boleto unknown to the bank. | Check the registration at Itaú; cancel the payment if the boleto never existed. |
+| `NOT_FOUND_AT_PROVIDER` | The Cielo returns nothing for the sale's PaymentId inside the reconciliation window. | Look the sale up in the Cielo backoffice; cancel the payment if it was never created. |
+| `PAID_AFTER_CLOSE` | A payment attempt was paid after its order was canceled or expired. | Refund the payer, or reopen the sale with the merchant. |
+| `PARTIAL_REFUND_AT_PROVIDER` | The Cielo notified a partial refund that no refund made through the gateway explains. | Compare with the Cielo backoffice; record what happened with the merchant. |
+| `PIX_RECEIVED` | A Pix landed on a `FAILED` or `CANCELED` payment, or a second, different Pix on a `COMPLETED` one. | Refund the payer, or reopen the order with the merchant. |
+| `PIX_TXID_UNCONFIRMED` | A Bolecode was adopted as pending, but the bank did not confirm its Pix txid. | Check the charge at Itaú; if the Pix part does not exist, the payer can only pay the barcode. |
+| `REFUNDED_AT_PROVIDER` | The Cielo shows the sale refunded or voided beyond what the gateway refunded. | Confirm at the Cielo and tell the merchant; the gateway's refunds no longer match the money. |
+| `REFUND_UNKNOWN` | A refund's outcome is unknown: a card refund ended in an error that may have landed, or a Pix refund outlived its polling budget. | Check the refund at the bank or the Cielo; never retry it before knowing. |
+| `UNCONFIRMED_REFUND_WEBHOOK` | A refund webhook did not match its merchant or the payment's endToEndId; it was ignored. | Check the webhook registration at Itaú; nothing changed in the gateway. |
+| `UNCONFIRMED_WEBHOOK` | A Pix webhook said paid, but the bank's own query does not confirm it; the payment was not completed. | Check the charge at Itaú; reconciliation completes it if the bank later shows it paid. |
+| `VOID_DENIED` | The Cielo denied a void (ChangeType 5). | Retry the void or refund at the Cielo; the cardholder may still be charged. |
+| `DISPUTE` | A merchant opened a dispute (`origin = MERCHANT`). | `review`, investigate, and `resolve` as `RESOLVED` or `REJECTED`; a refund, if due, goes through `/refunds`. |
+
+Pix reconciliation also opens a row named after the bank's charge status (e.g. `CONCLUIDA`) when the amount the
+bank shows paid differs from the gateway's `paid_amount`; treat it as `AMOUNT_MISMATCH`.
+
+#### Runbook: job statuses
+
+| Status | Meaning | Operator |
+|---|---|---|
+| `PENDING` | Waiting for `next_run_at`, or held by a worker inside its lease. | `run-now` makes it due now (`409 JOB_IN_FLIGHT` while a worker holds it); `give-up` moves it to `DEAD` with a note. |
+| `DEAD` | Its retries ran out (`last_error` says why), or an operator gave it up. | `run-now` puts it back to `PENDING`, due now, keeping `attempts` and `last_error`. |
+| `DONE` | Finished; kept as history. | Nothing: `run-now` is `409 JOB_NOT_RERUNNABLE`, because not every handler is idempotent. |
 
 ### Background jobs
 
@@ -204,6 +1085,9 @@ key values. The stored body hash is an HMAC-SHA256 under `GATEWAY_IDEMPOTENCY_HM
   (`gateway.payments.boleto-poll-every`) until the payment limit date plus 2 days; paid completes the payment
   with `paid_via = BOLETO`, anything the gateway cannot act on becomes a divergence. Reconciliation runs the same
   check for every `PENDING` Bolecode older than `reconciliation-min-age`.
+- **Billing jobs.** `EXPIRE_ORDER`, `BILL_SUBSCRIPTION` (one cycle) and `DUNNING_RETRY` run in the same job
+  runner but never go `DEAD`: once the backoff is spent they retry every `gateway.billing.order-expiry-recheck`
+  and log an error for an operator, because a dead row would stop billing or chasing an invoice silently.
 
 ### Card (Cielo)
 
@@ -364,6 +1248,25 @@ the provider, so a TEST-environment run is a real (if non-production) integratio
 already up, using the sandbox credentials in `.env`, and writes the requests and answers to
 `docs/e2e/<date>-sandbox-happy-paths.md` with every secret, key, card number and CVV removed. What each
 sandbox can and cannot prove is written at the top of that report and in `docs/providers/*/NOTES.md`.
+The sandboxes cannot call back into a gateway, so outbound webhooks are proved by
+`WebhookDeliveryFlowIntegrationTest` (signed delivery, retries into `DEAD`, redelivery, secret rotation).
+
+## Documentation map
+
+- `docs/architecture.md` — modules, import rules, state machines, jobs, with diagrams (`docs/diagrams/`).
+- `docs/superpowers/specs/` — designs, by date:
+  - 2026-09-23 payment gateway — the orchestrator model, modules, payments, webhooks.
+  - 2026-09-25 bolecode — one `BOLECODE` method, settled by QR or by barcode poll.
+  - 2026-09-25 payment method and provider strategy — one flow per method, one provider contract.
+  - 2026-09-28 card via Cielo — authorization, capture, void, refund, saved cards.
+  - 2026-10-02 orders, plans and subscriptions — billing, cycles, dunning without cancel.
+  - 2026-10-04 outbound webhooks — delivery log, redelivery, the documented contract.
+  - 2026-10-04 operations and disputes — design only (plan G).
+  - 2026-10-04 security and operators — design only (plan H).
+- `docs/superpowers/plans/` — how each spec was built; indexed in `docs/superpowers/README.md`.
+- `docs/superpowers/DECISOES.md` — append-only decisions with the rejected alternative and the cost of being wrong.
+- `docs/providers/itau/NOTES.md`, `docs/providers/cielo/NOTES.md` — provider facts and sandbox limits.
+- `docs/e2e/` — sandbox happy-path reports (2026-09-30, 2026-10-02).
 
 ## Build
 

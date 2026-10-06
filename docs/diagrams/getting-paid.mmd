@@ -1,12 +1,16 @@
 sequenceDiagram
-  participant B as Itaú
+  participant P as Itaú / Cielo
   participant GW as Payment Gateway
+  participant B as Billing (OrderSettlement)
+  participant WD as webhook-delivery
   participant M as Merchant
 
-  B->>GW: webhook: Pix received (mTLS)
-  GW-->>B: 202 (stored, processed later)
-  GW->>B: confirm charge status
-  B-->>GW: paid, amount, e2eid
-  GW->>GW: COMPLETED + outbox event
-  GW-)M: webhook payment.completed
-  Note over GW: Backstops without the webhook:<br/>expiration asks the bank · reconciliation every 15 min
+  P->>GW: trigger: webhook · poll · reconciliation
+  GW->>P: ask the bank / acquirer
+  P-->>GW: paid, amount, ids
+  GW->>GW: one transaction: state change + outbox row
+  GW->>B: relay: internal listeners first
+  B->>B: order PAID (idempotent by message id)
+  GW->>WD: then the merchant event
+  WD-)M: signed POST payment.completed
+  Note over WD,M: non-2xx: backoff retries, then DEAD<br/>redeliver: /v1/webhooks/deliveries
