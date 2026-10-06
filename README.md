@@ -17,6 +17,8 @@ export GATEWAY_MASTER_KEY=$(openssl rand -base64 32)
 Without `GATEWAY_MASTER_KEY` the app does not start (the master key encrypts merchant credentials).
 Without `GATEWAY_ADMIN_KEY` the admin API answers 403 — closed by default.
 
+Behind a reverse proxy, the edge proxy must append the connecting address to (or overwrite) `X-Forwarded-For`: the gateway rate-limits `/v1/checkout` per IP using the last entry of that header, and only when the connection comes from a private or loopback address. `GATEWAY_CORS_ORIGINS` (comma-separated exact origins) enables CORS; empty means off.
+
 `/actuator/health` and `/actuator/prometheus` are served on the management port (`GATEWAY_MANAGEMENT_PORT`,
 default `9090`), not on `8080`: point health checks there, and keep that port off the public network.
 
