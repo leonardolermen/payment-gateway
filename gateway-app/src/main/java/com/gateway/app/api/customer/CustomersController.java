@@ -32,6 +32,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/v1/customers")
 public class CustomersController {
+  private static final int MAX_PAGE = 100;
+
   private final CustomerService customers;
   private final Clock clock;
 
@@ -61,12 +63,33 @@ public class CustomersController {
   }
 
   /**
-   * A list of zero or one, not a 404: the NOT_FOUND message names what was looked up, and that
-   * would echo the full document back into a response and its logs.
+   * Without {@code document}: the active customers of the key's environment, newest first, by
+   * cursor (the last id of the previous page). With it: a list of zero or one, not a 404, because
+   * the NOT_FOUND message names what was looked up, and that would echo the full document back into
+   * a response and its logs.
    */
   @GetMapping
-  public List<CustomerResponse> findByDocument(@RequestParam String document) {
+  public List<CustomerResponse> list(
+      @RequestParam(defaultValue = "20") int limit,
+      @RequestParam(required = false) String cursor,
+      @RequestParam(required = false) String document) {
+    if (limit <= 0 || limit > MAX_PAGE) {
+      throw new IllegalArgumentException("limit must be between 1 and " + MAX_PAGE);
+    }
+
     MerchantContext.Current caller = MerchantContext.current();
+
+    if (document == null) {
+      return customers
+          .list(caller.merchantId(), Environments.toProvider(caller.environment()), cursor, limit)
+          .stream()
+          .map(CustomerResponse::from)
+          .toList();
+    }
+
+    if (cursor != null) {
+      throw new IllegalArgumentException("document cannot be combined with cursor");
+    }
 
     // Document.of throws InvalidValue, which no handler maps: unconverted it would be a 500.
     try {

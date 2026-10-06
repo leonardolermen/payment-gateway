@@ -160,6 +160,13 @@ public class SubscriptionsController {
   }
 
   private OrderResponse orderResponse(MerchantId merchantId, Order order) {
-    return OrderResponse.from(order, orders.attemptsOf(merchantId, order.id()));
+    // An invoice always has the subscription's customer; the guard is for List.of, which takes no
+    // null.
+    String customerName =
+        order.customerId() == null
+            ? null
+            : customers.namesOf(merchantId, List.of(order.customerId())).get(order.customerId());
+
+    return OrderResponse.from(order, orders.attemptsOf(merchantId, order.id()), customerName);
   }
 }

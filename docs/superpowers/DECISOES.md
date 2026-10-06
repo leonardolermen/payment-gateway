@@ -666,3 +666,15 @@ spec. Custo se errado: o front que seguir a spec ao pé da letra enviará um hea
 README diz que distinguir tentativas do pagador nos eventos ainda não é possível. Rejeitado: afirmar
 `CHECKOUT` sem que o evento o carregue. Custo se errado: quem filtrar eventos por origem para achar pagamentos
 iniciados pelo pagador não os encontra até o fluxo propagar a origem.
+
+## 2026-10-06 — Listas do painel filtradas pelo ambiente da chave
+`GET /v1/orders` e `GET /v1/customers` sem `reference`/`document` devolvem só o ambiente da chave que
+chamou: uma chave TEST não lista uma ordem LIVE. Rejeitado: listar todos os ambientes, como `GET
+/v1/payments` faz hoje — o painel mostra o selo TEST e uma linha LIVE ali dentro diria o contrário. Custo
+se errado: o merchant que queira TEST e LIVE na mesma tela chama com as duas chaves e junta.
+
+## 2026-10-06 — `customer_name` plano na ordem, sem o cliente apagado
+Toda resposta de ordem ganha `customer_name`, lido numa consulta só para a página inteira, sem abrir o
+documento cifrado. Cliente apagado não tem nome na ordem. Rejeitado: objeto `customer: {id, name}`
+aninhado — muda a forma de um campo existente. Custo se errado: se a ordem precisar de mais dados do
+cliente, entra mais um campo plano ou uma quebra de contrato.

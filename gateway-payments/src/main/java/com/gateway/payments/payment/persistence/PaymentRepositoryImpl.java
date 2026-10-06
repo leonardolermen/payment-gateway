@@ -15,6 +15,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -124,6 +125,17 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   @Override
   public List<Payment> listByMerchantAndOrder(MerchantId merchantId, String orderId) {
     return jpa.findByMerchantIdAndOrderIdOrderByCreatedAt(merchantId.value(), orderId).stream()
+        .map(PaymentRepositoryImpl::toDomain)
+        .toList();
+  }
+
+  @Override
+  public List<Payment> listByMerchantAndOrders(MerchantId merchantId, Collection<String> orderIds) {
+    if (orderIds.isEmpty()) {
+      return List.of();
+    }
+
+    return jpa.findByMerchantIdAndOrderIdInOrderByCreatedAt(merchantId.value(), orderIds).stream()
         .map(PaymentRepositoryImpl::toDomain)
         .toList();
   }
