@@ -5,6 +5,7 @@ import com.gateway.billing.order.persistence.OrderRepository;
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.kernel.ids.MerchantId;
+import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.payments.UnitOfWork;
 import com.gateway.payments.jobs.Job;
 import com.gateway.payments.jobs.persistence.JobRepository;
@@ -88,6 +89,15 @@ public class OrderService {
 
   public List<Order> listByReference(MerchantId merchantId, String reference, int limit) {
     return orders.findByReference(merchantId, reference, limit);
+  }
+
+  public List<Order> list(
+      MerchantId merchantId,
+      ProviderEnvironment environment,
+      OrderStatus status,
+      String cursor,
+      int limit) {
+    return orders.listByMerchant(merchantId, environment, status, cursor, limit);
   }
 
   public List<Payment> attemptsOf(MerchantId merchantId, String id) {

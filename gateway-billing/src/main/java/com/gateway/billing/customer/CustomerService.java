@@ -88,6 +88,11 @@ public class CustomerService {
         .orElseThrow(() -> new NotFoundException("customer", id));
   }
 
+  public List<Customer> list(
+      MerchantId merchantId, ProviderEnvironment environment, String cursor, int limit) {
+    return customers.listActive(merchantId, environment, cursor, limit);
+  }
+
   public Optional<Customer> findByDocument(
       MerchantId merchantId, ProviderEnvironment environment, String document) {
     return customers.findActiveByDocumentHash(
