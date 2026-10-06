@@ -120,6 +120,30 @@ class CardReconciliationIntegrationTest extends ServiceIntegrationTestBase {
     assertThat(cards.callsFor(payment.card().paymentId())).hasSize(findsAfterFlagging);
   }
 
+  /**
+   * Final review of the operations plan: a divergence an operator has put under review is still
+   * "flagged". Reading its payment again on every pass would let a handful of reviewed cases fill
+   * the cap and starve the newer ones, exactly what the OPEN-only check already prevented.
+   */
+  @Test
+  void anOverdueAuthorizationUnderReviewIsNotReadAgainEither() {
+    Payment payment = authorized();
+    clock.advance(Duration.ofDays(6));
+    reconciliation.reconcile(clock.instant());
+    int findsAfterFlagging = cards.callsFor(payment.card().paymentId()).size();
+    String divergenceId =
+        jdbc.queryForObject(
+            "SELECT id FROM payments.reconciliation_divergences WHERE payment_id = ?",
+            String.class,
+            payment.id());
+    divergences.review(divergenceId, "admin");
+
+    reconciliation.reconcile(clock.instant());
+
+    assertThat(divergences(payment)).containsExactly("CAPTURE_OVERDUE");
+    assertThat(cards.callsFor(payment.card().paymentId())).hasSize(findsAfterFlagging);
+  }
+
   private static PaymentsProperties withCardCap(int cap) {
     PaymentsProperties defaults = PaymentsProperties.defaults();
     return new PaymentsProperties(

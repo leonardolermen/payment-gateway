@@ -6,9 +6,11 @@ import com.gateway.kernel.payment.PaymentMethod;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
+import com.gateway.payments.payment.PaymentCount;
 import com.gateway.payments.payment.PaymentDetailsJson;
 import com.gateway.payments.payment.PaymentEvent;
 import com.gateway.payments.payment.PaymentStatus;
+import com.gateway.payments.reconciliation.DivergenceStatus;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.time.Clock;
@@ -204,7 +206,8 @@ public class PaymentRepositoryImpl implements PaymentRepository {
   public List<Payment> findByStatusCreatedBeforeWithoutOpenDivergence(
       PaymentStatus status, Instant createdBefore, String kind, int limit) {
     return jpa
-        .findByStatusCreatedBeforeWithoutOpenDivergence(status.name(), createdBefore, kind, limit)
+        .findByStatusCreatedBeforeWithoutOpenDivergence(
+            status.name(), createdBefore, kind, DivergenceStatus.UNSETTLED_NAMES, limit)
         .stream()
         .map(PaymentRepositoryImpl::toDomain)
         .toList();
@@ -295,5 +298,29 @@ public class PaymentRepositoryImpl implements PaymentRepository {
         entity.updatedAt,
         entity.orderId,
         Clock.systemUTC());
+  }
+
+  @Override
+  public long countByStatusCreatedBefore(PaymentStatus status, Instant createdBefore) {
+    return jpa.countByStatusAndCreatedAtBefore(status.name(), createdBefore);
+  }
+
+  @Override
+  public long countPendingOlderThan(Instant expiresBefore) {
+    return jpa.countPendingOlderThan(expiresBefore);
+  }
+
+  @Override
+  public List<PaymentCount> countByStatusMethodProviderEnvironment() {
+    return jpa.countByStatusMethodProviderEnvironment().stream()
+        .map(
+            row ->
+                new PaymentCount(
+                    (String) row[0],
+                    (String) row[1],
+                    (String) row[2],
+                    (String) row[3],
+                    ((Number) row[4]).longValue()))
+        .toList();
   }
 }

@@ -2,6 +2,7 @@ package com.gateway.payments.payment.persistence;
 
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.payments.payment.Payment;
+import com.gateway.payments.payment.PaymentCount;
 import com.gateway.payments.payment.PaymentEvent;
 import com.gateway.payments.payment.PaymentStatus;
 import java.time.Instant;
@@ -87,13 +88,23 @@ public interface PaymentRepository {
       int limit);
 
   /**
-   * Oldest first, skipping payments with an OPEN divergence of {@code kind}: an already-flagged row
-   * would otherwise be re-read every run and, once there are {@code limit} of them, starve the
-   * newer ones forever.
+   * Oldest first, skipping payments with an unsettled (OPEN or UNDER_REVIEW) divergence of {@code
+   * kind}: an already-flagged row would otherwise be re-read every run and, once there are {@code
+   * limit} of them, starve the newer ones forever. Under review counts as flagged: the operator
+   * holding the case is the reason it is not settled yet, not a reason to look at it again.
    */
   List<Payment> findByStatusCreatedBeforeWithoutOpenDivergence(
       PaymentStatus status, Instant createdBefore, String kind, int limit);
 
   /** Ordered by {@code created_at} ascending, capped at {@code limit}. */
   List<Payment> findByStatusCreatedBefore(PaymentStatus status, Instant createdBefore, int limit);
+
+  /** The count behind {@link #findByStatusCreatedBefore}, uncapped. */
+  long countByStatusCreatedBefore(PaymentStatus status, Instant createdBefore);
+
+  /** The count behind {@link #findPendingOlderThan}, uncapped. */
+  long countPendingOlderThan(Instant expiresBefore);
+
+  /** Every payment, grouped; one row per combination that exists. */
+  List<PaymentCount> countByStatusMethodProviderEnvironment();
 }

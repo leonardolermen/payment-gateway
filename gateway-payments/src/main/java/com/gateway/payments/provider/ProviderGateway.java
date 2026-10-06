@@ -11,8 +11,12 @@ import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
 import com.gateway.kernel.provider.card.CardMethodProvider;
 import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.payments.provider.persistence.ProviderRequestRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import org.slf4j.Logger;
@@ -51,18 +55,21 @@ public class ProviderGateway {
   private final List<CardMethodProvider> cardProviders;
   private final CredentialLookup credentials;
   private final ProviderRequestRepository requests;
+  private final MeterRegistry meters;
 
   public ProviderGateway(
       List<PixMethodProvider> pixProviders,
       List<BoletoMethodProvider> boletoProviders,
       List<CardMethodProvider> cardProviders,
       CredentialLookup credentials,
-      ProviderRequestRepository requests) {
+      ProviderRequestRepository requests,
+      MeterRegistry meters) {
     this.pixProviders = pixProviders;
     this.boletoProviders = boletoProviders;
     this.cardProviders = cardProviders;
     this.credentials = credentials;
     this.requests = requests;
+    this.meters = meters;
   }
 
   public ResolvedProvider<PixMethodProvider> resolvePix(
@@ -149,12 +156,16 @@ public class ProviderGateway {
 
     try {
       T result = fn.apply(resolved);
+
       record(paymentId, resolved, operation, null, CREATING.contains(operation) ? 201 : 200, start);
+      time(resolved, operation, "ok", start);
       return result;
     } catch (ProviderException e) {
       record(paymentId, resolved, operation, e.code() + ": " + e.getMessage(), statusOf(e), start);
+      time(resolved, operation, outcomeOf(e), start);
       throw e;
     } catch (RuntimeException e) {
+      time(resolved, operation, "unexpected", start);
       record(
           paymentId,
           resolved,
@@ -187,6 +198,37 @@ public class ProviderGateway {
       return e.httpStatus();
     }
     return e.code() == ProviderException.Code.TIMEOUT ? 504 : 0;
+  }
+
+  /**
+   * A timeout is split from the other refusals because it is the one that may have landed at the
+   * bank: an alert on it means reconciliation work, an alert on provider_error does not.
+   */
+  private static String outcomeOf(ProviderException e) {
+    return e.code() == ProviderException.Code.TIMEOUT ? "timeout" : "provider_error";
+  }
+
+  // Like the row below, the timer is observation: a meter registry failure must not fail a call
+  // the bank already answered.
+  // The histogram is what makes a p95 computable at all (histogram_quantile over _bucket): a bare
+  // timer publishes only count, sum and max. The SLO buckets put edges on the thresholds an
+  // operator alerts on, 5 s being the README's.
+  private void time(ResolvedProvider<?> resolved, String operation, String outcome, long start) {
+    try {
+      Timer.builder("gateway_provider_call_seconds")
+          .tags("provider", resolved.provider().id(), "operation", operation, "outcome", outcome)
+          .publishPercentileHistogram()
+          .serviceLevelObjectives(
+              Duration.ofMillis(500),
+              Duration.ofSeconds(1),
+              Duration.ofSeconds(2),
+              Duration.ofSeconds(5),
+              Duration.ofSeconds(10))
+          .register(meters)
+          .record(System.nanoTime() - start, TimeUnit.NANOSECONDS);
+    } catch (RuntimeException e) {
+      log.warn("could not time provider call {} ({})", operation, outcome, e);
+    }
   }
 
   // Recording is audit, not the operation: a failure to write the row must not turn a charge the

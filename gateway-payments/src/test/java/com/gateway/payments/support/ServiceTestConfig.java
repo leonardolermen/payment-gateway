@@ -1,11 +1,15 @@
 package com.gateway.payments.support;
 
 import com.gateway.payments.card.persistence.SavedCardRepositoryImpl;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
-/** The beans the app provides in production: a clock, the bank, and where credentials live. */
+/**
+ * The beans the app provides in production: a clock, the bank, where credentials live and a meter
+ * registry.
+ */
 @TestConfiguration(proxyBeanMethods = false)
 public class ServiceTestConfig {
   @Bean
@@ -31,6 +35,11 @@ public class ServiceTestConfig {
   @Bean
   RecordingCardProvider recordingCardProvider(MutableClock clock) {
     return new RecordingCardProvider(clock);
+  }
+
+  @Bean
+  SimpleMeterRegistry meterRegistry() {
+    return new SimpleMeterRegistry();
   }
 
   @Bean

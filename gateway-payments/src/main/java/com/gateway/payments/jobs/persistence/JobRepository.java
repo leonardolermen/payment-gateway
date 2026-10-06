@@ -1,6 +1,8 @@
 package com.gateway.payments.jobs.persistence;
 
 import com.gateway.payments.jobs.Job;
+import com.gateway.payments.jobs.JobCount;
+import com.gateway.payments.jobs.JobQuery;
 import com.gateway.payments.jobs.JobType;
 import java.time.Duration;
 import java.time.Instant;
@@ -29,4 +31,39 @@ public interface JobRepository {
   void save(Job job);
 
   Optional<Job> findByTypeAndRef(JobType type, String refId);
+
+  Optional<Job> findById(String id);
+
+  /** {@link JobQuery}'s order: DEAD first, then attempts descending, then next_run_at. */
+  List<Job> find(JobQuery query);
+
+  /**
+   * Back to PENDING and due {@code now}, {@code attempts} and {@code last_error} kept, so the
+   * operator still sees what failed and how often. Refused (false) for a DONE job, when a worker
+   * holds the job inside its lease — {@code reconcileLease} for the RECONCILE singleton, as in
+   * {@link #claimDue(Instant, int, Duration, Duration)} — or the id does not exist.
+   */
+  boolean forceDue(String id, Instant now, Duration lease, Duration reconcileLease);
+
+  default boolean forceDue(String id, Instant now, Duration lease) {
+    return forceDue(id, now, lease, lease);
+  }
+
+  /**
+   * PENDING to DEAD with the operator's note as {@code last_error}. Refused (false) for a job that
+   * is not PENDING, is held inside its lease, or does not exist.
+   */
+  boolean giveUp(String id, String note, Instant now, Duration lease, Duration reconcileLease);
+
+  default boolean giveUp(String id, String note, Instant now, Duration lease) {
+    return giveUp(id, note, now, lease, lease);
+  }
+
+  long countByStatus(String status);
+
+  /** PENDING and DEAD only; a (status, type) with no rows is absent, not zero. */
+  List<JobCount> countByStatusAndType();
+
+  /** PENDING jobs whose {@code next_run_at} is before {@code before}: the runner is behind. */
+  long countOverdue(Instant before);
 }

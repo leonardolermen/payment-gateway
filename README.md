@@ -17,6 +17,9 @@ export GATEWAY_MASTER_KEY=$(openssl rand -base64 32)
 Without `GATEWAY_MASTER_KEY` the app does not start (the master key encrypts merchant credentials).
 Without `GATEWAY_ADMIN_KEY` the admin API answers 403 — closed by default.
 
+`/actuator/health` and `/actuator/prometheus` are served on the management port (`GATEWAY_MANAGEMENT_PORT`,
+default `9090`), not on `8080`: point health checks there, and keep that port off the public network.
+
 If port 5432 is already taken on your machine, map `5433:5432` in `docker-compose.yml` and set
 `DB_URL=jdbc:postgresql://localhost:5433/gateway` before starting the app.
 
@@ -948,10 +951,28 @@ A subscription set to cancel at period end reached it.
 }
 ```
 
+#### dispute.updated
+
+A merchant's dispute was opened (`status: OPEN`) or the operator moved it: `UNDER_REVIEW`, then
+`RESOLVED` or `REJECTED` with a `resolution` and `resolution_note`. Same partition as the payment's own
+events, so it arrives in order with them.
+
+```json
+{
+  "id": "01M46BTW3Q56QCNKDYFNQD73A1",
+  "payment_id": "01M46BTW3Q56QCNKDYFNQD73A2",
+  "reason": "DUPLICATE",
+  "status": "OPEN",
+  "resolution": null,
+  "resolution_note": null,
+  "updated_at": "2026-10-05T12:00:00Z"
+}
+```
+
 ### Idempotency
 
 Every POST that creates a resource or moves money — payments (and their `/cancel`, `/refunds`,
-`/capture`), customers, orders (and their `/payments`, `/cancel`), plans and subscriptions (and their
+`/capture`, `/disputes`), customers, orders (and their `/payments`, `/cancel`), plans and subscriptions (and their
 `/cancel`) — requires an `Idempotency-Key` header, at most 123
 characters. A repeated key with the same request body and method replays the stored response
 (`Idempotent-Replayed: true`); the same key with a different body is `422 IDEMPOTENCY_KEY_REUSED`; a key
@@ -960,6 +981,94 @@ still being processed, or one whose first attempt failed with a 5xx and is held 
 (TEST and LIVE never share a key row), so it is safe to script tests against TEST and LIVE with the same
 key values. The stored body hash is an HMAC-SHA256 under `GATEWAY_IDEMPOTENCY_HMAC_KEY` (falling back to
 `GATEWAY_API_KEY_PEPPER` when unset), because card request bodies carry PAN and CVV.
+
+### Disputes
+
+A merchant who disagrees with a payment opens a dispute; an operator reviews and decides it. Opening
+never moves money: a confirmed double charge is refunded through `/refunds` as a separate act.
+
+- `POST /v1/payments/{id}/disputes` (`Idempotency-Key` required) with `{"reason", "note"}` → `201`.
+  `reason` is `AMOUNT_MISMATCH`, `NOT_SETTLED`, `DUPLICATE` or `OTHER` (anything else is `400`); `note` is
+  optional, up to 500 characters. A payment holds one open dispute at a time: a second one while the first
+  is `OPEN` or `UNDER_REVIEW` is `409 DISPUTE_ALREADY_OPEN`. Another merchant's payment is `404`.
+- `GET /v1/disputes?status=&since=&after=&limit=` lists the merchant's disputes, newest first; a full page
+  carries `X-Next-Cursor`, which goes back as `after`.
+- `GET /v1/disputes/{id}`.
+
+The response is `id, payment_id, reason, note, status, resolution, resolution_note, created_at,
+resolved_at`. `status` goes `OPEN` → `UNDER_REVIEW` → `RESOLVED` or `REJECTED` (the operator may also
+decide straight from `OPEN`), through `/v1/admin/divergences/{id}/review` and `/resolve`: the dispute id is
+the divergence id. Each step, the opening included, emits [`dispute.updated`](#disputeupdated).
+
+### Operations
+
+Admin routes (header `X-Admin-Key`):
+
+- `GET /v1/admin/divergences?status=&origin=&kind=&merchant_id=&since=&after=&limit=` — the divergence queue
+  (reconciliation and disputes); `GET /v1/admin/divergences/{id}`; `POST /v1/admin/divergences/{id}/review`;
+  `POST /v1/admin/divergences/{id}/resolve`.
+- `GET /v1/admin/jobs?status=&type=&limit=` — `DEAD` first; `POST /v1/admin/jobs/{id}/run-now` makes a
+  `PENDING` or `DEAD` job due now (a `DONE` job is `409 JOB_NOT_RERUNNABLE`: not every handler is idempotent);
+  `POST /v1/admin/jobs/{id}/give-up` moves a `PENDING` job to `DEAD` with the operator's note.
+- `GET /v1/admin/payments/stuck` — payments left in `CREATED` too long and `PENDING` payments past their expiry.
+
+Metrics are served at `/actuator/prometheus` on the **management port** (`GATEWAY_MANAGEMENT_PORT`, default
+`9090`), not on the API port. That endpoint answers without a key: **never publish the management port** —
+scrape it from inside the network. The gauges are recounted every `gateway.metrics.refresh-ms` (default 30 s),
+not on scrape.
+
+| Metric | Labels | Suggested alert |
+|---|---|---|
+| `gateway_payments` (gauge) | `status`, `method`, `provider`, `environment` | — (volume dashboards) |
+| `gateway_payments_stuck` | `kind` = `created_too_long`, `pending_past_expiry` | `created_too_long` > 0 |
+| `gateway_divergences_open` | `origin` (`SYSTEM`, `MERCHANT`), `kind` | > 0 for 24 h (a divergence open over a day) |
+| `gateway_jobs` | `status` = `PENDING`, `DEAD`; `type` = every `JobType` (`DONE` rows are history and not counted) | `DEAD` > 0 |
+| `gateway_jobs_overdue` | — | > 10 (`PENDING` jobs due for over 5 minutes: the runner is behind) |
+| `gateway_webhook_deliveries` | `status` | — |
+| `gateway_outbox_pending` | — | — (growing steadily means the relay stopped) |
+| `gateway_provider_call_seconds` (timer: `_count`, `_sum`, `_max`, `_bucket`) | `provider`, `operation`, `outcome` = `ok`, `provider_error`, `timeout`, `unexpected` | p95 > 5 s (`histogram_quantile` over `_bucket`) |
+
+A label set that stops appearing in the database keeps reporting `0` rather than disappearing.
+
+#### Runbook: divergence kinds
+
+A divergence never moves money or a payment's state by itself: the operator checks the bank or the Cielo, acts
+through the normal API (a refund, a capture, a cancel) when money has to move, and then closes the row with
+`resolve` — `CONFIRMED` or `FALSE_POSITIVE` for a `SYSTEM` row, `RESOLVED` or `REJECTED` for a dispute.
+
+| Kind | What happened | What the operator does |
+|---|---|---|
+| `AMOUNT_MISMATCH` | A Pix or a paid boleto arrived with an amount different from the charge; the payment was not completed. | Agree the amount with the merchant; refund the payer or settle the difference outside the gateway. |
+| `BOLETO_PAID` | A boleto was paid at the bank while the payment is `FAILED` or `CANCELED`. | Tell the merchant the money arrived; refund the payer if the sale is not going ahead. |
+| `BOLETO_REJECTED` | The bank refused one payment attempt of a boleto; the boleto is still open for the payer. | Usually nothing: watch for the next attempt; `FALSE_POSITIVE` once paid or expired. |
+| `CANCELED_AT_BANK` | The boleto was written off (baixa) at the bank outside the gateway; the gateway did not move the payment. | Find out who wrote it off; cancel the payment through the API if that is what the merchant wants. |
+| `CARD_ACTIVE_AT_PROVIDER` | The Cielo shows the sale authorized or paid while the gateway has it `FAILED` or `CANCELED`. | Void or refund the sale at the Cielo so the cardholder is not charged. |
+| `CAPTURE_OVERDUE` | A card authorization older than the capture deadline is still only authorized at the Cielo. | Ask the merchant to capture or void before the authorization lapses. |
+| `DOUBLE_PAYMENT` | Two payments settled one order, or a Bolecode was paid both by Pix and by boleto. | Confirm both credits at the bank and refund one of them. |
+| `FRAUD_ALERT` | The Cielo notified a fraud alert (ChangeType 8) on the sale. | Review the sale with the merchant; refund or void it if it is fraudulent. |
+| `NOT_FOUND_AT_BANK` | Two or more boleto polls found the boleto unknown to the bank. | Check the registration at Itaú; cancel the payment if the boleto never existed. |
+| `NOT_FOUND_AT_PROVIDER` | The Cielo returns nothing for the sale's PaymentId inside the reconciliation window. | Look the sale up in the Cielo backoffice; cancel the payment if it was never created. |
+| `PAID_AFTER_CLOSE` | A payment attempt was paid after its order was canceled or expired. | Refund the payer, or reopen the sale with the merchant. |
+| `PARTIAL_REFUND_AT_PROVIDER` | The Cielo notified a partial refund that no refund made through the gateway explains. | Compare with the Cielo backoffice; record what happened with the merchant. |
+| `PIX_RECEIVED` | A Pix landed on a `FAILED` or `CANCELED` payment, or a second, different Pix on a `COMPLETED` one. | Refund the payer, or reopen the order with the merchant. |
+| `PIX_TXID_UNCONFIRMED` | A Bolecode was adopted as pending, but the bank did not confirm its Pix txid. | Check the charge at Itaú; if the Pix part does not exist, the payer can only pay the barcode. |
+| `REFUNDED_AT_PROVIDER` | The Cielo shows the sale refunded or voided beyond what the gateway refunded. | Confirm at the Cielo and tell the merchant; the gateway's refunds no longer match the money. |
+| `REFUND_UNKNOWN` | A refund's outcome is unknown: a card refund ended in an error that may have landed, or a Pix refund outlived its polling budget. | Check the refund at the bank or the Cielo; never retry it before knowing. |
+| `UNCONFIRMED_REFUND_WEBHOOK` | A refund webhook did not match its merchant or the payment's endToEndId; it was ignored. | Check the webhook registration at Itaú; nothing changed in the gateway. |
+| `UNCONFIRMED_WEBHOOK` | A Pix webhook said paid, but the bank's own query does not confirm it; the payment was not completed. | Check the charge at Itaú; reconciliation completes it if the bank later shows it paid. |
+| `VOID_DENIED` | The Cielo denied a void (ChangeType 5). | Retry the void or refund at the Cielo; the cardholder may still be charged. |
+| `DISPUTE` | A merchant opened a dispute (`origin = MERCHANT`). | `review`, investigate, and `resolve` as `RESOLVED` or `REJECTED`; a refund, if due, goes through `/refunds`. |
+
+Pix reconciliation also opens a row named after the bank's charge status (e.g. `CONCLUIDA`) when the amount the
+bank shows paid differs from the gateway's `paid_amount`; treat it as `AMOUNT_MISMATCH`.
+
+#### Runbook: job statuses
+
+| Status | Meaning | Operator |
+|---|---|---|
+| `PENDING` | Waiting for `next_run_at`, or held by a worker inside its lease. | `run-now` makes it due now (`409 JOB_IN_FLIGHT` while a worker holds it); `give-up` moves it to `DEAD` with a note. |
+| `DEAD` | Its retries ran out (`last_error` says why), or an operator gave it up. | `run-now` puts it back to `PENDING`, due now, keeping `attempts` and `last_error`. |
+| `DONE` | Finished; kept as history. | Nothing: `run-now` is `409 JOB_NOT_RERUNNABLE`, because not every handler is idempotent. |
 
 ### Background jobs
 

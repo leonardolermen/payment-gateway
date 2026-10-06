@@ -16,3 +16,6 @@ spring:
 webhook-delivery:
   # Every app test's sink is on localhost, and lib 0.2.0 refuses private targets by default.
   allow-private-targets: true
+management:
+  server:
+    port: 0   # random, like the app port; tests read it from local.management.port

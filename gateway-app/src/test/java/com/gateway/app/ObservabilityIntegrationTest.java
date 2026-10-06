@@ -3,6 +3,7 @@ package com.gateway.app;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -17,6 +18,9 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * Deviation from the brief: same {@code TestRestTemplate} → {@link RestTestClient} substitution as
  * {@code AuthenticationIntegrationTest} — {@code TestRestTemplate} does not exist on this Boot
  * 4.0.7 / Spring Framework 7 classpath. Scenarios and assertions kept as written in the brief.
+ *
+ * <p>The correlation id is checked on an unauthenticated merchant route (401): the actuator moved
+ * to the management port, and the filter runs before authentication, so the 401 carries it too.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -28,6 +32,9 @@ class ObservabilityIntegrationTest {
 
   @LocalServerPort int port;
 
+  @Value("${local.management.port}")
+  int managementPort;
+
   private RestTestClient http() {
     return RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build();
   }
@@ -37,21 +44,21 @@ class ObservabilityIntegrationTest {
     var withHeader =
         http()
             .get()
-            .uri("/actuator/health")
+            .uri("/v1/merchant")
             .header("X-Correlation-Id", "abc-123")
             .exchange()
             .expectStatus()
-            .isOk()
+            .isUnauthorized()
             .returnResult(String.class);
     assertThat(withHeader.getResponseHeaders().getFirst("X-Correlation-Id")).isEqualTo("abc-123");
 
     var withoutHeader =
         http()
             .get()
-            .uri("/actuator/health")
+            .uri("/v1/merchant")
             .exchange()
             .expectStatus()
-            .isOk()
+            .isUnauthorized()
             .returnResult(String.class);
     assertThat(withoutHeader.getResponseHeaders().getFirst("X-Correlation-Id")).isNotBlank();
   }
@@ -62,19 +69,23 @@ class ObservabilityIntegrationTest {
     var result =
         http()
             .get()
-            .uri("/actuator/health")
+            .uri("/v1/merchant")
             .header("X-Correlation-Id", huge)
             .exchange()
             .expectStatus()
-            .isOk()
+            .isUnauthorized()
             .returnResult(String.class);
     String echoed = result.getResponseHeaders().getFirst("X-Correlation-Id");
     assertThat(echoed).isNotBlank().isNotEqualTo(huge).hasSizeLessThanOrEqualTo(64);
   }
 
+  /** Public on the management port, which is never published; absent from the merchant port. */
   @Test
-  void prometheusAndHealthArePublic() {
-    http().get().uri("/actuator/prometheus").exchange().expectStatus().isEqualTo(HttpStatus.OK);
-    http().get().uri("/actuator/health").exchange().expectStatus().isEqualTo(HttpStatus.OK);
+  void prometheusAndHealthArePublicOnTheManagementPort() {
+    RestTestClient management =
+        RestTestClient.bindToServer().baseUrl("http://localhost:" + managementPort).build();
+
+    management.get().uri("/actuator/prometheus").exchange().expectStatus().isEqualTo(HttpStatus.OK);
+    management.get().uri("/actuator/health").exchange().expectStatus().isEqualTo(HttpStatus.OK);
   }
 }
