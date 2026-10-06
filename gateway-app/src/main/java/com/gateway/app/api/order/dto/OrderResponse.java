@@ -25,7 +25,8 @@ public record OrderResponse(
     Integer invoiceNumber,
     Period period,
     List<Attempt> payments,
-    Instant createdAt) {
+    Instant createdAt,
+    String checkoutUrl) {
 
   public record Period(LocalDate start, LocalDate end) {}
 
@@ -38,6 +39,11 @@ public record OrderResponse(
   }
 
   public static OrderResponse from(Order order, List<Payment> attempts) {
+    return from(order, attempts, null);
+  }
+
+  /** {@code checkoutUrl} is non-null only where the plain token is in hand: creation, rotation. */
+  public static OrderResponse from(Order order, List<Payment> attempts, String checkoutUrl) {
     Period period =
         order.periodStart() == null ? null : new Period(order.periodStart(), order.periodEnd());
 
@@ -56,6 +62,7 @@ public record OrderResponse(
         order.invoiceNumber(),
         period,
         attempts.stream().map(Attempt::from).toList(),
-        order.createdAt());
+        order.createdAt(),
+        checkoutUrl);
   }
 }
