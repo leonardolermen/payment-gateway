@@ -103,8 +103,14 @@ class OperationsMetricsTest {
     String empty = scrape();
 
     // refresh() swallows every failure into a WARN, so the WARN is what proves the queries ran.
+    // Only the main thread: CapturedOutput sees the whole JVM, and on CI the scheduler of an
+    // earlier, already-closed test context logged its own WARN here while shutting down.
     assertThat(output.getAll().lines())
-        .noneMatch(line -> line.contains("\"WARN\"") && line.contains("OperationsMetrics"));
+        .noneMatch(
+            line ->
+                line.contains("\"WARN\"")
+                    && line.contains("OperationsMetrics")
+                    && line.contains("\"thread_name\":\"main\""));
     assertThat(empty)
         .contains(
             "gateway_payments_stuck{kind=\"created_too_long\"} 0",
