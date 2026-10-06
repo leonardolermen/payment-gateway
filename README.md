@@ -32,6 +32,38 @@ Without `GATEWAY_ADMIN_KEY` the admin API answers 403 — closed by default (the
 to the `spring-boot:run` line: the goal then runs on the parent pom too and fails with "Unable to find a
 suitable main class".
 
+### Without bank sandbox credentials
+
+The checkout offers a method only when the merchant has an active credential for its bank (Itaú:
+Pix and Bolecode; Cielo: card). With no sandbox credentials, `scripts/mock-providers` stands in for
+both banks: a WireMock built from the integration tests' fixtures, echoing the txid, amount and a
+fresh `PaymentId` per request. Card `4024007153760052` is denied; any other is authorized.
+
+```bash
+java -jar ~/.m2/repository/org/wiremock/wiremock-standalone/3.13.0/wiremock-standalone-3.13.0.jar \
+  --port 8099 --root-dir scripts/mock-providers
+```
+
+Point the TEST URLs at it in `.env` (properties keys, read through the `.env` import):
+
+```properties
+gateway.providers.itau.test-api-base=http://localhost:8099/itau/pix
+gateway.providers.itau.test-token-url=http://localhost:8099/itau/oauth
+gateway.providers.itau.boleto.test-issue-api-base=http://localhost:8099/itau/issue
+gateway.providers.itau.boleto.test-issue-token-url=http://localhost:8099/itau/oauth
+gateway.providers.itau.boleto.test-query-api-base=http://localhost:8099/itau/query
+gateway.providers.itau.boleto.test-query-token-url=http://localhost:8099/itau/oauth
+gateway.providers.itau.boleto.test-instruction-api-base=http://localhost:8099/itau/instruction
+gateway.providers.itau.boleto.test-instruction-token-url=http://localhost:8099/itau/oauth
+gateway.providers.cielo.test-api-base=http://localhost:8099/cielo/api
+gateway.providers.cielo.test-query-api-base=http://localhost:8099/cielo/query
+```
+
+Then register any TEST credentials on the merchant (`PUT /v1/admin/merchants/{id}/providers/{ITAU|CIELO}/credentials`);
+they are not checked against the bank on save. The mock covers creating a Pix charge, a Bolecode, a card
+sale, capture, void and Pix refund; bank-side events (a Pix paid, a boleto settled) still have to be
+simulated by posting the webhook.
+
 Without `WEBHOOK_MTLS_PORT=0` the app refuses to start unless `WEBHOOK_MTLS_KEYSTORE` and
 `WEBHOOK_MTLS_TRUSTSTORE` are set: the inbound connector (default `8443`) needs the key material for the
 bank's mTLS webhooks.
