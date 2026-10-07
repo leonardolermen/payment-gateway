@@ -43,6 +43,7 @@ public final class Subscription {
       String planId,
       PaymentMethod method,
       String cardId,
+      SubscriptionStatus status,
       int anchorDay,
       LocalDate startDay,
       Instant createdAt) {
@@ -56,7 +57,7 @@ public final class Subscription {
     this.anchorDay = anchorDay;
     this.startDay = startDay;
     this.createdAt = createdAt;
-    this.status = SubscriptionStatus.ACTIVE;
+    this.status = status;
     this.lastInvoiceNumber = 0;
     this.version = 1;
     this.updatedAt = createdAt;
@@ -79,7 +80,12 @@ public final class Subscription {
    * Opens the next cycle: the invoice number this period gets, and when the following one bills.
    */
   public int openPeriod(BillingPeriod period, Instant nextBillingAt, Instant at) {
-    requireBillable();
+    // An INCOMPLETE subscription opens its first period at creation, so the payer has an invoice
+    // to pay by link; it opens no other until that one is paid.
+    boolean firstOfIncomplete = status == SubscriptionStatus.INCOMPLETE && lastInvoiceNumber == 0;
+    if (!firstOfIncomplete) {
+      requireBillable();
+    }
 
     this.currentPeriod = period;
     this.nextBillingAt = nextBillingAt;
@@ -87,6 +93,30 @@ public final class Subscription {
     touch(at);
 
     return lastInvoiceNumber;
+  }
+
+  /**
+   * The first invoice was paid with a card that is now saved: from here on the subscription bills
+   * that card like one created with it. {@code nextBillingAt} is the one the first period set.
+   */
+  public void activate(String paidCardId, Instant at) {
+    if (paidCardId == null) {
+      throw new IllegalArgumentException("an activated card subscription needs its card");
+    }
+
+    transition(SubscriptionStatus.ACTIVE, at);
+    this.cardId = paidCardId;
+  }
+
+  /** The first invoice expired or was canceled unpaid: there was never consent to charge a card. */
+  public void expireIncomplete(Instant at) {
+    transition(SubscriptionStatus.INCOMPLETE_EXPIRED, at);
+
+    this.nextBillingAt = null;
+  }
+
+  public boolean isIncomplete() {
+    return status == SubscriptionStatus.INCOMPLETE;
   }
 
   public void markPastDue(Instant at) {
@@ -259,11 +289,11 @@ public final class Subscription {
             planId,
             method,
             cardId,
+            status,
             anchorDay,
             null,
             createdAt);
 
-    subscription.status = status;
     subscription.currentPeriod = currentPeriod;
     subscription.nextBillingAt = nextBillingAt;
     subscription.lastInvoiceNumber = lastInvoiceNumber;

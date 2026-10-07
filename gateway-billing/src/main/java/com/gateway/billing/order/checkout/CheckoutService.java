@@ -12,6 +12,7 @@ import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
 import com.gateway.payments.payment.PaymentCancellation;
 import com.gateway.payments.payment.PaymentQueries;
+import com.gateway.payments.payment.create.CardChoice;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,6 +31,7 @@ public class CheckoutService {
   private final PaymentQueries payments;
   private final PaymentCancellation cancellation;
   private final InstallmentSettingsService installments;
+  private final InvoiceCheckoutTerms invoiceTerms;
 
   public CheckoutService(
       CheckoutTokens tokens,
@@ -37,13 +39,15 @@ public class CheckoutService {
       OrderAttemptService attempts,
       PaymentQueries payments,
       PaymentCancellation cancellation,
-      InstallmentSettingsService installments) {
+      InstallmentSettingsService installments,
+      InvoiceCheckoutTerms invoiceTerms) {
     this.tokens = tokens;
     this.orders = orders;
     this.attempts = attempts;
     this.payments = payments;
     this.cancellation = cancellation;
     this.installments = installments;
+    this.invoiceTerms = invoiceTerms;
   }
 
   public CheckoutView get(String rawToken) {
@@ -52,14 +56,18 @@ public class CheckoutService {
     return new CheckoutView(
         order,
         payments.listByOrder(order.merchantId(), order.id()),
-        installments.options(order.merchantId(), order.environment(), order.amount().cents()));
+        installments.options(order.merchantId(), order.environment(), order.amount().cents()),
+        invoiceTerms.of(order).orElse(null));
   }
 
   public Payment attempt(String rawToken, AttemptRequest request) {
     Order order = resolve(rawToken);
     requireOpen(order);
 
-    Payment payment = attempts.attempt(order, request, EventSource.CHECKOUT);
+    boolean savesCard = invoiceTerms.of(order).map(InvoiceTerms::savesCard).orElse(false);
+    AttemptRequest allowed = savesCard ? savingTheCard(request) : request;
+
+    Payment payment = attempts.attempt(order, allowed, EventSource.CHECKOUT);
     log.info("checkout attempt {} on order {}", payment.id(), order.id());
 
     return payment;
@@ -86,6 +94,28 @@ public class CheckoutService {
     requireOpen(order);
 
     return cancellation.cancel(order.merchantId(), attempt.id());
+  }
+
+  /**
+   * The first invoice of a card subscription (spec 2026-10-07 §2): the card it is paid with is the
+   * one the next cycles charge, so only a new card is taken, and it is saved whatever the page
+   * sent. A Pix or a boleto would pay the invoice and leave nothing to bill; a saved card is not
+   * the payer's to name.
+   */
+  private static AttemptRequest savingTheCard(AttemptRequest request) {
+    if (request instanceof AttemptRequest.CardAttempt card
+        && card.card() instanceof CardChoice.NewCard newCard) {
+      return new AttemptRequest.CardAttempt(
+          new CardChoice.NewCard(newCard.card(), true),
+          card.installments(),
+          card.capture(),
+          card.softDescriptor());
+    }
+
+    throw new DomainException(
+        "CHECKOUT_CARD_REQUIRED",
+        "this invoice starts a card subscription: pay it with a new card, which is saved for the"
+            + " next charges");
   }
 
   private Order resolve(String rawToken) {

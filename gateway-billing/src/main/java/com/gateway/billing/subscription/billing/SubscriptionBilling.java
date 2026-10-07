@@ -82,7 +82,7 @@ public class SubscriptionBilling {
       // The card was declined and transaction 2 never committed: book it, do not charge again.
       if (!failureAlreadyBooked) {
         IssuedInvoice issued = InvoiceIssuer.declinedBy(declined.get());
-        unitOfWork.run(() -> record(subscription, invoice, issued, null, now));
+        unitOfWork.run(() -> record(cycle, issued, null, now));
       }
 
       return true;
@@ -91,8 +91,7 @@ public class SubscriptionBilling {
     if (subscription.method() == PaymentMethod.CARD && !properties.cardRecurringEnabled()) {
       if (!failureAlreadyBooked) {
         IssuedInvoice nothing = IssuedInvoice.notAttempted();
-        unitOfWork.run(
-            () -> record(subscription, invoice, nothing, CARD_RECURRING_UNSUPPORTED, now));
+        unitOfWork.run(() -> record(cycle, nothing, CARD_RECURRING_UNSUPPORTED, now));
       }
 
       return true;
@@ -102,7 +101,7 @@ public class SubscriptionBilling {
     // exception went to the job, and this retry is the attempt that run never got to make.
     IssuedInvoice issued = issuer.issue(subscription, invoice, now, invoice.expiresAt());
 
-    unitOfWork.run(() -> record(subscription, invoice, issued, null, now));
+    unitOfWork.run(() -> record(cycle, issued, null, now));
 
     return true;
   }
@@ -116,16 +115,20 @@ public class SubscriptionBilling {
   /**
    * Transaction 2. A Pix or boleto issued, a card charged, or a payment in doubt is only announced:
    * doubt leaves the order OPEN with its slot taken and books nothing. A decline, or a card that
-   * may not be charged, makes the subscription PAST_DUE and starts dunning.
+   * may not be charged, makes the subscription PAST_DUE and starts dunning. The event carries the
+   * invoice's checkout link, the one time the merchant sees it (spec 2026-10-07 §3).
    */
-  private void record(
-      Subscription opened, Order invoice, IssuedInvoice issued, String reason, Instant now) {
+  private void record(OpenedCycle cycle, IssuedInvoice issued, String reason, Instant now) {
+    Subscription opened = cycle.subscription();
+    Order invoice = cycle.invoice();
+    String checkoutUrl = opener.checkoutUrl(cycle, now);
+
     events.emit(
         invoice.merchantId(),
         "invoice.created",
         invoice.id(),
         opened.id(),
-        InvoicePayloads.created(opened, invoice, issued, reason));
+        InvoicePayloads.created(opened, invoice, issued, reason, checkoutUrl));
 
     boolean mustBeChased = issued.declined() || reason != null;
     if (!mustBeChased) {

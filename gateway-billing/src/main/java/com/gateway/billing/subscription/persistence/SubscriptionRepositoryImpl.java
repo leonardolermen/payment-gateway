@@ -12,14 +12,18 @@ import jakarta.persistence.PersistenceContext;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class SubscriptionRepositoryImpl implements SubscriptionRepository {
-  private static final List<String> BILLABLE =
-      List.of(SubscriptionStatus.ACTIVE.name(), SubscriptionStatus.PAST_DUE.name());
+  private static final List<String> HOLDS_THE_CUSTOMER =
+      List.of(
+          SubscriptionStatus.ACTIVE.name(),
+          SubscriptionStatus.PAST_DUE.name(),
+          SubscriptionStatus.INCOMPLETE.name());
 
   private final SubscriptionJpaRepository jpa;
 
@@ -109,7 +113,27 @@ public class SubscriptionRepositoryImpl implements SubscriptionRepository {
 
   @Override
   public boolean existsActiveForCustomer(MerchantId merchantId, String customerId) {
-    return jpa.existsByMerchantIdAndCustomerIdAndStatusIn(merchantId.value(), customerId, BILLABLE);
+    return jpa.existsByMerchantIdAndCustomerIdAndStatusIn(
+        merchantId.value(), customerId, HOLDS_THE_CUSTOMER);
+  }
+
+  @Override
+  public List<Subscription> list(
+      MerchantId merchantId,
+      ProviderEnvironment environment,
+      SubscriptionStatus status,
+      String cursorId,
+      int limit) {
+    return jpa
+        .findPage(
+            merchantId.value(),
+            environment.name(),
+            status == null ? null : status.name(),
+            cursorId,
+            Limit.of(limit))
+        .stream()
+        .map(this::toDomain)
+        .toList();
   }
 
   private Subscription toDomain(SubscriptionEntity entity) {

@@ -6,7 +6,11 @@ import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.payments.UnitOfWork;
 import java.time.Clock;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /** No events: spec 9 lists none for plans, they are catalogue. */
 public class PlanService {
@@ -31,6 +35,16 @@ public class PlanService {
 
   public Plan get(MerchantId merchantId, String id) {
     return plans.find(merchantId, id).orElseThrow(() -> new NotFoundException("plan", id));
+  }
+
+  /** The merchant's plans among {@code ids}, by id, from one query; an unknown id is absent. */
+  public Map<String, Plan> byIds(MerchantId merchantId, Collection<String> ids) {
+    if (ids.isEmpty()) {
+      return Map.of();
+    }
+
+    return plans.findAll(merchantId, ids).stream()
+        .collect(Collectors.toMap(Plan::id, Function.identity()));
   }
 
   /** {@code active == null} lists every plan. */

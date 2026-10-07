@@ -698,3 +698,50 @@ Com juros, a parcela é arredondada para cima no centavo e o total é `parcela �
 da Cielo dá exatamente a parcela anunciada. Sem juros o total é o valor da ordem e a parcela mostrada é
 `amount / n` truncada (a Cielo distribui os centavos que sobram). Rejeitado: arredondar o total. Custo se
 errado: até `n − 1` centavos a mais para o pagador, e nenhuma parcela diferente da anunciada.
+
+## 2026-10-07 — Primeira fatura paga pelo link salva o cartão e ativa a assinatura
+`POST /v1/subscriptions` com `method = CARD` e sem `card_id` cria a assinatura em `INCOMPLETE` com a primeira
+fatura já aberta e o `checkout_url` na resposta (`first_invoice`). O checkout dessa fatura só aceita cartão novo
+e o salva mesmo com `save_card: false`; paga, o `card_id` do pagamento vira o da assinatura, ela passa a
+`ACTIVE` (`subscription.activated`) e o `BILL_SUBSCRIPTION` é agendado para o fim do período pago. Rejeitado: o
+merchant coletar o cartão por fora e mandar `card_id` (é o que travava a assinatura por cartão). Custo se errado:
+um status a mais, e a regra de que o checkout de fatura `INCOMPLETE` só aceita cartão novo
+(`422 CHECKOUT_CARD_REQUIRED`).
+
+## 2026-10-07 — Fatura expirada sem pagamento encerra a assinatura `INCOMPLETE`, sem recobrança
+A primeira fatura de uma assinatura `INCOMPLETE` que expira ou é cancelada leva a assinatura a
+`INCOMPLETE_EXPIRED`, final; uma tentativa recusada não abre dunning (a fatura segue aberta para outro cartão).
+Rejeitado: tratar como `PAST_DUE` — nunca houve consentimento para cobrar um cartão, e não há cartão salvo para
+cobrar. Custo se errado: o merchant cria outra assinatura se o pagador voltar depois.
+
+## 2026-10-07 — O link da fatura sai uma vez, no evento
+`CycleOpener` guarda o token emitido com a fatura e o `invoice.created` leva o `checkout_url`; a recobrança que
+reemite Pix ou boleto (`invoice.updated`) rotaciona o token e leva o novo link. `billing.orders` continua só com o
+hash e o `GET` continua devolvendo `checkout_url: null` (entrada de 2026-10-06). Um ciclo retomado (a transação 2
+não chegou a gravar o `invoice.created`) rotaciona o token, porque o primeiro nunca foi mostrado. Rejeitado:
+guardar o token para reexibir (mesma razão da ordem). Custo se errado: o merchant que perder o evento rotaciona; e
+o link em claro passa a existir no payload do outbox e no log de entregas de webhook, como qualquer corpo de
+evento — quem lê essas tabelas consegue pagar a fatura, não mais que isso.
+
+## 2026-10-07 — Assinatura por link: ajustes de implementação
+- A spec dizia "amplia o `CHECK`" de `status` e torna `card_id` opcional; a `V304` não tinha `CHECK` nenhum e
+  `status` era `VARCHAR(10)`, curto para `INCOMPLETE_EXPIRED`. A `V309` alarga a coluna e cria as duas regras.
+- Primeira fatura paga sem cartão salvo (o banco cobrou e não devolveu token, como o sandbox da Cielo): a
+  assinatura fica `INCOMPLETE` com a fatura `PAID` e um WARN. Rejeitado: `ACTIVE` sem cartão (o `CHECK` proíbe e o
+  próximo ciclo não teria o que cobrar). Custo: o merchant cancela e cria outra; o período pago fica pago.
+- Cancelar uma assinatura `INCOMPLETE` é sempre imediato (`at_period_end` ignorado: não há período pago) e grava
+  a assinatura `CANCELED` **antes** de cancelar a fatura, senão o fechamento da fatura a levaria a
+  `INCOMPLETE_EXPIRED`. Rejeitado: a ordem das ativas (banco primeiro). Custo: um banco fora do ar deixa a fatura
+  aberta até expirar, com a assinatura já `CANCELED` — o pagamento que chegar vira dinheiro numa assinatura
+  cancelada, como já acontece com as ativas.
+- `INCOMPLETE_EXPIRED` não emite evento próprio: a spec só nomeia `subscription.activated`, e o merchant vê o
+  `order.expired`/`order.canceled` da fatura com `subscription_id`. Cliente com assinatura `INCOMPLETE` não pode
+  ser apagado (`409 CUSTOMER_HAS_ACTIVE_SUBSCRIPTION`), porque a fatura ainda pode ser paga.
+- O `InvoiceSettlementHook` ganha `invoiceClosed` e passa de `Dunning` para `SubscriptionInvoices`, que decide a
+  primeira fatura de uma `INCOMPLETE` e entrega todas as outras ao `Dunning` como antes. `OrderService` e `Dunning`
+  ficam com 8 dependências (a fatura fechada precisa ser ouvida na transação que a fecha; o link reemitido precisa
+  ser rotacionado na transação que registra a retentativa).
+- Com `trial_days` ou `start_at` futuro, a assinatura `INCOMPLETE` abre na criação a fatura do primeiro período
+  (o que começa depois do trial): o pagador paga antes, porque é esse pagamento que salva o cartão. Rejeitado:
+  esperar o início do período para abrir a fatura (a assinatura ficaria sem link até lá). Custo: em plano com
+  trial, o pagador por link paga o primeiro período adiantado.

@@ -21,6 +21,11 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Eight dependencies, one above the limit: {@link InvoiceSettlementHook} has to hear an invoice's
+ * cancel in the transaction that closes it (spec 2026-10-07 §2: an unpaid first invoice ends its
+ * subscription), and only this class closes an order on the merchant's word.
+ */
 public class OrderService {
   private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 
@@ -31,6 +36,7 @@ public class OrderService {
   private final JobRepository jobs;
   private final UnitOfWork unitOfWork;
   private final Clock clock;
+  private final InvoiceSettlementHook invoices;
 
   public OrderService(
       OrderRepository orders,
@@ -39,7 +45,8 @@ public class OrderService {
       BillingEvents events,
       JobRepository jobs,
       UnitOfWork unitOfWork,
-      Clock clock) {
+      Clock clock,
+      InvoiceSettlementHook invoices) {
     this.orders = orders;
     this.payments = payments;
     this.cancellation = cancellation;
@@ -47,6 +54,7 @@ public class OrderService {
     this.jobs = jobs;
     this.unitOfWork = unitOfWork;
     this.clock = clock;
+    this.invoices = invoices;
   }
 
   public Order create(Order order) {
@@ -143,6 +151,9 @@ public class OrderService {
               }
 
               events.emit(merchantId, "order.canceled", id, id, json(current));
+              if (current.isInvoice()) {
+                invoices.invoiceClosed(current, clock.instant());
+              }
 
               return current;
             });

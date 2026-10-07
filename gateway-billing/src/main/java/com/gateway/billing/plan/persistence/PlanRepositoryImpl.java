@@ -6,6 +6,7 @@ import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.money.Money;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Repository;
@@ -60,6 +61,13 @@ public class PlanRepositoryImpl implements PlanRepository {
   @Override
   public Optional<Plan> find(MerchantId merchantId, String id) {
     return jpa.findByIdAndMerchantId(id, merchantId.value()).map(this::toDomain);
+  }
+
+  @Override
+  public List<Plan> findAll(MerchantId merchantId, Collection<String> ids) {
+    return jpa.findByMerchantIdAndIdIn(merchantId.value(), ids).stream()
+        .map(this::toDomain)
+        .toList();
   }
 
   @Override

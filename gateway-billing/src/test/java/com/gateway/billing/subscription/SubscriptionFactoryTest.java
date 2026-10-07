@@ -79,10 +79,21 @@ class SubscriptionFactoryTest {
         .isEqualTo("PLAN_INACTIVE");
   }
 
+  // Spec 2026-10-07 §2: this was CARD_REQUIRED; the card now comes from the first invoice's link.
   @Test
-  void cardWithoutACardIdIsRefused() {
-    assertThat(codeOf(() -> create(customer(null), plan(null), PaymentMethod.CARD, null)))
-        .isEqualTo("CARD_REQUIRED");
+  void cardWithoutACardIdWaitsIncompleteForItsFirstPayment() {
+    Subscription subscription = create(customer(null), plan(null), PaymentMethod.CARD, null);
+
+    assertThat(subscription.status()).isEqualTo(SubscriptionStatus.INCOMPLETE);
+    assertThat(subscription.isBillable()).isFalse();
+    assertThat(subscription.cardId()).isNull();
+  }
+
+  @Test
+  void aCardWithACardIdIsBornActive() {
+    Subscription subscription = create(customer(null), plan(null), PaymentMethod.CARD, "card-1");
+
+    assertThat(subscription.status()).isEqualTo(SubscriptionStatus.ACTIVE);
   }
 
   @Test

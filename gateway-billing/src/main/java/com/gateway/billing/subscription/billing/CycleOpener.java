@@ -33,7 +33,7 @@ public class CycleOpener {
   private final JobRepository jobs;
   private final BillingEvents events;
   private final int billingHour;
-  private final CheckoutTokens checkoutTokens;
+  private final InvoiceLinks links;
   private final Clock clock;
 
   public CycleOpener(
@@ -43,7 +43,7 @@ public class CycleOpener {
       JobRepository jobs,
       BillingEvents events,
       int billingHour,
-      CheckoutTokens checkoutTokens,
+      InvoiceLinks links,
       Clock clock) {
     this.subscriptions = subscriptions;
     this.orders = orders;
@@ -51,7 +51,7 @@ public class CycleOpener {
     this.jobs = jobs;
     this.events = events;
     this.billingHour = billingHour;
-    this.checkoutTokens = checkoutTokens;
+    this.links = links;
     this.clock = clock;
   }
 
@@ -91,6 +91,34 @@ public class CycleOpener {
     return Optional.of(openNext(subscription, now));
   }
 
+  /**
+   * The first period of a subscription born INCOMPLETE, opened in the caller's transaction right
+   * after its insert (spec 2026-10-07 §2): the same invoice, event and expiry as a cycle, so the
+   * payer has something to pay by link. No BILL_SUBSCRIPTION row yet: it is enqueued when the
+   * invoice is paid, and a subscription that never pays has no job to spin.
+   */
+  public OpenedCycle openFirst(Subscription inserted, Instant now) {
+    if (!inserted.isIncomplete() || inserted.lastInvoiceNumber() != 0) {
+      throw new IllegalStateException(
+          "subscription " + inserted.id() + " is not waiting for its first invoice");
+    }
+
+    return openNext(inserted, now);
+  }
+
+  /**
+   * Requires a transaction. The url {@code invoice.created} carries: the token issued with the
+   * invoice when this run created it, else a fresh one (rotating the hash), since the first was
+   * never shown and the event is where the merchant gets the link.
+   */
+  public String checkoutUrl(OpenedCycle cycle, Instant now) {
+    if (cycle.token() != null) {
+      return links.urlFor(cycle.token());
+    }
+
+    return links.reissue(cycle.invoice(), now);
+  }
+
   private OpenedCycle openNext(Subscription subscription, Instant now) {
     Plan plan = plans.get(subscription.merchantId(), subscription.planId());
     BillingPeriod period = nextPeriod(subscription, plan);
@@ -100,6 +128,9 @@ public class CycleOpener {
 
     // The order lives until the last day of its period: the next cycle's invoice takes over then.
     Instant expiresAt = BillingCalendar.endOfDay(period.end().minusDays(1));
+    // The hash goes into the order; the plain token stays in memory for invoice.created, the one
+    // place the merchant gets this invoice's link (spec 2026-10-07 §3).
+    CheckoutTokens.Issued link = links.issue();
     Order draft =
         OrderFactory.invoice(
             subscription.merchantId(),
@@ -111,19 +142,21 @@ public class CycleOpener {
             period.start(),
             period.end(),
             expiresAt,
-            // Nobody sees this token: it only guarantees every order has a hash, and the payer's
-            // link comes later by rotation.
-            checkoutTokens.issue().hash(),
+            link.hash(),
             clock);
     Optional<Order> existing = orders.insertInvoiceIfAbsent(draft);
 
     update(subscription);
     // A no-op while the job row that is running this cycle exists (unique on type and ref_id);
     // BillSubscriptionJob.finish moves that row to nextBillingAt. This covers a cycle run by hand.
-    jobs.enqueue(Job.billSubscription(subscription.id(), nextBillingAt, clock));
+    // An INCOMPLETE subscription gets its row on activation instead (openFirst).
+    if (subscription.isBillable()) {
+      jobs.enqueue(Job.billSubscription(subscription.id(), nextBillingAt, clock));
+    }
 
     if (existing.isPresent()) {
-      return OpenedCycle.opened(subscription, existing.get());
+      // Another run inserted this invoice with its own token, which we never held.
+      return OpenedCycle.opened(subscription, existing.get(), null);
     }
 
     // Not OrderService.create: an invoice is born here, inside this transaction, yet it must
@@ -132,7 +165,7 @@ public class CycleOpener {
         draft.merchantId(), "order.created", draft.id(), draft.id(), OrderService.json(draft));
     jobs.enqueue(Job.expireOrder(draft.id(), expiresAt, clock));
 
-    return OpenedCycle.opened(subscription, draft);
+    return OpenedCycle.opened(subscription, draft, link.token());
   }
 
   private static boolean isDue(Subscription subscription, Instant now) {

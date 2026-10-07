@@ -86,8 +86,16 @@ class SubscriptionBillingIntegrationTest extends BillingIntegrationTestBase {
 
     billing.billOne(subscription.id(), clock.instant());
 
-    String invoiceCreated = outboxPayload(invoicesOf(subscription).get(0).id(), "invoice.created");
+    Order invoice = invoicesOf(subscription).get(0);
+    String invoiceCreated = outboxPayload(invoice.id(), "invoice.created");
     assertThat(invoiceCreated).contains("\"method\":\"PIX\"").contains("copia_e_cola");
+    // The link, once, in the event; the order keeps only the token's hash (spec 2026-10-07 §3).
+    java.util.regex.Matcher link =
+        java.util.regex.Pattern.compile("\"checkout_url\":\"https://pay.test/pay/(chk_[^\"]+)\"")
+            .matcher(invoiceCreated);
+    assertThat(link.find()).isTrue();
+    assertThat(invoice.checkoutTokenHash())
+        .isEqualTo(com.gateway.kernel.security.Sha256.hex(link.group(1)));
   }
 
   @Test
@@ -136,6 +144,14 @@ class SubscriptionBillingIntegrationTest extends BillingIntegrationTestBase {
         .extracting(Payment::status)
         .containsOnlyOnce(PaymentStatus.COMPLETED)
         .doesNotContain(PaymentStatus.CREATED, PaymentStatus.PENDING, PaymentStatus.AUTHORIZED);
+    // The resumed run never held the first token, so it rotated one for invoice.created.
+    Order invoice = invoicesOf(subscription).get(0);
+    java.util.regex.Matcher link =
+        java.util.regex.Pattern.compile("\"checkout_url\":\"https://pay.test/pay/(chk_[^\"]+)\"")
+            .matcher(outboxPayload(invoice.id(), "invoice.created"));
+    assertThat(link.find()).isTrue();
+    assertThat(invoice.checkoutTokenHash())
+        .isEqualTo(com.gateway.kernel.security.Sha256.hex(link.group(1)));
   }
 
   @Test

@@ -1,6 +1,7 @@
 package com.gateway.billing.plan.persistence;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -11,6 +12,8 @@ interface PlanJpaRepository extends JpaRepository<PlanEntity, String> {
   Optional<PlanEntity> findByIdAndMerchantId(String id, String merchantId);
 
   List<PlanEntity> findByMerchantIdOrderByCreatedAtDesc(String merchantId);
+
+  List<PlanEntity> findByMerchantIdAndIdIn(String merchantId, Collection<String> ids);
 
   List<PlanEntity> findByMerchantIdAndActiveOrderByCreatedAtDesc(String merchantId, boolean active);
 

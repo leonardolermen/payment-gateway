@@ -11,6 +11,12 @@ import java.util.List;
  * merchant's reference or the paid payment id: whoever holds the link sees what to pay and how, and
  * a leaked link must not leak a person.
  *
+ * <p>{@code planName} names the plan when the order is a subscription's invoice (null for a
+ * standalone order). {@code savesCardForSubscription} is true on the first invoice of a card
+ * subscription created without a card: {@code methods} is then only {@code CARD}, and the card paid
+ * with is saved and charged on the next cycles of that plan whatever {@code save_card} says, which
+ * the page tells the payer before they pay (spec 2026-10-07 §2).
+ *
  * <p>{@code installmentOptions} are the card's, priced by the gateway from the merchant's settings
  * (spec 2026-10-07 §4): empty when the card is not among {@code methods}, so the page never offers
  * what it cannot charge.
@@ -25,7 +31,9 @@ public record CheckoutResponse(
     Instant expiresAt,
     List<String> methods,
     List<InstallmentOptionResponse> installmentOptions,
-    CheckoutPaymentResponse activePayment) {
+    CheckoutPaymentResponse activePayment,
+    String planName,
+    boolean savesCardForSubscription) {
 
   public record InstallmentOptionResponse(
       int count, long installmentAmount, long total, boolean interestFree) {
@@ -51,6 +59,8 @@ public record CheckoutResponse(
         methods.contains("CARD")
             ? view.installmentOptions().stream().map(InstallmentOptionResponse::from).toList()
             : List.of(),
-        view.activeAttempt().map(CheckoutPaymentResponse::from).orElse(null));
+        view.activeAttempt().map(CheckoutPaymentResponse::from).orElse(null),
+        view.invoiceTerms() == null ? null : view.invoiceTerms().planName(),
+        view.savesCardForSubscription());
   }
 }

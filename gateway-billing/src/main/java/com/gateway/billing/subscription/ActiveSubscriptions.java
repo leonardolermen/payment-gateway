@@ -4,7 +4,10 @@ import com.gateway.billing.customer.ActiveSubscriptionsCheck;
 import com.gateway.billing.subscription.persistence.SubscriptionRepository;
 import com.gateway.kernel.ids.MerchantId;
 
-/** PAST_DUE counts as active: dunning may still charge the customer being deleted. */
+/**
+ * PAST_DUE counts as active: dunning may still charge the customer being deleted. So does
+ * INCOMPLETE: its first invoice may still be paid and turn it ACTIVE.
+ */
 public class ActiveSubscriptions implements ActiveSubscriptionsCheck {
   private final SubscriptionRepository subscriptions;
 

@@ -7,6 +7,7 @@ import com.gateway.billing.order.checkout.CheckoutService;
 import com.gateway.billing.order.checkout.CheckoutView;
 import com.gateway.merchants.credential.ProviderCredentialService;
 import com.gateway.merchants.merchant.MerchantService;
+import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -41,7 +42,13 @@ public class CheckoutController {
     CheckoutView view = checkout.get(token);
     String merchantName = merchants.get(view.order().merchantId()).name();
 
-    return CheckoutResponse.from(view, merchantName, Methods.available(credentials, view.order()));
+    List<String> methods = Methods.available(credentials, view.order());
+    if (view.savesCardForSubscription()) {
+      // The first invoice of a card subscription: the card it is paid with is the one saved.
+      methods = methods.stream().filter("CARD"::equals).toList();
+    }
+
+    return CheckoutResponse.from(view, merchantName, methods);
   }
 
   @PostMapping("/payments")

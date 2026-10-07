@@ -39,7 +39,7 @@ class SubscriptionEntity {
   @JdbcTypeCode(SqlTypes.CHAR)
   String cardId;
 
-  @Column(name = "status", nullable = false, length = 10)
+  @Column(name = "status", nullable = false, length = 20)
   String status;
 
   @Column(name = "anchor_day", nullable = false)
