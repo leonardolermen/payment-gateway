@@ -1,6 +1,7 @@
 package com.gateway.providers.cielo;
 
 import com.gateway.kernel.provider.ProviderException;
+import com.gateway.providers.TransportFailure;
 import com.gateway.providers.cielo.auth.CieloCredentials;
 import java.io.IOException;
 import java.net.URI;
@@ -63,7 +64,7 @@ public final class CieloHttp {
     } catch (IOException e) {
       throw new ProviderException(
           ProviderException.Code.UNAVAILABLE,
-          "Cielo " + request.method() + " failed: " + e.getClass().getSimpleName(),
+          TransportFailure.describe("Cielo " + request.method(), request.uri(), e),
           e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
