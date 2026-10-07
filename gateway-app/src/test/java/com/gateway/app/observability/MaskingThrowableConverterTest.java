@@ -6,6 +6,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.LoggingEvent;
 import ch.qos.logback.classic.spi.ThrowableProxy;
+import com.gateway.kernel.provider.ProviderException;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
@@ -50,5 +51,20 @@ class MaskingThrowableConverterTest {
     event.setMessage("fine");
 
     assertThat(startedConverter().convert(event)).isEmpty();
+  }
+
+  @Test
+  void writesOneMaskedLineForAnExpectedProviderFailure() {
+    ProviderException unavailable =
+        new ProviderException(
+            ProviderException.Code.UNAVAILABLE,
+            "key gk_live_01ARZ3NDEKTSV4RRFFQ69G5FAV refused",
+            new java.net.ConnectException());
+
+    String trace = startedConverter().convert(eventWith(unavailable));
+
+    assertThat(trace.strip().lines()).hasSize(1);
+    assertThat(trace).contains("ProviderException UNAVAILABLE: key *** refused");
+    assertThat(trace).doesNotContain("\tat ");
   }
 }

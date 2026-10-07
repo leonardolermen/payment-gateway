@@ -68,4 +68,35 @@ class MaskingJsonProviderTest {
     assertThat(json).contains("stack_trace").contains("rejected key ***");
     assertThat(json).doesNotContain("gk_live_01ARZ3");
   }
+
+  @Test
+  void writesOneLineStackTraceForAnExpectedProviderFailure() throws Exception {
+    LoggingEvent event = new LoggingEvent();
+    event.setLoggerName("test");
+    event.setLevel(Level.WARN);
+    event.setMessage("reconciliation failed");
+    event.setThrowableProxy(
+        new ch.qos.logback.classic.spi.ThrowableProxy(
+            new com.gateway.kernel.provider.ProviderException(
+                com.gateway.kernel.provider.ProviderException.Code.UNAVAILABLE,
+                "token request to localhost:8099 failed: ConnectException",
+                new java.net.ConnectException())));
+    event.setLoggerContext(
+        (ch.qos.logback.classic.LoggerContext) LoggerFactory.getILoggerFactory());
+
+    MaskingStackTraceJsonProvider provider = new MaskingStackTraceJsonProvider();
+    provider.start();
+    StringWriter writer = new StringWriter();
+    JsonGenerator generator = new JsonFactory().createGenerator(writer);
+    generator.writeStartObject();
+    provider.writeTo(generator, event);
+    generator.writeEndObject();
+    generator.flush();
+
+    String json = writer.toString();
+    assertThat(json)
+        .contains(
+            "\"stack_trace\":\"ProviderException UNAVAILABLE: token request to localhost:8099"
+                + " failed: ConnectException ← ConnectException\"");
+  }
 }
