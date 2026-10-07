@@ -10,8 +10,9 @@ import java.util.List;
  * An order with its attempts summarised; the full payment is GET /v1/payments/{id}. {@code
  * subscription_id}, {@code invoice_number} and {@code period} are null on a standalone order.
  *
- * <p>{@code customerName} is null without a customer or once the customer is deleted: deleting is
- * the merchant saying the name should no longer be on display.
+ * <p>{@code customerName} is who owes the order: the customer's name, or the inline payer's when
+ * the order was created without a customer. Null once the customer is deleted: deleting is the
+ * merchant saying the name should no longer be on display.
  *
  * <p>{@code checkoutUrl} is non-null only on create and rotate: the token is not stored (only its
  * hash), so GET has nothing to rebuild the url from and always returns null there.

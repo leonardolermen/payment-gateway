@@ -197,16 +197,24 @@ public class OrdersController {
                 OrderResponse.from(
                     order,
                     attemptsByOrder.getOrDefault(order.id(), List.of()),
-                    order.customerId() == null ? null : names.get(order.customerId())))
+                    order.customerId() == null ? payerName(order) : names.get(order.customerId())))
         .toList();
   }
 
   private String customerName(MerchantId merchantId, Order order) {
     if (order.customerId() == null) {
-      return null;
+      return payerName(order);
     }
 
     return customers.namesOf(merchantId, List.of(order.customerId())).get(order.customerId());
+  }
+
+  /**
+   * An order with the payer inline has no customer, but it has a name: the one the merchant typed.
+   * Showing "no customer" there would hide who owes the charge.
+   */
+  private static String payerName(Order order) {
+    return order.payer() == null ? null : order.payer().name().value();
   }
 
   private static OrderStatus statusFilter(String status) {

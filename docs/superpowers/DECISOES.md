@@ -679,22 +679,12 @@ documento cifrado. Cliente apagado não tem nome na ordem. Rejeitado: objeto `cu
 aninhado — muda a forma de um campo existente. Custo se errado: se a ordem precisar de mais dados do
 cliente, entra mais um campo plano ou uma quebra de contrato.
 
-## 2026-10-07 — Juros do lojista calculados pelo gateway (Tabela Price), não pelo emissor
-Acima de `interest_free_up_to`, o gateway calcula a parcela pela Tabela Price com a taxa mensal do
-merchant (`billing.installment_settings`, por ambiente) e mostra o valor exato de cada opção no checkout
-antes do pagamento; a Cielo continua recebendo `Interest = ByMerchant`. Rejeitado: `ByIssuer` — o pagador
-só veria o valor da parcela na fatura do cartão. Custo se errado: o gateway passa a ser dono de uma conta
-financeira, e um erro de arredondamento é cobrança errada; por isso o teste de tabela contra valores
-calculados à mão (`InstallmentPricingTest`).
+## 2026-10-07 — `customer_name` também vale para o pagador informado na ordem
+Uma ordem criada com o pagador em linha (`customer: {...}`, sem cadastro) devolve o nome desse pagador em
+`customer_name`. Substitui, nesse ponto, a entrada de 2026-10-06, que deixava o campo nulo sem cliente: o
+painel mostrava "pagador avulso" para uma cobrança cujo nome o gateway conhecia. Cliente apagado continua
+sem nome.
+Rejeitado: um campo `payer_name` separado — o painel teria de escolher entre dois campos para a mesma
+coluna. Custo se errado: quem usava `customer_name` nulo para saber que a ordem não tem cliente passa a
+olhar `customer_id`, que sempre foi o sinal certo.
 
-## 2026-10-07 — A tentativa cobra o total com juros; a ordem guarda o valor sem juros
-`payments.amount` da tentativa de cartão é o total da opção escolhida, recalculado pelo gateway a partir do
-`installments` pedido; o juro fica em `card.interest_amount` (`total − order.amount`, 0 sem juros) e a ordem
-mantém o valor original. Rejeitado: reescrever o valor da ordem. Custo se errado: quem somava
-`payments.amount` como receita da ordem passa a ver o juro junto (está separado em `interest_amount`).
-
-## 2026-10-07 — Total múltiplo de `n`, parcela arredondada para cima
-Com juros, a parcela é arredondada para cima no centavo e o total é `parcela × n`, de modo que a divisão
-da Cielo dá exatamente a parcela anunciada. Sem juros o total é o valor da ordem e a parcela mostrada é
-`amount / n` truncada (a Cielo distribui os centavos que sobram). Rejeitado: arredondar o total. Custo se
-errado: até `n − 1` centavos a mais para o pagador, e nenhuma parcela diferente da anunciada.
