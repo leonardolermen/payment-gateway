@@ -678,3 +678,13 @@ Toda resposta de ordem ganha `customer_name`, lido numa consulta só para a pág
 documento cifrado. Cliente apagado não tem nome na ordem. Rejeitado: objeto `customer: {id, name}`
 aninhado — muda a forma de um campo existente. Custo se errado: se a ordem precisar de mais dados do
 cliente, entra mais um campo plano ou uma quebra de contrato.
+
+## 2026-10-07 — `customer_name` também vale para o pagador informado na ordem
+Uma ordem criada com o pagador em linha (`customer: {...}`, sem cadastro) devolve o nome desse pagador em
+`customer_name`. Substitui, nesse ponto, a entrada de 2026-10-06, que deixava o campo nulo sem cliente: o
+painel mostrava "pagador avulso" para uma cobrança cujo nome o gateway conhecia. Cliente apagado continua
+sem nome.
+Rejeitado: um campo `payer_name` separado — o painel teria de escolher entre dois campos para a mesma
+coluna. Custo se errado: quem usava `customer_name` nulo para saber que a ordem não tem cliente passa a
+olhar `customer_id`, que sempre foi o sinal certo.
+

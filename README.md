@@ -1239,7 +1239,8 @@ opening one order per cycle (the invoice), so everything below is the same five 
 
 Lists page by `cursor`, the `id` of the last item of the previous page (ids are time-ordered), like
 `GET /v1/payments`. A TEST key lists only TEST orders and customers, a LIVE key only LIVE ones. Every
-order carries `customer_name`, null when it has no customer or the customer was deleted.
+order carries `customer_name`: the customer's name, or the inline payer's on an order created without
+a customer; null once the customer was deleted.
 
 ```bash
 curl -X POST localhost:8080/v1/customers -H "Authorization: Bearer $TEST_KEY" \

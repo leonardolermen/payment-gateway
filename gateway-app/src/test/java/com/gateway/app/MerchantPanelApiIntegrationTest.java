@@ -169,6 +169,31 @@ class MerchantPanelApiIntegrationTest {
   }
 
   @Test
+  void anOrderWithAnInlinePayerCarriesThePayersName() {
+    Keys keys = newMerchant();
+    String orderId =
+        (String)
+            post(
+                    keys.test(),
+                    "o-inline",
+                    "/v1/orders",
+                    Map.of(
+                        "amount",
+                        12000,
+                        "currency",
+                        "BRL",
+                        "customer",
+                        Map.of("name", "Joao Souza", "document", "11144477735")))
+                .get("id");
+
+    assertThat(get(keys.test(), "/v1/orders/" + orderId))
+        .containsEntry("customer_name", "Joao Souza");
+    assertThat(list(keys.test(), "/v1/orders").getFirst())
+        .containsEntry("customer_id", null)
+        .containsEntry("customer_name", "Joao Souza");
+  }
+
+  @Test
   void aLiveKeySeesNoTestOrderOrCustomer() {
     Keys keys = newMerchant();
     order(keys.test(), "o-1", customer(keys.test(), "Ana Silva", "52998224725"));
