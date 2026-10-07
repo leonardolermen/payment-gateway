@@ -1,0 +1,29 @@
+{
+  "MerchantOrderId": "{{jsonPath request.body '$.MerchantOrderId'}}",
+  "Payment": {
+    "ServiceTaxAmount": 0,
+    "Installments": {{jsonPath request.body '$.Payment.Installments'}},
+    "Interest": 0,
+    "Capture": {{jsonPath request.body '$.Payment.Capture'}},
+    "Authenticate": false,
+    "Recurrent": false,
+    "CreditCard": {
+      "CardToken": "{{jsonPath request.body '$.Payment.CreditCard.CardToken'}}",
+      "SaveCard": false
+    },
+    "Tid": "1124060407176",
+    "ProofOfSale": "182739",
+    "AuthorizationCode": "663865",
+    "Amount": {{jsonPath request.body '$.Payment.Amount'}},
+    {{#eq (jsonPath request.body '$.Payment.Capture') true}}"CapturedAmount": {{jsonPath request.body '$.Payment.Amount'}},
+    "CapturedDate": "{{now format='yyyy-MM-dd HH:mm:ss'}}",
+    {{/eq}}"ReceivedDate": "{{now format='yyyy-MM-dd HH:mm:ss'}}",
+    "Status": {{#eq (jsonPath request.body '$.Payment.Capture') true}}2{{else}}1{{/eq}},
+    "ReturnMessage": "Operation Successful",
+    "ReturnCode": "{{#eq (jsonPath request.body '$.Payment.Capture') true}}6{{else}}4{{/eq}}",
+    "PaymentId": "{{randomValue type='UUID'}}",
+    "Type": "CreditCard",
+    "Currency": "BRL",
+    "Country": "BRA"
+  }
+}

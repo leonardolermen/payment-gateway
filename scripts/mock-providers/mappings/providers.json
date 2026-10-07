@@ -134,6 +134,28 @@
       }
     },
     {
+      "priority": 3,
+      "request": {
+        "method": "POST",
+        "urlPath": "/cielo/api/1/sales",
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": "$.Payment.CreditCard.CardToken"
+          }
+        ]
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "bodyFileName": "cielo_sale_by_token.json",
+        "transformers": [
+          "response-template"
+        ]
+      }
+    },
+    {
       "priority": 5,
       "request": {
         "method": "POST",
@@ -144,7 +166,7 @@
         "headers": {
           "Content-Type": "application/json"
         },
-        "bodyFileName": "cielo_sale_authorized.json",
+        "bodyFileName": "cielo_sale_new_card.json",
         "transformers": [
           "response-template"
         ]

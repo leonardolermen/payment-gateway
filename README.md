@@ -37,7 +37,11 @@ suitable main class".
 The checkout offers a method only when the merchant has an active credential for its bank (Itaú:
 Pix and Bolecode; Cielo: card). With no sandbox credentials, `scripts/mock-providers` stands in for
 both banks: a WireMock built from the integration tests' fixtures, echoing the txid, amount and a
-fresh `PaymentId` per request. Card `4024007153760052` is denied; any other is authorized.
+fresh `PaymentId` per request. Card `4024007153760052` is denied. Any other card answers like the Cielo
+would for that request: `Capture: true` is paid (`Status 2`, captured amount = amount), otherwise
+authorized (`Status 1`); the brand, holder, expiry and installments are echoed and the number comes back
+masked with its own first six and last four digits; `SaveCard: true` returns a fresh `CardToken`, and a
+sale by `CardToken` (a subscription cycle) is answered for that same token.
 
 ```bash
 java -jar ~/.m2/repository/org/wiremock/wiremock-standalone/3.13.0/wiremock-standalone-3.13.0.jar \
