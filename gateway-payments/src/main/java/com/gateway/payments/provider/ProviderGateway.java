@@ -153,8 +153,7 @@ public class ProviderGateway {
       String operation,
       ResolvedProvider<P> resolved,
       Function<ResolvedProvider<P>, T> fn) {
-    try (LogContext context =
-        LogContext.with("provider", resolved.provider().id()).and("op", operation)) {
+    try (var _ = LogContext.with("provider", resolved.provider().id()).and("op", operation)) {
       long start = System.nanoTime();
 
       try {

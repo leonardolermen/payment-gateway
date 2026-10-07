@@ -54,7 +54,10 @@ final class ExpectedProviderFailure {
       name = name + " " + provider.code();
     }
     String message = thrown.getMessage();
+    if (message == null || message.isBlank()) {
+      return name;
+    }
 
-    return message == null || message.isBlank() ? name : name + ": " + message;
+    return name + ": " + message.replaceAll("\\R", " ");
   }
 }

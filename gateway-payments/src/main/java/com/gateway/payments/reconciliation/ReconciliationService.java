@@ -141,7 +141,7 @@ public class ReconciliationService {
           (a, b) -> a.isBefore(b) ? a : b);
     }
     for (Map.Entry<Scope, Instant> s : scopes.entrySet()) {
-      try (LogContext context =
+      try (var _ =
           LogContext.with("merchant", s.getKey().merchantId().value())
               .and("env", s.getKey().env().name())) {
         try {

@@ -57,7 +57,7 @@ public class JobRunner {
       return 0;
     }
     for (Job job : claimed) {
-      try (LogContext context = LogContext.with("job", job.type().name()).and("jobId", job.id())) {
+      try (var _ = LogContext.with("job", job.type().name()).and("jobId", job.id())) {
         JobHandler handler = handlers.forType(job.type());
         Job next;
         try {

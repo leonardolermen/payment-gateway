@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 
 /**
  * The resolution rules, which used to live half here and half in every caller that unwrapped an
@@ -71,14 +72,11 @@ class ProviderGatewayTest {
 
     String seen =
         gateway.call(
-            null,
-            "listCharges",
-            resolved,
-            target -> org.slf4j.MDC.get("provider") + "/" + org.slf4j.MDC.get("op"));
+            null, "listCharges", resolved, target -> MDC.get("provider") + "/" + MDC.get("op"));
 
     assertThat(seen).isEqualTo("ITAU/listCharges");
-    assertThat(org.slf4j.MDC.get("provider")).isNull();
-    assertThat(org.slf4j.MDC.get("op")).isNull();
+    assertThat(MDC.get("provider")).isNull();
+    assertThat(MDC.get("op")).isNull();
   }
 
   @Test

@@ -1,6 +1,7 @@
 <configuration>
   <!-- %clr and the AnsiOutput switch (spring.output.ansi.enabled): no escape codes when stdout is
-       redirected to a file. -->
+       redirected to a file. The include also applies Spring Boot's default logger levels (e.g.
+       Tomcat's protocol handler and lifecycle loggers), in both formats. -->
   <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 
   <springProperty name="logFormat" source="gateway.logging.format" defaultValue="json"/>
@@ -42,7 +43,8 @@
   </appender>
 
   <!-- Startup chatter that says nothing an operator acts on, in both formats. Kept: the banner,
-       Tomcat's ports, Flyway's DbMigrate (which migrations ran) and "Started GatewayApplication". -->
+       Tomcat's ports, Flyway's database line and DbMigrate (which migrations ran) and "Started
+       GatewayApplication". -->
   <logger name="org.springframework.data.repository.config.RepositoryConfigurationDelegate" level="WARN"/>
   <logger name="org.springframework.data.jpa.repository.query.QueryEnhancerFactories" level="WARN"/>
   <logger name="org.springframework.orm.jpa" level="WARN"/>
@@ -51,8 +53,6 @@
   <logger name="org.hibernate.orm" level="WARN"/>
   <logger name="com.zaxxer.hikari" level="WARN"/>
   <logger name="org.apache.catalina.core" level="WARN"/>
-  <logger name="org.apache.coyote.http11" level="WARN"/>
-  <logger name="org.flywaydb.core.FlywayExecutor" level="WARN"/>
   <logger name="org.flywaydb.core.internal.command.DbValidate" level="WARN"/>
 
   <root level="INFO">

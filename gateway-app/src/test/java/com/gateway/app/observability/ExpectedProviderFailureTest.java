@@ -38,6 +38,18 @@ class ExpectedProviderFailureTest {
   }
 
   @Test
+  void flattensLineBreaksInTheMessageSoTheLineStaysOneLine() {
+    ProviderException unavailable =
+        new ProviderException(
+            Code.UNAVAILABLE, "Itaú GET failed: 503\n<html>\r\n<body>down</body>", null);
+
+    String line = ExpectedProviderFailure.oneLine(new ThrowableProxy(unavailable)).orElseThrow();
+
+    assertThat(line).doesNotContain("\n").doesNotContain("\r");
+    assertThat(line).contains("503 <html> <body>down</body>");
+  }
+
+  @Test
   void collapsesWhenTheProviderFailureIsACause() {
     DomainException wrapper = new DomainException("PROVIDER_UNAVAILABLE", "The bank could not ...");
     wrapper.initCause(unavailable());
