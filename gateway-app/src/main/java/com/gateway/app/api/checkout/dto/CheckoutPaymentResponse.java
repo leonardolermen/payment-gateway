@@ -32,7 +32,8 @@ public record CheckoutPaymentResponse(
 
   public record Boleto(String linhaDigitavel, LocalDate dueDate, LocalDate paymentLimitDate) {}
 
-  public record Card(String brand, String last4, int installments) {}
+  /** {@code interestAmount}: the part of the payment's amount that is installment interest. */
+  public record Card(String brand, String last4, int installments, long interestAmount) {}
 
   public static CheckoutPaymentResponse from(Payment payment) {
     return new CheckoutPaymentResponse(
@@ -68,6 +69,6 @@ public record CheckoutPaymentResponse(
       return null;
     }
 
-    return new Card(card.brand(), card.last4(), card.installments());
+    return new Card(card.brand(), card.last4(), card.installments(), card.interestAmount());
   }
 }

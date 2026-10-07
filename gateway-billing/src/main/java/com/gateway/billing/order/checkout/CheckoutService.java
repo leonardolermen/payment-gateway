@@ -1,5 +1,6 @@
 package com.gateway.billing.order.checkout;
 
+import com.gateway.billing.installment.InstallmentSettingsService;
 import com.gateway.billing.order.AttemptRequest;
 import com.gateway.billing.order.Order;
 import com.gateway.billing.order.OrderAttemptService;
@@ -28,24 +29,30 @@ public class CheckoutService {
   private final OrderAttemptService attempts;
   private final PaymentQueries payments;
   private final PaymentCancellation cancellation;
+  private final InstallmentSettingsService installments;
 
   public CheckoutService(
       CheckoutTokens tokens,
       OrderRepository orders,
       OrderAttemptService attempts,
       PaymentQueries payments,
-      PaymentCancellation cancellation) {
+      PaymentCancellation cancellation,
+      InstallmentSettingsService installments) {
     this.tokens = tokens;
     this.orders = orders;
     this.attempts = attempts;
     this.payments = payments;
     this.cancellation = cancellation;
+    this.installments = installments;
   }
 
   public CheckoutView get(String rawToken) {
     Order order = resolve(rawToken);
 
-    return new CheckoutView(order, payments.listByOrder(order.merchantId(), order.id()));
+    return new CheckoutView(
+        order,
+        payments.listByOrder(order.merchantId(), order.id()),
+        installments.options(order.merchantId(), order.environment(), order.amount().cents()));
   }
 
   public Payment attempt(String rawToken, AttemptRequest request) {

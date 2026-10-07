@@ -34,6 +34,7 @@ Both are dated by the day they were written.
 | 2026-10-05 | `plans/2026-10-05-operations-and-disputes.md` | G: divergence lifecycle, merchant disputes, admin job queue, metrics on the management port |
 | 2026-10-06 | `plans/2026-10-06-public-checkout.md` | public checkout: order token, `/v1/checkout` routes, rate limit, CORS |
 | 2026-10-06 | `plans/2026-10-06-merchant-panel-api.md` | order list by status and cursor, customer list, `customer_name` on orders |
+| 2026-10-07 | `plans/2026-10-07-installments-interest.md` | installment settings per environment, Price-table pricing, `installment_options`, `interest_amount` |
 
 ## Decisions
 

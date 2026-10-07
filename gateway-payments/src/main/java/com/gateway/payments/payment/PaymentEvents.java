@@ -125,6 +125,7 @@ public class PaymentEvents {
       cardJson.put("tid", card.tid());
       cardJson.put("captured_amount", card.capturedAmount());
       cardJson.put("card_id", card.cardId());
+      cardJson.put("interest_amount", card.interestAmount());
       json.put("card", cardJson);
     }
     json.put("expires_at", iso(payment.expiresAt()));

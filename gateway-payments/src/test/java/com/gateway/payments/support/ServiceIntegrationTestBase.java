@@ -115,6 +115,7 @@ public abstract class ServiceIntegrationTestBase {
         "Pedido 1",
         choice,
         installments,
+        null,
         capture,
         "LOJA42",
         new CardCustomerData("Joao da Silva", "12345678901", "joao@example.com"),

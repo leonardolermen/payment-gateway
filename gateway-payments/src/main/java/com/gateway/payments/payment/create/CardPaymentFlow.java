@@ -96,6 +96,7 @@ public class CardPaymentFlow implements PaymentFlow {
             PROVIDER,
             CardDetails.requested(
                 installments.count(),
+                cardPayment.interest(),
                 chosen.source().brand().name(),
                 chosen.last4(),
                 chosen.cardId()),

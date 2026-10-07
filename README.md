@@ -272,9 +272,10 @@ event catalog below is written to an outbox in the same transaction as the chang
 - **At least once.** A delivery can arrive twice (a timeout after your server already processed it, a
   redelivery). `X-Gateway-Event-Id` is the same on every attempt of the same event: store it and ignore
   repeats.
-- **Ordered per partition key.** Events for one payment (including its refunds), one order, one customer
-  or one subscription (including its invoices) are delivered in the order they happened while they are
-  being retried: a failing event holds back the ones behind it on that key. There is no order across keys.
+- **Ordered per partition key.** Events for one payment (including its refunds), one order, one customer,
+  one subscription (including its invoices) or one merchant's installment settings are delivered in the
+  order they happened while they are being retried: a failing event holds back the ones behind it on that
+  key. There is no order across keys.
   **Once an event goes `DEAD`, the newer ones on that key are delivered**, so a later redelivery (manual or
   bulk) arrives OUT of order. Do not infer state from arrival order: use the payload (`status`,
   timestamps) and the event id.
@@ -501,7 +502,8 @@ A card was authorized and not yet captured. Example: a card payment.
     "authorization_code": "123456",
     "tid": "1006993069000A1B2C3D",
     "captured_amount": null,
-    "card_id": null
+    "card_id": null,
+    "interest_amount": 0
   },
   "expires_at": null,
   "paid_at": null,
@@ -574,7 +576,8 @@ The payment will not complete (provider refusal, card declined).
     "authorization_code": null,
     "tid": null,
     "captured_amount": null,
-    "card_id": null
+    "card_id": null,
+    "interest_amount": 0
   },
   "expires_at": null,
   "paid_at": null,
@@ -1034,6 +1037,22 @@ events, so it arrives in order with them.
 }
 ```
 
+#### installment_settings.updated
+
+The merchant replaced its installment settings (`PUT /v1/installment-settings`) in one `environment`.
+`api_key_id` is the key that made the change. Partitioned per merchant, so changes arrive in order.
+
+```json
+{
+  "environment": "TEST",
+  "max_installments": 10,
+  "interest_free_up_to": 3,
+  "monthly_rate_bps": 299,
+  "api_key_id": "01M46BTW3K4Q2X9S7D5F8G6H1J",
+  "updated_at": "2026-10-05T12:00:00Z"
+}
+```
+
 ### Idempotency
 
 Every POST that creates a resource or moves money — payments (and their `/cancel`, `/refunds`,
@@ -1192,6 +1211,9 @@ curl -X POST localhost:8080/v1/payments -H "Authorization: Bearer $TEST_KEY" \
 - An authorization nobody captures is never canceled by the gateway; after 5 days
   (`gateway.payments.card-capture-deadline`) reconciliation opens a `CAPTURE_OVERDUE` divergence.
 - Saved cards: `GET /v1/cards/{id}` (brand, last four, expiry, holder) and `DELETE /v1/cards/{id}`.
+- `card.interest_amount` (cents) is the installment interest inside `amount`: always 0 here, where you
+  choose the amount; an order's card attempt sets it (see
+  [Installments with interest](#installments-with-interest)).
 
 **Cielo notifications.** In the Cielo site, set the notification URL to
 `https://<public-host>/v1/providers/cielo/webhooks/<inbound_webhook_token>` (the token is the merchant's,
@@ -1221,7 +1243,7 @@ opening one order per cycle (the invoice), so everything below is the same five 
 | `DELETE /v1/customers/{id}` | 204 | 409 `CUSTOMER_HAS_ACTIVE_SUBSCRIPTION` |
 | `GET /v1/customers/{id}/cards` | 200 | |
 | `POST /v1/orders` * | 201 `OPEN` | 400 when both or neither of `customer_id`/`customer` are sent |
-| `POST /v1/orders/{id}/payments` * | 201 payment | 409 `ORDER_CLOSED`; 409 `ORDER_HAS_ACTIVE_PAYMENT` (+`payment_id`); 402 `CARD_DECLINED` |
+| `POST /v1/orders/{id}/payments` * | 201 payment | 409 `ORDER_CLOSED`; 409 `ORDER_HAS_ACTIVE_PAYMENT` (+`payment_id`); 402 `CARD_DECLINED`; 422 `INVALID_INSTALLMENTS` |
 | `POST /v1/orders/{id}/cancel` * | 200 `CANCELED` | 409 `ORDER_CLOSED`; 409 `ALREADY_PAID` |
 | `POST /v1/orders/{id}/checkout-token/rotate` * | 200 with a new `checkout_url` | 409 `ORDER_CLOSED` |
 | `GET /v1/orders?limit=&cursor=&status=` | 200, orders of the key's environment, newest first | 400 on an unknown `status` |
@@ -1234,6 +1256,8 @@ opening one order per cycle (the invoice), so everything below is the same five 
 | `POST /v1/subscriptions/{id}/cancel` * `{"at_period_end": true}` (default) | 200 | 409 `SUBSCRIPTION_NOT_ACTIVE` |
 | `PATCH /v1/subscriptions/{id}` (`method`, `card_id`) | 200 | the 422s of create; 409 `SUBSCRIPTION_NOT_ACTIVE` |
 | `GET /v1/subscriptions/{id}/orders` | 200, newest first | |
+| `GET /v1/installment-settings` | 200, the key's environment (the default when never set) | |
+| `PUT /v1/installment-settings` | 200 | 400 on a missing field or a range error |
 
 `*` requires an `Idempotency-Key` (400 `IDEMPOTENCY_KEY_REQUIRED` otherwise).
 
@@ -1279,6 +1303,37 @@ curl -X POST localhost:8080/v1/subscriptions ... \
 A plan has no environment; a subscription takes the environment of the key that created it. Price and interval
 of a plan never change (`422 PLAN_IMMUTABLE`): create a new plan.
 
+#### Installments with interest
+
+How an order's card attempt is split is the merchant's, per environment of the key (a TEST rate never applies
+in LIVE): up to `max_installments` (1–12), the first `interest_free_up_to` (1–`max_installments`) without
+interest, the rest at `monthly_rate_bps` a month (0–1000; 2,99% is `299`). Never set, it is 12 installments,
+all interest-free. The `PUT` replaces the whole settings (every field required, no `Idempotency-Key`) and
+emits `installment_settings.updated`.
+
+```bash
+curl -X PUT localhost:8080/v1/installment-settings -H "Authorization: Bearer $TEST_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"max_installments": 10, "interest_free_up_to": 3, "monthly_rate_bps": 299}'
+# 200 {"environment": "TEST", "max_installments": 10, "interest_free_up_to": 3, "monthly_rate_bps": 299,
+#      "updated_at": "2026-10-07T12:00:00.123456Z"}
+```
+
+The gateway prices every option and the attempt charges the total of the one chosen in `installments`,
+recomputed from the settings (no total is ever taken from the body):
+
+- up to `interest_free_up_to`: total = the order's amount; `installment_amount` = amount / n, truncated to the
+  cent (the Cielo spreads the cents left over);
+- above it: Price table, `installment = amount × i / (1 − (1 + i)^−n)` with `i` the monthly rate, **rounded up
+  to the cent**, and total = installment × n, so the Cielo's own division gives the same installment;
+- an option whose installment is under R$ 5,00 is not offered (1x always is). A count not offered is
+  `422 INVALID_INSTALLMENTS`.
+
+R$ 100,00 at 2,99% in 6x: 10000 × 0.0299 / (1 − 1.0299^−6) = 1845.36 → 1846 a month, 11076 in all. The
+attempt's payment then has `amount: 11076` and `card.interest_amount: 1076` (total − order amount, also in the
+`payment.*` events); the order keeps `amount: 10000`, and a total refund returns the 11076 charged. A
+subscription cycle is always 1x at the plan's price; `POST /v1/payments` is not priced (`interest_amount: 0`).
+
 **Order and customer events.** `order.created` (also for each invoice a cycle opens), `order.paid`,
 `order.canceled` and `order.expired` carry the order: `id`, `status`, `amount`, `currency`, `reference`,
 `customer_id`, `paid_payment_id`, `paid_at`, `expires_at`, `subscription_id`, `invoice_number`, `created_at`.
@@ -1322,14 +1377,17 @@ client IP (`gateway.checkout.rate-limit-per-minute`, 60; see the proxy note unde
 
 | Route | Success | Errors |
 |---|---|---|
-| `GET /v1/checkout/{token}` | 200 `{order_id, merchant_name, amount, currency, description, status, expires_at, methods, active_payment}` | 404 `NOT_FOUND` |
-| `POST /v1/checkout/{token}/payments` (same body as `POST /v1/orders/{id}/payments`) | 201 payment | 410 `CHECKOUT_ORDER_CLOSED`; 409 `ORDER_HAS_ACTIVE_PAYMENT`; 402 `CARD_DECLINED`; 422 `PROVIDER_CREDENTIALS_MISSING` |
+| `GET /v1/checkout/{token}` | 200 `{order_id, merchant_name, amount, currency, description, status, expires_at, methods, installment_options, active_payment}` | 404 `NOT_FOUND` |
+| `POST /v1/checkout/{token}/payments` (same body as `POST /v1/orders/{id}/payments`) | 201 payment | 410 `CHECKOUT_ORDER_CLOSED`; 409 `ORDER_HAS_ACTIVE_PAYMENT`; 402 `CARD_DECLINED`; 422 `PROVIDER_CREDENTIALS_MISSING`, `INVALID_INSTALLMENTS` |
 | `GET /v1/checkout/{token}/payments/{id}` | 200 payment | 404 `NOT_FOUND` |
 | `POST /v1/checkout/{token}/payments/{id}/cancel` | 200 payment `CANCELED` (Pix and boleto) | 410 `CHECKOUT_ORDER_CLOSED`; 422 `CHECKOUT_CANNOT_CANCEL_CARD` |
 
 The payment object is `{id, method, status, pix: {copia_e_cola, expires_at}, boleto: {linha_digitavel,
-due_date, payment_limit_date}, card: {brand, last4, installments}, paid_at, created_at}`, with only the block
-of its method filled. `methods` lists the methods the merchant has a credential for. A closed order still
+due_date, payment_limit_date}, card: {brand, last4, installments, interest_amount}, paid_at, created_at}`, with
+only the block of its method filled. `methods` lists the methods the merchant has a credential for.
+`installment_options` is `[{count, installment_amount, total, interest_free}]`, ascending, priced by the
+merchant's [installment settings](#installments-with-interest), and empty when `CARD` is not in `methods`;
+the page shows these values as they are and sends the chosen `count` as `installments`. A closed order still
 answers `GET` with 200 and its `status`; only the `POST`s are `410`. Error bodies never echo the token.
 Responses carry no payer data, no provider ids and no merchant reference.
 
