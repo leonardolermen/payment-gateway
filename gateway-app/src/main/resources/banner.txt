@@ -1,0 +1,11 @@
+${AnsiColor.BRIGHT_CYAN}
+ ██████╗  █████╗ ████████╗███████╗██╗    ██╗ █████╗ ██╗   ██╗
+██╔════╝ ██╔══██╗╚══██╔══╝██╔════╝██║    ██║██╔══██╗╚██╗ ██╔╝
+██║  ███╗███████║   ██║   █████╗  ██║ █╗ ██║███████║ ╚████╔╝
+██║   ██║██╔══██║   ██║   ██╔══╝  ██║███╗██║██╔══██║  ╚██╔╝
+╚██████╔╝██║  ██║   ██║   ███████╗╚███╔███╔╝██║  ██║   ██║
+ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝   ╚═╝
+${AnsiColor.BRIGHT_BLACK}      P I X   ·   B O L E C O D E   ·   C A R T Ã O
+${AnsiColor.BRIGHT_YELLOW}  Payment Gateway ${AnsiColor.WHITE}v${gateway.version}
+${AnsiColor.BRIGHT_BLACK}  Spring Boot ${spring-boot.version} · Java ${java.version} · Itaú + Cielo
+${AnsiColor.DEFAULT}
