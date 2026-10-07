@@ -41,6 +41,8 @@ webhook-delivery:
   workers: 3
 
 gateway:
+  logging:
+    format: ${LOG_FORMAT:json}   # json (production) or pretty (colored text for a dev console)
   admin-key: ${GATEWAY_ADMIN_KEY:}
   master-key: ${GATEWAY_MASTER_KEY:}
   api-key-pepper: ${GATEWAY_API_KEY_PEPPER:}

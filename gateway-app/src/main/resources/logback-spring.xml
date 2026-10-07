@@ -1,5 +1,22 @@
 <configuration>
+  <!-- %clr and the AnsiOutput switch (spring.output.ansi.enabled): no escape codes when stdout is
+       redirected to a file. -->
+  <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+  <springProperty name="logFormat" source="gateway.logging.format" defaultValue="json"/>
+
+  <conversionRule conversionWord="maskedMsg"
+                  class="com.gateway.app.observability.MaskingMessageConverter"/>
+  <conversionRule conversionWord="maskedEx"
+                  class="com.gateway.app.observability.MaskingThrowableConverter"/>
+  <conversionRule conversionWord="logContext"
+                  class="com.gateway.app.observability.LogContextConverter"/>
+
   <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+    <filter class="com.gateway.app.observability.LogFormatFilter">
+      <format>${logFormat}</format>
+      <accept>json</accept>
+    </filter>
     <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
       <providers>
         <timestamp/>
@@ -12,7 +29,34 @@
       </providers>
     </encoder>
   </appender>
+
+  <appender name="PRETTY" class="ch.qos.logback.core.ConsoleAppender">
+    <filter class="com.gateway.app.observability.LogFormatFilter">
+      <format>${logFormat}</format>
+      <accept>pretty</accept>
+    </filter>
+    <encoder>
+      <pattern>%clr(%d{HH:mm:ss.SSS}){faint} %clr(%5level) %clr(%-22logger{0}){cyan} %logContext%maskedMsg%n%maskedEx</pattern>
+      <charset>UTF-8</charset>
+    </encoder>
+  </appender>
+
+  <!-- Startup chatter that says nothing an operator acts on, in both formats. Kept: the banner,
+       Tomcat's ports, Flyway's DbMigrate (which migrations ran) and "Started GatewayApplication". -->
+  <logger name="org.springframework.data.repository.config.RepositoryConfigurationDelegate" level="WARN"/>
+  <logger name="org.springframework.data.jpa.repository.query.QueryEnhancerFactories" level="WARN"/>
+  <logger name="org.springframework.orm.jpa" level="WARN"/>
+  <logger name="org.springframework.boot.web.context.servlet.WebApplicationContextInitializer" level="WARN"/>
+  <logger name="org.springframework.boot.actuate.endpoint.web.EndpointLinksResolver" level="WARN"/>
+  <logger name="org.hibernate.orm" level="WARN"/>
+  <logger name="com.zaxxer.hikari" level="WARN"/>
+  <logger name="org.apache.catalina.core" level="WARN"/>
+  <logger name="org.apache.coyote.http11" level="WARN"/>
+  <logger name="org.flywaydb.core.FlywayExecutor" level="WARN"/>
+  <logger name="org.flywaydb.core.internal.command.DbValidate" level="WARN"/>
+
   <root level="INFO">
     <appender-ref ref="JSON"/>
+    <appender-ref ref="PRETTY"/>
   </root>
 </configuration>
