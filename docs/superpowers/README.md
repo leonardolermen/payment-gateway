@@ -17,6 +17,7 @@ Both are dated by the day they were written.
 | 2026-10-04 | `specs/2026-10-04-seguranca-e-operadores-design.md` | plan H: audit, key scopes and rotation, LGPD, named operators (design only) |
 | 2026-10-06 | `specs/2026-10-06-checkout-publico-design.md` | the payer's door: tokenized checkout link, public routes, per-IP limit, CORS |
 | 2026-10-06 | `specs/2026-10-06-painel-do-merchant-design.md` | what the merchant panel reads: order and customer lists by cursor, `customer_name` |
+| 2026-10-07 | `specs/2026-10-07-logs-e-trace-design.md` | one W3C trace id from the edge to the bank and the merchant webhook, payloads logged redacted at the source |
 
 ## Plans
 
