@@ -1,0 +1,34 @@
+{
+  "MerchantOrderId": "{{jsonPath request.body '$.MerchantOrderId'}}",
+  "Payment": {
+    "ServiceTaxAmount": 0,
+    "Installments": {{jsonPath request.body '$.Payment.Installments'}},
+    "Interest": 0,
+    "Capture": {{jsonPath request.body '$.Payment.Capture'}},
+    "Authenticate": false,
+    "Recurrent": false,
+    "CreditCard": {
+      "CardNumber": "{{regexExtract (jsonPath request.body '$.Payment.CreditCard.CardNumber') '^[0-9]{6}'}}******{{regexExtract (jsonPath request.body '$.Payment.CreditCard.CardNumber') '[0-9]{4}$'}}",
+      "Holder": "{{jsonPath request.body '$.Payment.CreditCard.Holder'}}",
+      "ExpirationDate": "{{jsonPath request.body '$.Payment.CreditCard.ExpirationDate'}}",
+      "SaveCard": {{#eq (jsonPath request.body '$.Payment.CreditCard.SaveCard') true}}true{{else}}false{{/eq}},
+      {{#eq (jsonPath request.body '$.Payment.CreditCard.SaveCard') true}}"CardToken": "{{randomValue type='UUID'}}",
+      {{/eq}}"Brand": "{{jsonPath request.body '$.Payment.CreditCard.Brand'}}"
+    },
+    "Tid": "1124060407175",
+    "ProofOfSale": "182738",
+    "AuthorizationCode": "663864",
+    "SoftDescriptor": "LojaTeste",
+    "Amount": {{jsonPath request.body '$.Payment.Amount'}},
+    {{#eq (jsonPath request.body '$.Payment.Capture') true}}"CapturedAmount": {{jsonPath request.body '$.Payment.Amount'}},
+    "CapturedDate": "{{now format='yyyy-MM-dd HH:mm:ss'}}",
+    {{/eq}}"ReceivedDate": "{{now format='yyyy-MM-dd HH:mm:ss'}}",
+    "Status": {{#eq (jsonPath request.body '$.Payment.Capture') true}}2{{else}}1{{/eq}},
+    "ReturnMessage": "Operation Successful",
+    "ReturnCode": "{{#eq (jsonPath request.body '$.Payment.Capture') true}}6{{else}}4{{/eq}}",
+    "PaymentId": "{{randomValue type='UUID'}}",
+    "Type": "CreditCard",
+    "Currency": "BRL",
+    "Country": "BRA"
+  }
+}
