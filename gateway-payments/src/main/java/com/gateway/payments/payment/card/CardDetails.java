@@ -20,11 +20,18 @@ public record CardDetails(
     int installments,
     Long capturedAmount,
     String cardId,
-    String declineCode) {
+    String declineCode,
+    long interestAmount) {
 
-  /** What is known before the acquirer answers: the merchant's request and the card's face. */
-  public static CardDetails requested(int installments, String brand, String last4, String cardId) {
-    return new CardDetails(null, null, null, null, brand, last4, installments, null, cardId, null);
+  /**
+   * What is known before the acquirer answers: the merchant's request and the card's face. {@code
+   * interestAmount} is the part of the payment's amount that is the merchant's interest on the
+   * installments (an order attempt priced by billing), 0 when there is none.
+   */
+  public static CardDetails requested(
+      int installments, long interestAmount, String brand, String last4, String cardId) {
+    return new CardDetails(
+        null, null, null, null, brand, last4, installments, null, cardId, null, interestAmount);
   }
 
   /** The acquirer's identifiers; its brand and last four win when it sent them. */
@@ -39,7 +46,8 @@ public record CardDetails(
         installments,
         authorization.capturedAmount() == null ? null : authorization.capturedAmount().cents(),
         cardId,
-        authorization.declineCode() == null ? null : authorization.declineCode().name());
+        authorization.declineCode() == null ? null : authorization.declineCode().name(),
+        interestAmount);
   }
 
   public CardDetails withCaptured(long cents) {
@@ -53,7 +61,8 @@ public record CardDetails(
         installments,
         cents,
         cardId,
-        declineCode);
+        declineCode,
+        interestAmount);
   }
 
   public CardDetails withCardId(String cardId) {
@@ -67,7 +76,8 @@ public record CardDetails(
         installments,
         capturedAmount,
         cardId,
-        declineCode);
+        declineCode,
+        interestAmount);
   }
 
   public CardDetails withDecline(String declineCode) {
@@ -81,6 +91,7 @@ public record CardDetails(
         installments,
         capturedAmount,
         cardId,
-        declineCode);
+        declineCode,
+        interestAmount);
   }
 }

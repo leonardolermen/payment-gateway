@@ -97,6 +97,7 @@ class CustomerServiceIntegrationTest extends BillingIntegrationTestBase {
                     true),
                 null,
                 null,
+                null,
                 "LOJA",
                 new CardCustomerData("Ana Silva", "52998224725", null),
                 null));

@@ -4,6 +4,9 @@ import com.gateway.billing.customer.ActiveSubscriptionsCheck;
 import com.gateway.billing.customer.CustomerService;
 import com.gateway.billing.customer.persistence.CustomerRepository;
 import com.gateway.billing.customer.persistence.CustomerRepositoryImpl;
+import com.gateway.billing.installment.InstallmentSettingsService;
+import com.gateway.billing.installment.persistence.InstallmentSettingsRepository;
+import com.gateway.billing.installment.persistence.InstallmentSettingsRepositoryImpl;
 import com.gateway.billing.order.AttemptSlot;
 import com.gateway.billing.order.ExpireOrderJob;
 import com.gateway.billing.order.InvoiceSettlementHook;
@@ -68,7 +71,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
   OrderRepositoryImpl.class,
   PlanRepositoryImpl.class,
   SubscriptionRepositoryImpl.class,
-  DunningAttemptRepositoryImpl.class
+  DunningAttemptRepositoryImpl.class,
+  InstallmentSettingsRepositoryImpl.class
 })
 public class BillingConfiguration {
 
@@ -106,13 +110,23 @@ public class BillingConfiguration {
   }
 
   @Bean
+  InstallmentSettingsService installmentSettingsService(
+      InstallmentSettingsRepository settings,
+      BillingEvents events,
+      UnitOfWork unitOfWork,
+      Clock clock) {
+    return new InstallmentSettingsService(settings, events, unitOfWork, clock);
+  }
+
+  @Bean
   CheckoutService checkoutService(
       CheckoutTokens tokens,
       OrderRepository orders,
       OrderAttemptService attempts,
       PaymentQueries payments,
-      PaymentCancellation cancellation) {
-    return new CheckoutService(tokens, orders, attempts, payments, cancellation);
+      PaymentCancellation cancellation,
+      InstallmentSettingsService installments) {
+    return new CheckoutService(tokens, orders, attempts, payments, cancellation, installments);
   }
 
   @Bean
@@ -121,8 +135,9 @@ public class BillingConfiguration {
       PaymentQueries payments,
       CustomerService customers,
       OrderRepository orders,
-      AttemptSlot slot) {
-    return new OrderAttemptService(flows, payments, customers, orders, slot);
+      AttemptSlot slot,
+      InstallmentSettingsService installments) {
+    return new OrderAttemptService(flows, payments, customers, orders, slot, installments);
   }
 
   @Bean

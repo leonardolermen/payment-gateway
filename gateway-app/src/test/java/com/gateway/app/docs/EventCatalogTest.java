@@ -6,6 +6,8 @@ import com.gateway.billing.customer.Customer;
 import com.gateway.billing.customer.CustomerAddress;
 import com.gateway.billing.customer.CustomerFactory;
 import com.gateway.billing.customer.CustomerService;
+import com.gateway.billing.installment.InstallmentSettings;
+import com.gateway.billing.installment.InstallmentSettingsService;
 import com.gateway.billing.order.Order;
 import com.gateway.billing.order.OrderFactory;
 import com.gateway.billing.order.OrderService;
@@ -86,7 +88,9 @@ class EventCatalogTest {
           new CatalogEntry("subscription.dunning_exhausted", EventCatalogTest::dunningExhausted),
           new CatalogEntry("subscription.canceled", EventCatalogTest::subscriptionJson),
           new CatalogEntry("subscription.ended", EventCatalogTest::subscriptionJson),
-          new CatalogEntry("dispute.updated", EventCatalogTest::disputeJson));
+          new CatalogEntry("dispute.updated", EventCatalogTest::disputeJson),
+          new CatalogEntry(
+              "installment_settings.updated", EventCatalogTest::installmentSettingsJson));
 
   @Test
   void everyEventTypeIsDocumentedWithTheKeysItsBuilderEmits() {
@@ -115,6 +119,12 @@ class EventCatalogTest {
             pixPayment().id(), "COMPLETED", "DUPLICATE", "charged twice", CLOCK.instant());
 
     return DisputeEvents.json(dispute);
+  }
+
+  private static Map<String, Object> installmentSettingsJson() {
+    return InstallmentSettingsService.json(
+        new InstallmentSettings(MERCHANT, ENVIRONMENT, 10, 3, 299, CLOCK.instant()),
+        "01M46BTW3K4Q2X9S7D5F8G6H1J");
   }
 
   private static Payment pixPayment() {
@@ -180,7 +190,7 @@ class EventCatalogTest {
         "order-1234",
         "Order 1234",
         null,
-        CardDetails.requested(1, "Visa", "0004", null),
+        CardDetails.requested(1, 0, "Visa", "0004", null),
         null,
         CLOCK);
   }

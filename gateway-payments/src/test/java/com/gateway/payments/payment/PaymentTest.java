@@ -232,7 +232,7 @@ class PaymentTest {
         "order-42",
         "Order 42",
         null,
-        CardDetails.requested(3, "VISA", "3171", null),
+        CardDetails.requested(3, 0, "VISA", "3171", null),
         null,
         clock);
   }
@@ -248,7 +248,8 @@ class PaymentTest {
         requested.installments(),
         null,
         null,
-        null);
+        null,
+        requested.interestAmount());
   }
 
   @Test
@@ -327,7 +328,8 @@ class PaymentTest {
 
     assertThatThrownBy(
             () ->
-                pix.markAuthorized(CardDetails.requested(1, "VISA", "3171", null), EventSource.API))
+                pix.markAuthorized(
+                    CardDetails.requested(1, 0, "VISA", "3171", null), EventSource.API))
         .isInstanceOf(IllegalStateException.class)
         .hasMessage("markAuthorized on a PIX payment");
   }

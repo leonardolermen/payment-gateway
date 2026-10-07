@@ -28,11 +28,12 @@ class PaymentEventsCardTest {
             "order-42",
             "Pedido 42",
             null,
-            CardDetails.requested(3, "VISA", "3171", null),
+            CardDetails.requested(3, 990, "VISA", "3171", null),
             null,
             clock);
     payment.markCompletedByCard(
-        new CardDetails("pid", "tid-1", "auth-1", "pos-1", "VISA", "3171", 3, null, "card-1", null),
+        new CardDetails(
+            "pid", "tid-1", "auth-1", "pos-1", "VISA", "3171", 3, null, "card-1", null, 990),
         Money.brl(12990),
         clock.instant(),
         EventSource.API);
@@ -50,7 +51,8 @@ class PaymentEventsCardTest {
             "authorization_code",
             "tid",
             "captured_amount",
-            "card_id");
+            "card_id",
+            "interest_amount");
     assertThat(card)
         .containsEntry("brand", "VISA")
         .containsEntry("last4", "3171")
@@ -58,7 +60,8 @@ class PaymentEventsCardTest {
         .containsEntry("authorization_code", "auth-1")
         .containsEntry("tid", "tid-1")
         .containsEntry("captured_amount", 12990L)
-        .containsEntry("card_id", "card-1");
+        .containsEntry("card_id", "card-1")
+        .containsEntry("interest_amount", 990L);
   }
 
   @Test

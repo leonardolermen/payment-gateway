@@ -61,6 +61,7 @@ public record CardPaymentRequest(
         description,
         choice(),
         installments,
+        null,
         capture,
         softDescriptor,
         customer == null ? null : customer.toData(),

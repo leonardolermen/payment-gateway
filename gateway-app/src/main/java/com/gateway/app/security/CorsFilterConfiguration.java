@@ -23,7 +23,8 @@ public class CorsFilterConfiguration {
   FilterRegistrationBean<CorsFilter> corsFilter(CheckoutProperties properties) {
     CorsConfiguration cors = new CorsConfiguration();
     cors.setAllowedOrigins(properties.corsOrigins());
-    cors.setAllowedMethods(List.of("GET", "POST", "PATCH", "DELETE", "OPTIONS"));
+    // PUT for /v1/installment-settings, which the merchant panel writes from the browser.
+    cors.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
     cors.setAllowedHeaders(List.of("Content-Type", "Authorization", "Idempotency-Key"));
     cors.setExposedHeaders(List.of("X-Next-Cursor", "Retry-After"));
     cors.setAllowCredentials(false);

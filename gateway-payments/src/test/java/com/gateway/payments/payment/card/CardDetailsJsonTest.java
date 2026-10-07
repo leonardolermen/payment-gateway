@@ -16,7 +16,8 @@ class CardDetailsJsonTest {
           3,
           6000L,
           "01K0CARDID0000000000000000",
-          null);
+          null,
+          605);
 
   @Test
   void roundTrips() {
@@ -39,6 +40,17 @@ class CardDetailsJsonTest {
     assertThat(read.installments()).isEqualTo(1);
     assertThat(read.capturedAmount()).isNull();
     assertThat(read.declineCode()).isEqualTo("GENERIC");
+    // Written before interest existed: no interestAmount key, and that payment had none.
+    assertThat(read.interestAmount()).isZero();
+  }
+
+  @Test
+  void readsTheInterestBackFromJsonb() {
+    String fromJsonb =
+        "{\"card\": {\"brand\": \"VISA\", \"installments\": 6, \"interestAmount\": 1076,"
+            + " \"capturedAmount\": null}}";
+
+    assertThat(CardDetailsJson.read(fromJsonb).interestAmount()).isEqualTo(1076);
   }
 
   @Test
@@ -47,14 +59,15 @@ class CardDetailsJsonTest {
     assertThat(CardDetailsJson.read(null)).isNull();
   }
 
-  /** The block never carries a number, an expiry or a CVV (spec §4): only these ten keys. */
+  /** The block never carries a number, an expiry or a CVV (spec §4): only these eleven keys. */
   @Test
-  void writesExactlyTheTenKeys() {
+  void writesExactlyTheElevenKeys() {
     assertThat(CardDetailsJson.write(FULL))
         .isEqualTo(
             "{\"paymentId\":\"6f8d1753-86bb-4dc0-9ebb-09a29093e1fb\",\"tid\":\"1124060407175\","
                 + "\"authorizationCode\":\"663864\",\"proofOfSale\":\"182738\",\"brand\":\"VISA\","
                 + "\"last4\":\"3171\",\"installments\":3,\"capturedAmount\":6000,"
-                + "\"cardId\":\"01K0CARDID0000000000000000\",\"declineCode\":null}");
+                + "\"cardId\":\"01K0CARDID0000000000000000\",\"declineCode\":null,"
+                + "\"interestAmount\":605}");
   }
 }

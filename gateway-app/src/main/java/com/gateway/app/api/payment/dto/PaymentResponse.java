@@ -51,7 +51,11 @@ public record PaymentResponse(
       LocalDate paymentLimitDate,
       String paidVia) {}
 
-  /** Spec §9: what the merchant's checkout shows; never a number, an expiry or a CVV. */
+  /**
+   * Spec §9: what the merchant's checkout shows; never a number, an expiry or a CVV. {@code
+   * interestAmount} is the installment interest inside {@code amount} (an order attempt priced by
+   * the merchant's settings), 0 when there is none.
+   */
   public record Card(
       String brand,
       String last4,
@@ -59,7 +63,8 @@ public record PaymentResponse(
       String authorizationCode,
       String tid,
       Long capturedAmount,
-      String cardId) {}
+      String cardId,
+      long interestAmount) {}
 
   public static PaymentResponse from(Payment payment) {
     PixDetails pix = payment.pix();
@@ -96,7 +101,8 @@ public record PaymentResponse(
                 card.authorizationCode(),
                 card.tid(),
                 card.capturedAmount(),
-                card.cardId()),
+                card.cardId(),
+                card.interestAmount()),
         payment.expiresAt(),
         payment.paidAt(),
         payment.paidAmount() == null ? null : payment.paidAmount().cents(),
