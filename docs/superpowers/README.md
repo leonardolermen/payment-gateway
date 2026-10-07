@@ -17,6 +17,8 @@ Both are dated by the day they were written.
 | 2026-10-04 | `specs/2026-10-04-seguranca-e-operadores-design.md` | plan H: audit, key scopes and rotation, LGPD, named operators (design only) |
 | 2026-10-06 | `specs/2026-10-06-checkout-publico-design.md` | the payer's door: tokenized checkout link, public routes, per-IP limit, CORS |
 | 2026-10-06 | `specs/2026-10-06-painel-do-merchant-design.md` | what the merchant panel reads: order and customer lists by cursor, `customer_name` |
+| 2026-10-07 | `specs/2026-10-07-parcelas-com-juros-design.md` | installments with merchant interest: per-merchant settings, Price table, options in the checkout |
+| 2026-10-07 | `specs/2026-10-07-assinatura-por-link-design.md` | a card subscription that waits for its first invoice to be paid by link, and links on every invoice |
 
 ## Plans
 
