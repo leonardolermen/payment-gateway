@@ -18,12 +18,14 @@ A subida imprime "Bootstrapping Spring Data JPA repositories" quatro vezes, uma 
 `logback-spring.xml` lê com `<springProperty>` e escolhe o appender. `json` = o appender de hoje,
 idêntico. `pretty` = texto colorido. Outro valor derruba a subida com mensagem que nomeia
 `LOG_FORMAT` e os valores aceitos — como o guard do mTLS, um typo não vira silenciosamente um ou outro
-formato. JSON é o padrão porque é o que a produção consome: esquecer a variável num deploy mantém JSON.
+formato. Os dois appenders ficam sempre ligados e um filtro decide qual escreve: tudo que não é
+exatamente `pretty` cai no JSON. Sem isso, um valor inválido apontaria para um appender inexistente, o
+logback ficaria mudo e o próprio erro de subida que avisa do typo não apareceria em lugar nenhum. JSON é o padrão porque é o que a produção consome: esquecer a variável num deploy mantém JSON.
 `.env.example` documenta `LOG_FORMAT=pretty` para dev.
 
 **Linha pretty.** `HH:mm:ss.SSS NÍVEL Classe [contexto] mensagem`:
-- nível colorido (ERROR vermelho, WARN amarelo, INFO verde, DEBUG cinza), hora cinza, nome simples da
-  classe em ciano, alinhado em largura fixa;
+- nível colorido pelo `%clr` do Spring (ERROR vermelho, WARN amarelo, INFO e DEBUG verde), hora
+  esmaecida, nome simples da classe em ciano, alinhado em largura fixa;
 - `[contexto]` só aparece se houver chave conhecida no MDC, em ordem fixa: `cid=` (o `correlationId`),
   `job`, `merchant`, `env`, `provider`, `op`; ids **inteiros** (copiáveis para uma query). `jobId` fica
   só no JSON — na linha pretty o tipo do job basta para ler, e o id está no banco;
