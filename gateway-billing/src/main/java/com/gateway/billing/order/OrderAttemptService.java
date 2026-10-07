@@ -3,9 +3,12 @@ package com.gateway.billing.order;
 import com.gateway.billing.customer.Customer;
 import com.gateway.billing.customer.CustomerAddress;
 import com.gateway.billing.customer.CustomerService;
+import com.gateway.billing.installment.InstallmentOption;
+import com.gateway.billing.installment.InstallmentSettingsService;
 import com.gateway.billing.order.persistence.OrderRepository;
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.errors.NotFoundException;
+import com.gateway.kernel.money.Money;
 import com.gateway.kernel.party.Document;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
@@ -20,7 +23,9 @@ import com.gateway.payments.payment.create.CreatePixPayment;
 import com.gateway.payments.payment.create.PayerData;
 import com.gateway.payments.payment.create.PaymentFlows;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -34,6 +39,10 @@ import org.springframework.dao.DataIntegrityViolationException;
  * DataIntegrityViolationException}, and the architecture test keeps Spring out of plain model
  * types. The partial unique index is the guard, not a read-then-write here, because two racing
  * requests both read "no active attempt" and only the index serializes them.
+ *
+ * <p>A card attempt charges the total of the installment option the caller chose, recomputed here
+ * from the merchant's settings (spec 2026-10-07 §4): the order keeps its amount, the payment
+ * carries the total and, in its card details, the interest inside it.
  */
 public class OrderAttemptService {
   private static final Logger log = LoggerFactory.getLogger(OrderAttemptService.class);
@@ -43,18 +52,21 @@ public class OrderAttemptService {
   private final CustomerService customers;
   private final OrderRepository orders;
   private final AttemptSlot slot;
+  private final InstallmentSettingsService installments;
 
   public OrderAttemptService(
       PaymentFlows flows,
       PaymentQueries payments,
       CustomerService customers,
       OrderRepository orders,
-      AttemptSlot slot) {
+      AttemptSlot slot,
+      InstallmentSettingsService installments) {
     this.flows = flows;
     this.payments = payments;
     this.customers = customers;
     this.orders = orders;
     this.slot = slot;
+    this.installments = installments;
   }
 
   /**
@@ -179,19 +191,22 @@ public class OrderAttemptService {
               boleto.dueDate(),
               boleto.paymentLimitDays(),
               order.id());
-      case AttemptRequest.CardAttempt card ->
-          new CreateCardPayment(
-              order.merchantId(),
-              order.environment(),
-              order.amount(),
-              order.reference(),
-              order.description(),
-              card.card(),
-              card.installments(),
-              card.capture(),
-              card.softDescriptor(),
-              payer.asCardCustomer(),
-              order.id());
+      case AttemptRequest.CardAttempt card -> {
+        InstallmentOption option = priced(order, card.installments());
+        yield new CreateCardPayment(
+            order.merchantId(),
+            order.environment(),
+            new Money(option.total(), order.amount().currency()),
+            order.reference(),
+            order.description(),
+            card.card(),
+            option.count(),
+            option.interestOver(order.amount().cents()),
+            card.capture(),
+            card.softDescriptor(),
+            payer.asCardCustomer(),
+            order.id());
+      }
       case AttemptRequest.RecurringCardAttempt recurring ->
           new CreateCardPayment(
               order.merchantId(),
@@ -201,11 +216,50 @@ public class OrderAttemptService {
               order.description(),
               new CardChoice.RecurringCard(recurring.cardId()),
               recurring.installments(),
+              null,
               true,
               null,
               payer.asCardCustomer(),
               order.id());
     };
+  }
+
+  /**
+   * The option the caller asked for, priced from the merchant's settings in the order's
+   * environment; a count those settings do not offer is the same 422 the card flow gives for a bad
+   * count. Null installments is 1x, as on the card flow.
+   */
+  private InstallmentOption priced(Order order, Integer requested) {
+    int count = requested == null ? 1 : requested;
+    List<InstallmentOption> offered =
+        installments.options(order.merchantId(), order.environment(), order.amount().cents());
+
+    return offered.stream()
+        .filter(option -> option.count() == count)
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new DomainException(
+                    "INVALID_INSTALLMENTS",
+                    "installments "
+                        + count
+                        + " is not offered for this order ("
+                        + describe(offered)
+                        + ")"));
+  }
+
+  /**
+   * "1 to 10" in the usual case. Not always a range: at a high rate the first priced count can
+   * clear the R$ 5,00 minimum that the last interest-free one missed, so the counts are listed
+   * then.
+   */
+  private static String describe(List<InstallmentOption> offered) {
+    List<Integer> counts = offered.stream().map(InstallmentOption::count).toList();
+    if (counts.getLast() - counts.getFirst() + 1 == counts.size()) {
+      return counts.getFirst() + " to " + counts.getLast();
+    }
+
+    return counts.stream().map(String::valueOf).collect(Collectors.joining(", "));
   }
 
   private Payer payerOf(Order order) {

@@ -92,6 +92,7 @@ class SubscriptionServiceIntegrationTest extends BillingIntegrationTestBase {
                     true),
                 null,
                 null,
+                null,
                 "LOJA",
                 new CardCustomerData(name, document, null),
                 null));

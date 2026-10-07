@@ -7,6 +7,7 @@ import com.gateway.billing.customer.Customer;
 import com.gateway.billing.customer.CustomerAddress;
 import com.gateway.billing.customer.CustomerFactory;
 import com.gateway.billing.customer.CustomerService;
+import com.gateway.billing.installment.InstallmentSettingsService;
 import com.gateway.billing.order.persistence.OrderRepository;
 import com.gateway.billing.support.BillingIntegrationTestBase;
 import com.gateway.kernel.address.Uf;
@@ -42,6 +43,7 @@ class OrderAttemptServiceIntegrationTest extends BillingIntegrationTestBase {
   @Autowired OrderAttemptService attempts;
   @Autowired CustomerService customers;
   @Autowired OrderRepository orderRepository;
+  @Autowired InstallmentSettingsService installments;
 
   Order orderWithAddress() {
     Customer customer =
@@ -198,6 +200,64 @@ class OrderAttemptServiceIntegrationTest extends BillingIntegrationTestBase {
     assertThat(boleto.amount()).isEqualTo(Money.brl(5000));
     assertThat(boleto.orderId()).isEqualTo(order.id());
     assertThat(boleto.status()).isEqualTo(PaymentStatus.PENDING);
+  }
+
+  /**
+   * Spec 2026-10-07 §4: R$ 50,00 in 3x at 2,99% is 149.5 / (1 − 1.0299^−3) = 1767.31 → 1768 a
+   * month, 5304 in all; the order keeps 5000 and the payment says 304 of it is interest.
+   */
+  @Test
+  void aCardAttemptChargesTheTotalOfTheChosenInstallments() {
+    installments.update(merchant, ProviderEnvironment.TEST, 6, 1, 299, "key-1");
+    Order order = orderWithAddress();
+
+    Payment card =
+        attempts.attempt(
+            order,
+            new AttemptRequest.CardAttempt(cardAttempt().card(), 3, true, "LOJA"),
+            EventSource.API);
+
+    assertThat(card.amount()).isEqualTo(Money.brl(5304));
+    assertThat(card.card().installments()).isEqualTo(3);
+    assertThat(card.card().interestAmount()).isEqualTo(304);
+    assertThat(cards.lastIssued().amount()).isEqualTo(Money.brl(5304));
+    assertThat(orderRepository.find(merchant, order.id()).orElseThrow().amount())
+        .isEqualTo(Money.brl(5000));
+  }
+
+  @Test
+  void aCountTheSettingsDoNotOfferIsRefusedBeforeAnyCharge() {
+    installments.update(merchant, ProviderEnvironment.TEST, 6, 1, 299, "key-1");
+    Order order = orderWithAddress();
+
+    assertThatThrownBy(
+            () ->
+                attempts.attempt(
+                    order,
+                    new AttemptRequest.CardAttempt(cardAttempt().card(), 7, true, "LOJA"),
+                    EventSource.API))
+        .isInstanceOf(DomainException.class)
+        .hasMessage("installments 7 is not offered for this order (1 to 6)")
+        .extracting(thrown -> ((DomainException) thrown).code())
+        .isEqualTo("INVALID_INSTALLMENTS");
+    assertThat(paymentQueries.listByOrder(merchant, order.id())).isEmpty();
+  }
+
+  @Test
+  void aSkippedCountIsNamedAmongTheOffered() {
+    // 5000 interest-free up to 11x: 5000 / 11 = 454, under R$ 5,00, so 11x is out; 12x at 10% is
+    // 500 / (1 − 1.1^−12) = 733.82 → 734 and is in. The offer is not a range, and the 422 says so.
+    installments.update(merchant, ProviderEnvironment.TEST, 12, 11, 1000, "key-1");
+    Order order = orderWithAddress();
+
+    assertThatThrownBy(
+            () ->
+                attempts.attempt(
+                    order,
+                    new AttemptRequest.CardAttempt(cardAttempt().card(), 11, true, "LOJA"),
+                    EventSource.API))
+        .hasMessage(
+            "installments 11 is not offered for this order (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12)");
   }
 
   @Test

@@ -39,6 +39,8 @@ public final class CardDetailsJson {
         + text(card.cardId())
         + ",\"declineCode\":"
         + text(card.declineCode())
+        + ",\"interestAmount\":"
+        + card.interestAmount()
         + "}";
   }
 
@@ -49,6 +51,8 @@ public final class CardDetailsJson {
     }
 
     Long installments = number(details, "installments");
+    // Absent in a payment written before interest existed: it had none.
+    Long interestAmount = number(details, "interestAmount");
     return new CardDetails(
         field(details, "paymentId"),
         field(details, "tid"),
@@ -59,7 +63,8 @@ public final class CardDetailsJson {
         installments == null ? 1 : installments.intValue(),
         number(details, "capturedAmount"),
         field(details, "cardId"),
-        field(details, "declineCode"));
+        field(details, "declineCode"),
+        interestAmount == null ? 0 : interestAmount);
   }
 
   /**

@@ -344,7 +344,7 @@ class PaymentRepositoryIntegrationTest {
             "order-42",
             "Pedido 42",
             null,
-            CardDetails.requested(2, "MASTER", "0634", null),
+            CardDetails.requested(2, 0, "MASTER", "0634", null),
             null,
             clock);
     tx().executeWithoutResult(status -> repository.save(draft, List.of(draft.createdEvent())));
@@ -366,7 +366,8 @@ class PaymentRepositoryIntegrationTest {
                 2,
                 null,
                 null,
-                null),
+                null,
+                0),
             EventSource.API);
     PaymentEvent captured = loaded.markCaptured(Money.brl(12990), clock.instant(), EventSource.API);
     tx().executeWithoutResult(status -> repository.save(loaded, List.of(authorized, captured)));

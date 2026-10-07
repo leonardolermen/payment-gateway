@@ -57,7 +57,7 @@ class PaymentDetailsJsonTest {
   @Test
   void aCardPaymentHasAnEmptyPixAndACardBlock() {
     com.gateway.payments.payment.card.CardDetails card =
-        com.gateway.payments.payment.card.CardDetails.requested(1, "VISA", "3171", null);
+        com.gateway.payments.payment.card.CardDetails.requested(1, 0, "VISA", "3171", null);
 
     String json = PaymentDetailsJson.write(null, null, card);
 
@@ -68,6 +68,16 @@ class PaymentDetailsJsonTest {
     assertThat(PaymentDetailsJson.readCard(json)).isEqualTo(card);
   }
 
+  @Test
+  void theCardInterestSurvivesTheWholeDocument() {
+    com.gateway.payments.payment.card.CardDetails card =
+        com.gateway.payments.payment.card.CardDetails.requested(6, 1076, "VISA", "3171", null);
+
+    String json = PaymentDetailsJson.write(null, null, card);
+
+    assertThat(PaymentDetailsJson.readCard(json).interestAmount()).isEqualTo(1076);
+  }
+
   /**
    * Card keys must not collide with pix or boleto keys: the three readers scan the whole document.
    */
@@ -76,7 +86,7 @@ class PaymentDetailsJsonTest {
     String cardJson =
         com.gateway.payments.payment.card.CardDetailsJson.write(
             new com.gateway.payments.payment.card.CardDetails(
-                "a", "b", "c", "d", "e", "f", 1, 2L, "g", "h"));
+                "a", "b", "c", "d", "e", "f", 1, 2L, "g", "h", 3));
     String others =
         com.gateway.payments.payment.pix.PixDetailsJson.write(new PixDetails("a", "b", "c", "d"))
             + com.gateway.payments.payment.boleto.BoletoDetailsJson.write(

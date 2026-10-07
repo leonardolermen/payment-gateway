@@ -65,6 +65,35 @@ class CardPaymentFlowIntegrationTest extends ServiceIntegrationTestBase {
     assertThat(outboxTypes(payment.id())).containsExactly("payment.authorized");
   }
 
+  /**
+   * Spec 2026-10-07 §4: billing prices the installments; the flow charges the amount it is given
+   * and records how much of it is interest, also on the row read back.
+   */
+  @Test
+  void theInterestInsideTheAmountIsRecorded() {
+    CreateCardPayment priced =
+        new CreateCardPayment(
+            merchant,
+            com.gateway.kernel.provider.ProviderEnvironment.TEST,
+            Money.brl(11076),
+            "order-1",
+            "Pedido 1",
+            new CardChoice.NewCard(card(APPROVES), false),
+            6,
+            1076L,
+            null,
+            null,
+            new CardCustomerData("Joao da Silva", "12345678901", "joao@example.com"),
+            null);
+
+    Payment payment = paymentService.create(priced);
+
+    assertThat(cards.lastIssued().amount()).isEqualTo(Money.brl(11076));
+    assertThat(payment.card().interestAmount()).isEqualTo(1076);
+    assertThat(paymentQueries.get(merchant, payment.id()).card().interestAmount()).isEqualTo(1076);
+    assertThat(details(payment)).contains("\"interestAmount\": 1076");
+  }
+
   /** A decline is a result (spec §11): FAILED with our code, a 402 to the merchant, no retry. */
   @Test
   void aDeclineFailsWithTheDeclineCode() {
@@ -287,6 +316,7 @@ class CardPaymentFlowIntegrationTest extends ServiceIntegrationTestBase {
             null,
             null,
             null,
+            null,
             new CardCustomerData(" ", null, null),
             null);
 
@@ -310,6 +340,7 @@ class CardPaymentFlowIntegrationTest extends ServiceIntegrationTestBase {
             null,
             null,
             new CardChoice.NewCard(card(APPROVES), false),
+            null,
             null,
             null,
             "LOJA-42 PEDIDO",
