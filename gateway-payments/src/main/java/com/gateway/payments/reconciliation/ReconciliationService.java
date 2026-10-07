@@ -7,6 +7,7 @@ import com.gateway.kernel.provider.pix.Charge;
 import com.gateway.kernel.provider.pix.ChargeStatus;
 import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.kernel.provider.pix.ReceivedPix;
+import com.gateway.payments.LogContext;
 import com.gateway.payments.PaymentsProperties;
 import com.gateway.payments.payment.EventSource;
 import com.gateway.payments.payment.Payment;
@@ -140,15 +141,19 @@ public class ReconciliationService {
           (a, b) -> a.isBefore(b) ? a : b);
     }
     for (Map.Entry<Scope, Instant> s : scopes.entrySet()) {
-      try {
-        changed += reconcile(s.getKey().merchantId(), s.getKey().env(), s.getValue(), now);
-      } catch (RuntimeException e) {
-        // A merchant with a revoked credential must not stop reconciliation for everyone else.
-        log.warn(
-            "reconciliation failed for merchant {} {}",
-            s.getKey().merchantId().value(),
-            s.getKey().env(),
-            e);
+      try (LogContext context =
+          LogContext.with("merchant", s.getKey().merchantId().value())
+              .and("env", s.getKey().env().name())) {
+        try {
+          changed += reconcile(s.getKey().merchantId(), s.getKey().env(), s.getValue(), now);
+        } catch (RuntimeException e) {
+          // A merchant with a revoked credential must not stop reconciliation for everyone else.
+          log.warn(
+              "reconciliation failed for merchant {} {}",
+              s.getKey().merchantId().value(),
+              s.getKey().env(),
+              e);
+        }
       }
     }
     return changed;

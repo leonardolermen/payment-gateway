@@ -1,6 +1,7 @@
 package com.gateway.payments.jobs;
 
 import com.gateway.kernel.provider.ProviderException;
+import com.gateway.payments.LogContext;
 import com.gateway.payments.PaymentsProperties;
 import com.gateway.payments.jobs.persistence.JobRepository;
 import java.time.Clock;
@@ -56,23 +57,25 @@ public class JobRunner {
       return 0;
     }
     for (Job job : claimed) {
-      JobHandler handler = handlers.forType(job.type());
-      Job next;
-      try {
-        boolean done = handler.run(job.refId(), now);
-        next = done ? job.done() : handler.notYet(job, now);
-      } catch (RuntimeException e) {
-        log.warn(
-            "job {} {} for {} failed (attempt {})",
-            job.type(),
-            job.id(),
-            job.refId(),
-            job.attempts() + 1,
-            e);
-        next = handler.afterFailure(job, now, truncate(describe(e)));
+      try (LogContext context = LogContext.with("job", job.type().name()).and("jobId", job.id())) {
+        JobHandler handler = handlers.forType(job.type());
+        Job next;
+        try {
+          boolean done = handler.run(job.refId(), now);
+          next = done ? job.done() : handler.notYet(job, now);
+        } catch (RuntimeException e) {
+          log.warn(
+              "job {} {} for {} failed (attempt {})",
+              job.type(),
+              job.id(),
+              job.refId(),
+              job.attempts() + 1,
+              e);
+          next = handler.afterFailure(job, now, truncate(describe(e)));
+        }
+        Job toSave = handler.finish(job, next, now);
+        transactionTemplate.executeWithoutResult(transaction -> jobs.save(toSave));
       }
-      Job toSave = handler.finish(job, next, now);
-      transactionTemplate.executeWithoutResult(transaction -> jobs.save(toSave));
     }
     return claimed.size();
   }

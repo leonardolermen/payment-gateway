@@ -58,6 +58,30 @@ class ProviderGatewayTest {
   }
 
   @Test
+  void aBankCallRunsWithTheProviderAndOperationInTheContext() {
+    ProviderGateway gateway =
+        new ProviderGateway(
+            List.of(new PixOnlyProvider()),
+            List.of(),
+            List.of(),
+            oneCredential,
+            requests,
+            new SimpleMeterRegistry());
+    var resolved = gateway.resolvePix(MERCHANT, ProviderEnvironment.TEST, "ITAU");
+
+    String seen =
+        gateway.call(
+            null,
+            "listCharges",
+            resolved,
+            target -> org.slf4j.MDC.get("provider") + "/" + org.slf4j.MDC.get("op"));
+
+    assertThat(seen).isEqualTo("ITAU/listCharges");
+    assertThat(org.slf4j.MDC.get("provider")).isNull();
+    assertThat(org.slf4j.MDC.get("op")).isNull();
+  }
+
+  @Test
   void resolvePixAnswersCredentialsMissingWhenTheMerchantHasNone() {
     ProviderGateway gateway =
         new ProviderGateway(
