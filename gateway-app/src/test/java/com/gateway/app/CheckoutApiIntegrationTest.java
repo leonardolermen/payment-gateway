@@ -576,18 +576,22 @@ class CheckoutApiIntegrationTest {
             .exchange()
             .expectBody(Map.class)
             .returnResult();
-    EntityExchangeResult<Map> missingParameter =
+    // A merchant route answered by Spring itself. This was a GET /v1/subscriptions without its
+    // then-required customer_id (a 400); the list made customer_id optional (spec 2026-10-07 §5),
+    // and no merchant route has a required parameter left, so a method Spring rejects stands in.
+    EntityExchangeResult<Map> wrongMerchantMethod =
         http()
-            .get()
-            // customer_id is required: a missing one is Spring's own 400, not ours.
+            .put()
             .uri("/v1/subscriptions")
             .header("Authorization", "Bearer " + apiKey)
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(Map.of())
             .exchange()
             .expectBody(Map.class)
             .returnResult();
 
     assertThat(wrongType.getStatus().value()).isEqualTo(415);
     assertThat(wrongType.getResponseBody().toString()).doesNotContain("chk_");
-    assertThat(missingParameter.getStatus().value()).isEqualTo(400);
+    assertThat(wrongMerchantMethod.getStatus().value()).isEqualTo(405);
   }
 }

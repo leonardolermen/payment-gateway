@@ -58,6 +58,7 @@ class EventCatalogTest {
   private static final ProviderEnvironment ENVIRONMENT = ProviderEnvironment.TEST;
   private static final LocalDate TODAY = LocalDate.of(2026, 10, 5);
   private static final String COPIA_E_COLA = "00020101021226...6304ABCD";
+  private static final String CHECKOUT_URL = "https://pay.example.com/pay/chk_...";
 
   private static final List<CatalogEntry> CATALOG =
       List.of(
@@ -85,6 +86,7 @@ class EventCatalogTest {
           new CatalogEntry("subscription.created", EventCatalogTest::subscriptionJson),
           new CatalogEntry("subscription.past_due", EventCatalogTest::subscriptionJson),
           new CatalogEntry("subscription.recovered", EventCatalogTest::subscriptionJson),
+          new CatalogEntry("subscription.activated", EventCatalogTest::subscriptionJson),
           new CatalogEntry("subscription.dunning_exhausted", EventCatalogTest::dunningExhausted),
           new CatalogEntry("subscription.canceled", EventCatalogTest::subscriptionJson),
           new CatalogEntry("subscription.ended", EventCatalogTest::subscriptionJson),
@@ -264,13 +266,14 @@ class EventCatalogTest {
     Subscription subscription = subscription();
     IssuedInvoice issued = new IssuedInvoice(bolecodePayment(), false, null);
 
-    return InvoicePayloads.created(subscription, invoice(subscription), issued, null);
+    return InvoicePayloads.created(subscription, invoice(subscription), issued, null, CHECKOUT_URL);
   }
 
   private static Map<String, Object> invoiceUpdated() {
     Subscription subscription = subscription();
 
-    return InvoicePayloads.updated(invoice(subscription), subscription, 2, bolecodePayment());
+    return InvoicePayloads.updated(
+        invoice(subscription), subscription, 2, bolecodePayment(), CHECKOUT_URL);
   }
 
   private static Map<String, Object> dunningExhausted() {

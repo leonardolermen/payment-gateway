@@ -837,7 +837,7 @@ The order passed `expires_at` unpaid.
 
 #### invoice.created
 
-A subscription cycle opened and its invoice was charged or issued. `charged` is true only for a captured card; `reason` and `decline_code` say why it was not.
+A subscription cycle opened and its invoice was charged or issued. `charged` is true only for a captured card; `reason` and `decline_code` say why it was not. `checkout_url` is the payer's link to this invoice, sent **once**, here (the gateway keeps only its hash; `GET` returns `checkout_url: null`); a lost one is replaced with `POST /v1/orders/{invoice_id}/checkout-token/rotate`. It is also sent for the first invoice of a card subscription created without `card_id`, which has no attempt yet (`payment_id` null, `charged` false).
 
 ```json
 {
@@ -861,13 +861,14 @@ A subscription cycle opened and its invoice was charged or issued. `charged` is 
   "boleto": {
     "linha_digitavel": "34191.09008 00012.300000 00000.000000 1 00000000004990",
     "due_date": "2026-10-08"
-  }
+  },
+  "checkout_url": "https://pay.example.com/pay/chk_..."
 }
 ```
 
 #### invoice.updated
 
-A dunning retry issued a new payment for the same invoice. `attempt` counts the retries.
+A dunning retry issued a new payment for the same invoice. `attempt` counts the retries. `checkout_url` is a **new** link to the invoice: the reissue rotated the token, and the previous link no longer works.
 
 ```json
 {
@@ -882,7 +883,8 @@ A dunning retry issued a new payment for the same invoice. `attempt` counts the 
   "boleto": {
     "linha_digitavel": "34191.09008 00012.300000 00000.000000 1 00000000004990",
     "due_date": "2026-10-08"
-  }
+  },
+  "checkout_url": "https://pay.example.com/pay/chk_..."
 }
 ```
 
@@ -942,6 +944,28 @@ A past-due subscription paid its invoice and is active again.
   "plan_id": "01M46BTW3P1F7TNYP5E0TV4CD6",
   "method": "BOLECODE",
   "card_id": null,
+  "current_period": {
+    "start": "2026-10-05",
+    "end": "2026-11-04"
+  },
+  "next_billing_at": "2026-11-05T12:00:00Z",
+  "cancel_at_period_end": false,
+  "created_at": "2026-10-05T12:00:00Z"
+}
+```
+
+#### subscription.activated
+
+A card subscription created without `card_id` had its first invoice paid by link: the card saved by that payment is now its `card_id`, it is `ACTIVE`, and the next cycle bills that card.
+
+```json
+{
+  "id": "01M46BTW3P1F7TNYP5E0TV4CDB",
+  "status": "ACTIVE",
+  "customer_id": "01M46BTW3P1F7TNYP5E0TV4CDA",
+  "plan_id": "01M46BTW3P1F7TNYP5E0TV4CD9",
+  "method": "CARD",
+  "card_id": "01M46BTW3P1F7TNYP5E0TV4CDC",
   "current_period": {
     "start": "2026-10-05",
     "end": "2026-11-04"
@@ -1251,10 +1275,11 @@ opening one order per cycle (the invoice), so everything below is the same five 
 | `POST /v1/plans` * | 201 | 400 on a range error |
 | `GET /v1/plans/{id}`, `GET /v1/plans?active=` | 200 | |
 | `PATCH /v1/plans/{id}` (`name`, `active`) | 200 | 422 `PLAN_IMMUTABLE` naming the field |
-| `POST /v1/subscriptions` * | 201 `ACTIVE` | 404; 422 `PLAN_INACTIVE`, `CARD_REQUIRED`, `CARD_NOT_OWNED_BY_CUSTOMER`, `CUSTOMER_ADDRESS_REQUIRED` |
-| `GET /v1/subscriptions/{id}`, `GET /v1/subscriptions?customer_id=` | 200 | |
+| `POST /v1/subscriptions` * | 201 `ACTIVE`; 201 `INCOMPLETE` with `first_invoice` for `CARD` without `card_id` | 404; 422 `PLAN_INACTIVE`, `CARD_NOT_OWNED_BY_CUSTOMER`, `CUSTOMER_ADDRESS_REQUIRED` |
+| `GET /v1/subscriptions?limit=&cursor=&status=` | 200, subscriptions of the key's environment, newest first | 400 on an unknown `status` or a `limit` outside 1–100 |
+| `GET /v1/subscriptions/{id}`, `GET /v1/subscriptions?customer_id=` | 200 | 400 when `customer_id` comes with `cursor` or `status` |
 | `POST /v1/subscriptions/{id}/cancel` * `{"at_period_end": true}` (default) | 200 | 409 `SUBSCRIPTION_NOT_ACTIVE` |
-| `PATCH /v1/subscriptions/{id}` (`method`, `card_id`) | 200 | the 422s of create; 409 `SUBSCRIPTION_NOT_ACTIVE` |
+| `PATCH /v1/subscriptions/{id}` (`method`, `card_id`) | 200 | the 422s of create, and `CARD_REQUIRED`; 409 `SUBSCRIPTION_NOT_ACTIVE` |
 | `GET /v1/subscriptions/{id}/orders` | 200, newest first | |
 | `GET /v1/installment-settings` | 200, the key's environment (the default when never set) | |
 | `PUT /v1/installment-settings` | 200 | 400 on a missing field or a range error |
@@ -1262,8 +1287,8 @@ opening one order per cycle (the invoice), so everything below is the same five 
 `*` requires an `Idempotency-Key` (400 `IDEMPOTENCY_KEY_REQUIRED` otherwise).
 
 Lists page by `cursor`, the `id` of the last item of the previous page (ids are time-ordered), like
-`GET /v1/payments`. A TEST key lists only TEST orders and customers, a LIVE key only LIVE ones. Every
-order carries `customer_name`, null when it has no customer or the customer was deleted.
+`GET /v1/payments`. A TEST key lists only TEST orders, customers and subscriptions, a LIVE key only LIVE
+ones. Every order carries `customer_name`, null when it has no customer or the customer was deleted.
 
 ```bash
 curl -X POST localhost:8080/v1/customers -H "Authorization: Bearer $TEST_KEY" \
@@ -1302,6 +1327,36 @@ curl -X POST localhost:8080/v1/subscriptions ... \
 
 A plan has no environment; a subscription takes the environment of the key that created it. Price and interval
 of a plan never change (`422 PLAN_IMMUTABLE`): create a new plan.
+
+Every subscription response carries `customer_name` (null when the customer was deleted), `plan_name`,
+`amount`, `interval` and `interval_count` (the plan's), and `first_invoice` (below; null except on the create
+that opened it). Statuses: `ACTIVE` and `PAST_DUE` bill; `INCOMPLETE` waits for its first invoice;
+`INCOMPLETE_EXPIRED`, `CANCELED` and `ENDED` are final.
+
+**A card subscription without the card.** `POST /v1/subscriptions` with `"method": "CARD"` and no `card_id` is
+born `INCOMPLETE` with its first invoice already open, and the response gives its link, once:
+
+```bash
+curl -X POST localhost:8080/v1/subscriptions ... \
+  -d '{"customer_id": "<customer_id>", "plan_id": "<plan_id>", "method": "CARD"}'
+# 201 {"id": "<subscription_id>", "status": "INCOMPLETE", "card_id": null, ...,
+#      "first_invoice": {"order_id": "<order_id>", "checkout_url": "https://pay.example.com/pay/chk_..."}}
+```
+
+Send the link to the payer. That invoice's checkout takes **only a new card**, which is saved for the next
+cycles whatever `save_card` says (the page says so: `saves_card_for_subscription`). When it is paid the
+subscription becomes `ACTIVE` with that `card_id` (`subscription.activated`) and the next cycle bills the card at
+`next_billing_at`. If the invoice expires or is canceled unpaid, the subscription ends `INCOMPLETE_EXPIRED`, with
+no dunning — create a new one if the payer comes back. A declined card leaves the invoice open for another try.
+`POST /v1/subscriptions/{id}/cancel` on an `INCOMPLETE` subscription cancels it at once (`at_period_end` is
+ignored; there is no paid period) and cancels its invoice. A customer with an `INCOMPLETE` subscription cannot be
+deleted (`409 CUSTOMER_HAS_ACTIVE_SUBSCRIPTION`). With `card_id`, and with `PIX` or `BOLECODE`, nothing changes:
+the subscription is born `ACTIVE` and `first_invoice` is null.
+
+**Every invoice has a link.** The `invoice.created` event of every cycle carries `checkout_url`, the only time
+the gateway shows it; a dunning reissue (`invoice.updated`) carries a new one. A past-due subscription's open
+invoice can also be charged again with `POST /v1/orders/{id}/payments` (the saved card needs its CVV there) or
+given a fresh link with `POST /v1/orders/{id}/checkout-token/rotate`.
 
 #### Installments with interest
 
@@ -1342,11 +1397,11 @@ subscription cycle is always 1x at the plan's price; `POST /v1/payments` is not 
 
 **Invoice events.** Each cycle emits `invoice.created` with `invoice_id`, `subscription_id`,
 `invoice_number`, `amount`, `currency`, `method`, `period` (`start`, `end`), `payment_id`, `charged`,
-`decline_code`, `reason`, and per method: `pix.copia_e_cola` for PIX, `boleto.linha_digitavel` and
-`boleto.due_date` for BOLECODE, neither for CARD (`charged`/`decline_code` say how it went). A dunning reissue
-emits `invoice.updated` with `invoice_id`, `subscription_id`, `attempt`, `payment_id`, `method` and the same
-`pix`/`boleto` objects. Subscription events: `subscription.created`, `.past_due`, `.recovered`,
-`.dunning_exhausted`, `.canceled`, `.ended`.
+`decline_code`, `reason`, `checkout_url`, and per method: `pix.copia_e_cola` for PIX, `boleto.linha_digitavel`
+and `boleto.due_date` for BOLECODE, neither for CARD (`charged`/`decline_code` say how it went). A dunning
+reissue emits `invoice.updated` with `invoice_id`, `subscription_id`, `attempt`, `payment_id`, `method`, the same
+`pix`/`boleto` objects and a new `checkout_url`. Subscription events: `subscription.created`, `.activated`,
+`.past_due`, `.recovered`, `.dunning_exhausted`, `.canceled`, `.ended`.
 
 **Dunning.** A failed invoice (declined card, expired Pix or boleto) makes the subscription `PAST_DUE` and is
 retried on the days in `gateway.billing.dunning-retry-days` (default `1,3,7`, ascending). A card is charged
@@ -1377,8 +1432,8 @@ client IP (`gateway.checkout.rate-limit-per-minute`, 60; see the proxy note unde
 
 | Route | Success | Errors |
 |---|---|---|
-| `GET /v1/checkout/{token}` | 200 `{order_id, merchant_name, amount, currency, description, status, expires_at, methods, installment_options, active_payment}` | 404 `NOT_FOUND` |
-| `POST /v1/checkout/{token}/payments` (same body as `POST /v1/orders/{id}/payments`) | 201 payment | 410 `CHECKOUT_ORDER_CLOSED`; 409 `ORDER_HAS_ACTIVE_PAYMENT`; 402 `CARD_DECLINED`; 422 `PROVIDER_CREDENTIALS_MISSING`, `INVALID_INSTALLMENTS` |
+| `GET /v1/checkout/{token}` | 200 `{order_id, merchant_name, amount, currency, description, status, expires_at, methods, installment_options, active_payment, plan_name, saves_card_for_subscription}` | 404 `NOT_FOUND` |
+| `POST /v1/checkout/{token}/payments` (same body as `POST /v1/orders/{id}/payments`) | 201 payment | 410 `CHECKOUT_ORDER_CLOSED`; 409 `ORDER_HAS_ACTIVE_PAYMENT`; 402 `CARD_DECLINED`; 422 `PROVIDER_CREDENTIALS_MISSING`, `INVALID_INSTALLMENTS`, `CHECKOUT_CARD_REQUIRED` |
 | `GET /v1/checkout/{token}/payments/{id}` | 200 payment | 404 `NOT_FOUND` |
 | `POST /v1/checkout/{token}/payments/{id}/cancel` | 200 payment `CANCELED` (Pix and boleto) | 410 `CHECKOUT_ORDER_CLOSED`; 422 `CHECKOUT_CANNOT_CANCEL_CARD` |
 
@@ -1389,6 +1444,11 @@ only the block of its method filled. `methods` lists the methods the merchant ha
 merchant's [installment settings](#installments-with-interest), and empty when `CARD` is not in `methods`;
 the page shows these values as they are and sends the chosen `count` as `installments`. A closed order still
 answers `GET` with 200 and its `status`; only the `POST`s are `410`. Error bodies never echo the token.
+`plan_name` names the plan when the order is a subscription invoice (null for a standalone order).
+`saves_card_for_subscription` is true on the first invoice of a card subscription created without `card_id`:
+`methods` is then only `CARD`, the card paid with is saved and charged on the next cycles of `plan_name` (the
+page should say so before the payer pays), `save_card` is ignored, and anything but a new card is
+`422 CHECKOUT_CARD_REQUIRED`.
 Responses carry no payer data, no provider ids and no merchant reference.
 
 Payment events of an attempt made through the link currently carry `source: API`, like the merchant's own

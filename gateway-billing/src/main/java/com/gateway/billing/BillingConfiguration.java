@@ -14,8 +14,10 @@ import com.gateway.billing.order.OrderAttemptService;
 import com.gateway.billing.order.OrderExpiration;
 import com.gateway.billing.order.OrderService;
 import com.gateway.billing.order.OrderSettlement;
+import com.gateway.billing.order.checkout.CheckoutLinks;
 import com.gateway.billing.order.checkout.CheckoutService;
 import com.gateway.billing.order.checkout.CheckoutTokens;
+import com.gateway.billing.order.checkout.InvoiceCheckoutTerms;
 import com.gateway.billing.order.checkout.TokenHasher;
 import com.gateway.billing.order.persistence.OrderRepository;
 import com.gateway.billing.order.persistence.OrderRepositoryImpl;
@@ -24,6 +26,7 @@ import com.gateway.billing.plan.persistence.PlanRepository;
 import com.gateway.billing.plan.persistence.PlanRepositoryImpl;
 import com.gateway.billing.subscription.ActiveSubscriptions;
 import com.gateway.billing.subscription.OpenInvoiceCancellation;
+import com.gateway.billing.subscription.SubscriptionCheckoutTerms;
 import com.gateway.billing.subscription.SubscriptionQueries;
 import com.gateway.billing.subscription.SubscriptionService;
 import com.gateway.billing.subscription.billing.BillSubscriptionJob;
@@ -34,7 +37,10 @@ import com.gateway.billing.subscription.billing.DunningRetryJob;
 import com.gateway.billing.subscription.billing.DunningSchedule;
 import com.gateway.billing.subscription.billing.DunningStarter;
 import com.gateway.billing.subscription.billing.InvoiceIssuer;
+import com.gateway.billing.subscription.billing.InvoiceLinks;
 import com.gateway.billing.subscription.billing.SubscriptionBilling;
+import com.gateway.billing.subscription.billing.SubscriptionCreation;
+import com.gateway.billing.subscription.billing.SubscriptionInvoices;
 import com.gateway.billing.subscription.persistence.DunningAttemptRepository;
 import com.gateway.billing.subscription.persistence.DunningAttemptRepositoryImpl;
 import com.gateway.billing.subscription.persistence.SubscriptionRepository;
@@ -125,8 +131,21 @@ public class BillingConfiguration {
       OrderAttemptService attempts,
       PaymentQueries payments,
       PaymentCancellation cancellation,
-      InstallmentSettingsService installments) {
-    return new CheckoutService(tokens, orders, attempts, payments, cancellation, installments);
+      InstallmentSettingsService installments,
+      InvoiceCheckoutTerms invoiceTerms) {
+    return new CheckoutService(
+        tokens, orders, attempts, payments, cancellation, installments, invoiceTerms);
+  }
+
+  @Bean
+  InvoiceCheckoutTerms invoiceCheckoutTerms(
+      SubscriptionRepository subscriptions, PlanService plans) {
+    return new SubscriptionCheckoutTerms(subscriptions, plans);
+  }
+
+  @Bean
+  InvoiceLinks invoiceLinks(CheckoutTokens tokens, CheckoutLinks links, OrderRepository orders) {
+    return new InvoiceLinks(tokens, links, orders);
   }
 
   @Bean
@@ -153,8 +172,10 @@ public class BillingConfiguration {
       BillingEvents events,
       JobRepository jobs,
       UnitOfWork unitOfWork,
-      Clock clock) {
-    return new OrderService(orders, payments, cancellation, events, jobs, unitOfWork, clock);
+      Clock clock,
+      InvoiceSettlementHook invoices) {
+    return new OrderService(
+        orders, payments, cancellation, events, jobs, unitOfWork, clock, invoices);
   }
 
   @Bean
@@ -162,8 +183,9 @@ public class BillingConfiguration {
       OrderRepository orders,
       PaymentQueries payments,
       BillingEvents events,
-      UnitOfWork unitOfWork) {
-    return new OrderExpiration(orders, payments, events, unitOfWork);
+      UnitOfWork unitOfWork,
+      InvoiceSettlementHook invoices) {
+    return new OrderExpiration(orders, payments, events, unitOfWork, invoices);
   }
 
   @Bean
@@ -220,17 +242,21 @@ public class BillingConfiguration {
       JobRepository jobs,
       BillingEvents events,
       BillingProperties properties,
-      CheckoutTokens checkoutTokens,
+      InvoiceLinks links,
       Clock clock) {
     return new CycleOpener(
-        subscriptions,
-        orders,
-        plans,
-        jobs,
-        events,
-        properties.billingHour(),
-        checkoutTokens,
-        clock);
+        subscriptions, orders, plans, jobs, events, properties.billingHour(), links, clock);
+  }
+
+  @Bean
+  SubscriptionCreation subscriptionCreation(
+      SubscriptionService service,
+      SubscriptionRepository subscriptions,
+      CycleOpener opener,
+      BillingEvents events,
+      UnitOfWork unitOfWork,
+      Clock clock) {
+    return new SubscriptionCreation(service, subscriptions, opener, events, unitOfWork, clock);
   }
 
   @Bean
@@ -253,10 +279,9 @@ public class BillingConfiguration {
   }
 
   /**
-   * One bean, and it is both ports: SubscriptionBilling takes it as DunningStarter, OrderSettlement
-   * as InvoiceSettlementHook. Not two more {@code @Bean} methods returning it typed as each port:
-   * by type, each port would then have two candidates (this bean and its alias) and the context
-   * would refuse to start.
+   * SubscriptionBilling takes it as DunningStarter. It is no longer the InvoiceSettlementHook:
+   * {@link SubscriptionInvoices} is, and hands it every invoice that is not an INCOMPLETE
+   * subscription's first.
    */
   @Bean
   Dunning dunning(
@@ -266,8 +291,20 @@ public class BillingConfiguration {
       PaymentQueries payments,
       InvoiceIssuer issuer,
       BillingEvents events,
-      UnitOfWork unitOfWork) {
-    return new Dunning(ledger, subscriptions, orders, payments, issuer, events, unitOfWork);
+      UnitOfWork unitOfWork,
+      InvoiceLinks links) {
+    return new Dunning(ledger, subscriptions, orders, payments, issuer, events, unitOfWork, links);
+  }
+
+  @Bean
+  SubscriptionInvoices subscriptionInvoices(
+      Dunning dunning,
+      SubscriptionRepository subscriptions,
+      PaymentQueries payments,
+      JobRepository jobs,
+      BillingEvents events,
+      Clock clock) {
+    return new SubscriptionInvoices(dunning, subscriptions, payments, jobs, events, clock);
   }
 
   @Bean

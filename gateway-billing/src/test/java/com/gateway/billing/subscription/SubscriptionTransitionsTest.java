@@ -25,9 +25,35 @@ class SubscriptionTransitionsTest {
   }
 
   @Test
-  void canceledAndEndedNeverMove() {
+  void incompleteLeavesOnceToActiveExpiredOrCanceled() {
+    for (SubscriptionStatus to : SubscriptionStatus.values()) {
+      boolean expected =
+          to == SubscriptionStatus.ACTIVE
+              || to == SubscriptionStatus.INCOMPLETE_EXPIRED
+              || to == SubscriptionStatus.CANCELED;
+      assertThat(SubscriptionTransitions.allowed(SubscriptionStatus.INCOMPLETE, to))
+          .as("INCOMPLETE->" + to)
+          .isEqualTo(expected);
+    }
+  }
+
+  @Test
+  void nothingGoesBackToIncomplete() {
+    for (SubscriptionStatus from : SubscriptionStatus.values()) {
+      assertThat(SubscriptionTransitions.allowed(from, SubscriptionStatus.INCOMPLETE))
+          .as(from + "->INCOMPLETE")
+          .isFalse();
+    }
+  }
+
+  @Test
+  void canceledEndedAndIncompleteExpiredNeverMove() {
     for (SubscriptionStatus from :
-        new SubscriptionStatus[] {SubscriptionStatus.CANCELED, SubscriptionStatus.ENDED}) {
+        new SubscriptionStatus[] {
+          SubscriptionStatus.CANCELED,
+          SubscriptionStatus.ENDED,
+          SubscriptionStatus.INCOMPLETE_EXPIRED
+        }) {
       for (SubscriptionStatus to : SubscriptionStatus.values()) {
         assertThat(SubscriptionTransitions.allowed(from, to)).as(from + "->" + to).isFalse();
       }

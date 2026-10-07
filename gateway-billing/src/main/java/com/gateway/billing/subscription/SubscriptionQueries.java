@@ -6,6 +6,7 @@ import com.gateway.billing.subscription.persistence.DunningAttemptRepository;
 import com.gateway.billing.subscription.persistence.SubscriptionRepository;
 import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.kernel.ids.MerchantId;
+import com.gateway.kernel.provider.ProviderEnvironment;
 import java.util.List;
 
 /** The reads, ports only: invoices and dunning are always scoped through the merchant's own get. */
@@ -34,6 +35,16 @@ public class SubscriptionQueries {
 
   public List<Subscription> listByCustomer(MerchantId merchantId, String customerId) {
     return subscriptions.findByCustomer(merchantId, customerId);
+  }
+
+  /** The panel's list: the key's environment, newest first, by cursor (the last id seen). */
+  public List<Subscription> list(
+      MerchantId merchantId,
+      ProviderEnvironment environment,
+      SubscriptionStatus status,
+      String cursor,
+      int limit) {
+    return subscriptions.list(merchantId, environment, status, cursor, limit);
   }
 
   /** Newest invoice first. */

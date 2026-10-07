@@ -45,14 +45,27 @@ Não há campo novo na ordem: `subscription_id` já separa a avulsa (nulo) da fa
 "avulsa ou recorrente" é de **qual rota** se chama: `POST /v1/orders` ou `POST /v1/subscriptions`. A
 ordem avulsa continua sem ciclo; uma ordem de ciclo só nasce do job ou da criação da assinatura.
 
-## 5. Testes
+## 5. Lista para o painel
+A aba Assinaturas do painel (`payment-gateway-web`, spec `2026-10-07-checkout-e-recorrencia-design.md`
+§4) precisa do que a API não tem:
+- `GET /v1/subscriptions` sem `customer_id`: assinaturas do **ambiente da chave**, `id DESC`, `cursor`
+  = último id, `limit` 1–100 (default 20), `status` opcional (valor desconhecido → `400`);
+  `customer_id` continua como hoje e não combina com `cursor`/`status` (`400`). Mesmo padrão de
+  `GET /v1/orders` (DECISOES 2026-10-06), com índice `(merchant_id, environment, id DESC)` na `V309`.
+- Toda `SubscriptionResponse` ganha `customer_name` (nulo se o cliente foi apagado), `plan_name`,
+  `amount`, `interval` e `interval_count` (do plano), lidos em uma consulta por página, não por linha.
+- A criação devolve `first_invoice: {order_id, checkout_url}` quando a 1ª fatura nasce junto (§2);
+  nulo nos outros casos.
+
+## 6. Testes
 Integração no app: criar assinatura CARD sem `card_id` → `INCOMPLETE` com `first_invoice.checkout_url`;
 pagar pelo checkout com cartão → cartão salvo, assinatura `ACTIVE`, segundo ciclo cobra o cartão salvo
 sem CVV (WireMock vê `CardToken`); fatura expirada → `INCOMPLETE_EXPIRED` e nenhum job de recobrança;
 checkout de fatura `INCOMPLETE` oferece só `CARD` e ignora `save_card: false`; `invoice.created` traz
-`checkout_url` e o banco só o hash; assinatura Pix nasce `ACTIVE` como hoje.
+`checkout_url` e o banco só o hash; assinatura Pix nasce `ACTIVE` como hoje; lista por cursor e
+status, chave LIVE não vê assinatura TEST, `customer_name`/`plan_name` presentes.
 
-## 6. Decisões (para o `DECISOES.md`)
+## 7. Decisões (para o `DECISOES.md`)
 1. **Primeira fatura paga pelo link salva o cartão e ativa a assinatura.** Rejeitado: o merchant coletar
    o cartão por fora e mandar `card_id` (é o que trava hoje). Custo: um status a mais e a regra de que
    checkout de fatura `INCOMPLETE` só aceita cartão.

@@ -1,5 +1,7 @@
 package com.gateway.app.api.checkout;
 
+import com.gateway.billing.order.checkout.CheckoutLinks;
+import com.gateway.billing.order.checkout.CheckoutToken;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -9,7 +11,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param rateLimitPerMinute per client IP on /v1/checkout; a payer needs a handful per minute
  */
 @ConfigurationProperties("gateway.checkout")
-public record CheckoutProperties(String baseUrl, List<String> corsOrigins, int rateLimitPerMinute) {
+public record CheckoutProperties(String baseUrl, List<String> corsOrigins, int rateLimitPerMinute)
+    implements CheckoutLinks {
   public CheckoutProperties {
     if (baseUrl == null || baseUrl.isBlank()) {
       baseUrl = "http://localhost:5173/pay/";
@@ -31,5 +34,11 @@ public record CheckoutProperties(String baseUrl, List<String> corsOrigins, int r
 
   public String urlFor(String token) {
     return baseUrl + token;
+  }
+
+  /** Billing's port: the link an invoice's event carries (spec 2026-10-07 §3). */
+  @Override
+  public String urlFor(CheckoutToken token) {
+    return urlFor(token.value());
   }
 }

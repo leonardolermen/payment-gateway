@@ -16,16 +16,19 @@ public class OrderExpiration {
   private final PaymentQueries payments;
   private final BillingEvents events;
   private final UnitOfWork unitOfWork;
+  private final InvoiceSettlementHook invoices;
 
   public OrderExpiration(
       OrderRepository orders,
       PaymentQueries payments,
       BillingEvents events,
-      UnitOfWork unitOfWork) {
+      UnitOfWork unitOfWork,
+      InvoiceSettlementHook invoices) {
     this.orders = orders;
     this.payments = payments;
     this.events = events;
     this.unitOfWork = unitOfWork;
+    this.invoices = invoices;
   }
 
   /** true = nothing more to do; false = an attempt is active, ask again later. */
@@ -50,6 +53,9 @@ public class OrderExpiration {
 
           events.emit(
               order.merchantId(), "order.expired", orderId, orderId, OrderService.json(order));
+          if (order.isInvoice()) {
+            invoices.invoiceClosed(order, now);
+          }
 
           return true;
         });

@@ -1,7 +1,6 @@
 package com.gateway.billing.subscription.billing;
 
 import com.gateway.billing.BillingEvents;
-import com.gateway.billing.order.InvoiceSettlementHook;
 import com.gateway.billing.order.Order;
 import com.gateway.billing.order.persistence.OrderRepository;
 import com.gateway.billing.subscription.DunningAttempt;
@@ -27,7 +26,7 @@ import java.util.Optional;
  * PAST_DUE: what to do with a customer who does not pay is the merchant's decision, and a cancel
  * the merchant did not ask for cannot be undone.
  */
-public class Dunning implements DunningStarter, InvoiceSettlementHook {
+public class Dunning implements DunningStarter {
   private final DunningLedger ledger;
   private final SubscriptionRepository subscriptions;
   private final OrderRepository orders;
@@ -35,7 +34,12 @@ public class Dunning implements DunningStarter, InvoiceSettlementHook {
   private final InvoiceIssuer issuer;
   private final BillingEvents events;
   private final UnitOfWork unitOfWork;
+  private final InvoiceLinks links;
 
+  /**
+   * Eight dependencies, one above the limit: {@link InvoiceLinks} is the reissued link of {@code
+   * invoice.updated}, which has to rotate the token in the same transaction as the booking.
+   */
   public Dunning(
       DunningLedger ledger,
       SubscriptionRepository subscriptions,
@@ -43,7 +47,8 @@ public class Dunning implements DunningStarter, InvoiceSettlementHook {
       PaymentQueries payments,
       InvoiceIssuer issuer,
       BillingEvents events,
-      UnitOfWork unitOfWork) {
+      UnitOfWork unitOfWork,
+      InvoiceLinks links) {
     this.ledger = ledger;
     this.subscriptions = subscriptions;
     this.orders = orders;
@@ -51,6 +56,7 @@ public class Dunning implements DunningStarter, InvoiceSettlementHook {
     this.issuer = issuer;
     this.events = events;
     this.unitOfWork = unitOfWork;
+    this.links = links;
   }
 
   /**
@@ -85,9 +91,8 @@ public class Dunning implements DunningStarter, InvoiceSettlementHook {
   /**
    * Same transaction as order.paid. Recovers only when no other invoice is still being chased:
    * ACTIVE with an older invoice unpaid would tell the merchant the customer is current when the
-   * dunning of that invoice is still running.
+   * dunning of that invoice is still running. Reached through {@link SubscriptionInvoices}.
    */
-  @Override
   public void invoicePaid(Order invoice, Instant at) {
     ledger
         .pendingFor(invoice.id())
@@ -125,7 +130,6 @@ public class Dunning implements DunningStarter, InvoiceSettlementHook {
    * at attempt 1 would chase the invoice forever.
    */
   // eventType is not needed: failed, expired and canceled all leave the invoice unpaid alike.
-  @Override
   public void invoiceAttemptFailed(Order invoice, String paymentId, String eventType, Instant at) {
     List<DunningAttempt> attempts = ledger.attemptsFor(invoice);
     if (attempts.isEmpty()) {
@@ -222,7 +226,8 @@ public class Dunning implements DunningStarter, InvoiceSettlementHook {
             context.invoice(),
             context.subscription(),
             context.attempt().attempt(),
-            issued.payment()));
+            issued.payment(),
+            links.reissue(context.invoice(), now)));
     ledger.scheduleNext(context.subscription(), context.invoice(), attempt.attempt(), now);
   }
 

@@ -10,8 +10,16 @@ import java.util.Map;
 public final class InvoicePayloads {
   private InvoicePayloads() {}
 
+  /**
+   * {@code checkoutUrl} is the payer's link, here once (spec 2026-10-07 §3); null when the invoice
+   * closed before it could be announced.
+   */
   public static Map<String, Object> created(
-      Subscription subscription, Order invoice, IssuedInvoice issued, String reason) {
+      Subscription subscription,
+      Order invoice,
+      IssuedInvoice issued,
+      String reason,
+      String checkoutUrl) {
     Map<String, Object> period = new LinkedHashMap<>();
     period.put("start", invoice.periodStart().toString());
     period.put("end", invoice.periodEnd().toString());
@@ -32,12 +40,14 @@ public final class InvoicePayloads {
     body.put("reason", reason);
     body.put("pix", pixOf(payment));
     body.put("boleto", boletoOf(payment));
+    body.put("checkout_url", checkoutUrl);
 
     return body;
   }
 
+  /** {@code checkoutUrl} is a new link: the reissue rotated the token, the old one is dead. */
   public static Map<String, Object> updated(
-      Order invoice, Subscription subscription, int attempt, Payment payment) {
+      Order invoice, Subscription subscription, int attempt, Payment payment, String checkoutUrl) {
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("invoice_id", invoice.id());
     body.put("subscription_id", subscription.id());
@@ -46,6 +56,7 @@ public final class InvoicePayloads {
     body.put("method", subscription.method().name());
     body.put("pix", pixOf(payment));
     body.put("boleto", boletoOf(payment));
+    body.put("checkout_url", checkoutUrl);
 
     return body;
   }

@@ -54,8 +54,16 @@ public class SubscriptionService {
     this.openInvoice = openInvoice;
   }
 
-  /** Moves no money: the first cycle is a BILL_SUBSCRIPTION job at {@code nextBillingAt}. */
+  /**
+   * Moves no money: the first cycle is a BILL_SUBSCRIPTION job at {@code nextBillingAt}. ACTIVE
+   * subscriptions only: an INCOMPLETE one opens its first invoice instead of a job, which is {@code
+   * SubscriptionCreation}'s.
+   */
   public Subscription create(Subscription subscription, Customer customer) {
+    if (subscription.isIncomplete()) {
+      throw new IllegalStateException(
+          "subscription " + subscription.id() + " is INCOMPLETE; SubscriptionCreation opens it");
+    }
     requireCardOwnedBy(subscription.merchantId(), subscription.cardId(), customer);
 
     Instant now = clock.instant();
@@ -86,12 +94,26 @@ public class SubscriptionService {
    * At period end only flags it, with no event: the next BILL_SUBSCRIPTION sees the flag and ends
    * it, and {@code subscription.ended} is the merchant's notice (spec §7). Immediate is {@code
    * subscription.canceled}, after the open invoice is canceled at the bank.
+   *
+   * <p>An INCOMPLETE subscription is always canceled now: it has no paid period to finish. Its row
+   * is written first and its invoice canceled after, the reverse of the billable order: the closed
+   * invoice would otherwise reach the settlement hook while the subscription is still INCOMPLETE
+   * and end it INCOMPLETE_EXPIRED, which says "the payer did not pay", not "the merchant gave up".
    */
   public Subscription cancel(MerchantId merchantId, String id, boolean atPeriodEnd) {
     Subscription subscription = get(merchantId, id);
+    Instant now = clock.instant();
+
+    if (subscription.isIncomplete()) {
+      subscription.cancelNow(now);
+      Subscription canceled = save(subscription, "subscription.canceled");
+      openInvoice.cancelOpenInvoice(canceled);
+
+      return canceled;
+    }
+
     requireBillable(subscription);
 
-    Instant now = clock.instant();
     if (atPeriodEnd) {
       subscription.requestCancelAtPeriodEnd(now);
 

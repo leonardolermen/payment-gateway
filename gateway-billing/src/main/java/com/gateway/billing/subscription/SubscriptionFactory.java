@@ -11,8 +11,10 @@ import java.time.Clock;
 import java.time.LocalDate;
 
 /**
- * Card ownership ({@code CARD_NOT_OWNED_BY_CUSTOMER}) is not checked here: it needs the saved card,
- * and {@link SubscriptionService} is the one holding {@code SavedCards}.
+ * CARD without {@code card_id} is born INCOMPLETE; every other valid request is born ACTIVE.
+ *
+ * <p>Card ownership ({@code CARD_NOT_OWNED_BY_CUSTOMER}) is not checked here: it needs the saved
+ * card, and {@link SubscriptionService} is the one holding {@code SavedCards}.
  */
 public final class SubscriptionFactory {
   private SubscriptionFactory() {}
@@ -29,7 +31,12 @@ public final class SubscriptionFactory {
     if (!plan.active()) {
       throw new DomainException("PLAN_INACTIVE", "plan_id " + plan.id() + " is inactive");
     }
-    requireMethodData(customer, method, cardId);
+    // A card subscription without a card waits for its first invoice to be paid by link, which
+    // saves the card (spec 2026-10-07 §2); a method change still requires the card (CARD_REQUIRED).
+    boolean awaitsFirstPayment = method == PaymentMethod.CARD && cardId == null;
+    if (!awaitsFirstPayment) {
+      requireMethodData(customer, method, cardId);
+    }
 
     LocalDate firstBillingDay = startDay.plusDays(plan.trialDays());
 
@@ -41,6 +48,7 @@ public final class SubscriptionFactory {
         plan.id(),
         method,
         cardId,
+        awaitsFirstPayment ? SubscriptionStatus.INCOMPLETE : SubscriptionStatus.ACTIVE,
         firstBillingDay.getDayOfMonth(),
         firstBillingDay,
         clock.instant());
