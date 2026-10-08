@@ -14,6 +14,10 @@ cp .env.example .env                # then fill in the values below
 ./mvnw -pl gateway-app spring-boot:run
 ```
 
+Logs are masked JSON by default (what production ships). For a readable console in dev set
+`LOG_FORMAT=pretty`: one colored line per event, `[cid=… job=… merchant=… provider=… op=…]` when
+that context exists, and a bank that is down or slow on one line instead of a stack trace.
+
 The app reads the repo root's `.env` on startup, so the IDE's run configuration needs no environment
 variables. The minimum for a local run:
 

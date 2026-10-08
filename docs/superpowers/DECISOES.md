@@ -688,3 +688,26 @@ Rejeitado: um campo `payer_name` separado — o painel teria de escolher entre d
 coluna. Custo se errado: quem usava `customer_name` nulo para saber que a ordem não tem cliente passa a
 olhar `customer_id`, que sempre foi o sinal certo.
 
+## 2026-10-07 — Formato do log escolhido por LOG_FORMAT
+`LOG_FORMAT=json` (padrão) ou `pretty` (texto colorido de uma linha para o console de dev); outro valor
+derruba a subida (`LoggingProperties`). Os dois appenders ficam ligados e `LogFormatFilter` decide: tudo
+que não é exatamente `pretty` vai para o JSON, para o erro do typo aparecer. Rejeitado: profile `dev`
+(acumula outras mudanças de comportamento) e detectar TTY (o console do IntelliJ não é TTY; um container
+com `-t` logaria texto em prod). Custo se errado: quem esquece a variável em dev lê JSON.
+
+## 2026-10-07 — Falha esperada do banco é uma linha de log
+`ProviderException` `UNAVAILABLE`/`TIMEOUT`, logada direta ou como causa, sai como uma linha com a cadeia
+de classes e mensagens (`ExpectedProviderFailure`), nos dois formatos; todo outro código e toda outra
+exceção mantêm o stack. Rejeitado: decidir em cada chamada de log — a próxima escrita esqueceria. Custo
+se errado: um `log.warn(..., e)` sem stack surpreende quem não leu isto; um `UNAVAILABLE` que era bug
+perde os frames (a causa raiz continua na linha).
+O texto de falha de transporte (`TransportFailure`) nomeia host e exceção, incluindo agora a mensagem da
+IOException também no cliente da Cielo, que antes logava só a classe; as mensagens de IOException do
+HttpClient do JDK descrevem o transporte e não carregam corpo nem cabeçalhos da requisição, logo não
+trazem dado de cartão.
+
+## 2026-10-07 — Contexto de job no MDC, nunca em correlationId
+`LogContext` põe `job`/`jobId`, `merchant`/`env` e `provider`/`op` no MDC e restaura ao fechar.
+`correlationId` continua só de request: `MerchantEvents` e os clientes HTTP dos bancos o mandam para
+fora. Rejeitado: gerar `correlationId` por job. Custo se errado: o log de um job não casa com o de
+um request — nenhum efeito externo.

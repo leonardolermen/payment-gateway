@@ -1,6 +1,7 @@
 package com.gateway.providers.itau.boleto;
 
 import com.gateway.kernel.provider.ProviderException;
+import com.gateway.providers.TransportFailure;
 import com.gateway.providers.itau.auth.ItauCredentials;
 import com.gateway.providers.itau.auth.ItauEndpoints;
 import com.gateway.providers.itau.auth.ItauTokenClient;
@@ -66,7 +67,7 @@ final class BoletoHttp {
     } catch (IOException e) {
       throw new ProviderException(
           ProviderException.Code.UNAVAILABLE,
-          "Itaú " + request.method() + " failed: " + e.getMessage(),
+          TransportFailure.describe("Itaú " + request.method(), request.uri(), e),
           e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
