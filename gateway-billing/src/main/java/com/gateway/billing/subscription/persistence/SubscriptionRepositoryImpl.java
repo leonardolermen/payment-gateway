@@ -12,6 +12,7 @@ import jakarta.persistence.PersistenceContext;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -102,6 +103,25 @@ public class SubscriptionRepositoryImpl implements SubscriptionRepository {
   public List<Subscription> findByCustomer(MerchantId merchantId, String customerId) {
     return jpa
         .findByMerchantIdAndCustomerIdOrderByCreatedAtDesc(merchantId.value(), customerId)
+        .stream()
+        .map(this::toDomain)
+        .toList();
+  }
+
+  @Override
+  public List<Subscription> list(
+      MerchantId merchantId,
+      ProviderEnvironment environment,
+      SubscriptionStatus status,
+      String cursorId,
+      int limit) {
+    return jpa
+        .findPage(
+            merchantId.value(),
+            environment.name(),
+            status == null ? null : status.name(),
+            cursorId,
+            Limit.of(limit))
         .stream()
         .map(this::toDomain)
         .toList();

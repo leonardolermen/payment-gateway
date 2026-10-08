@@ -41,6 +41,10 @@ public interface OrderRepository {
       String cursorId,
       int limit);
 
+  /** One customer's orders, newest first; {@code status} and {@code cursorId} are optional. */
+  List<Order> listByCustomer(
+      MerchantId merchantId, String customerId, OrderStatus status, String cursorId, int limit);
+
   List<Order> findBySubscription(String subscriptionId, int limit);
 
   List<Order> findOpenExpiredBefore(Instant now, int limit);

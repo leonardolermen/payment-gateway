@@ -1,7 +1,9 @@
 package com.gateway.billing.subscription.persistence;
 
 import com.gateway.billing.subscription.Subscription;
+import com.gateway.billing.subscription.SubscriptionStatus;
 import com.gateway.kernel.ids.MerchantId;
+import com.gateway.kernel.provider.ProviderEnvironment;
 import java.util.List;
 import java.util.Optional;
 
@@ -25,6 +27,14 @@ public interface SubscriptionRepository {
 
   /** Newest first. */
   List<Subscription> findByCustomer(MerchantId merchantId, String customerId);
+
+  /** Newest first, one environment; {@code status} and {@code cursorId} are optional. */
+  List<Subscription> list(
+      MerchantId merchantId,
+      ProviderEnvironment environment,
+      SubscriptionStatus status,
+      String cursorId,
+      int limit);
 
   /** ACTIVE or PAST_DUE: a subscription that can still bill the customer. */
   boolean existsActiveForCustomer(MerchantId merchantId, String customerId);
