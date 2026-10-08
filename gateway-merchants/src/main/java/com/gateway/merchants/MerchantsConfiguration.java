@@ -16,6 +16,7 @@ import com.gateway.merchants.merchant.persistence.MerchantRepositoryImpl;
 import com.gateway.merchants.notification.InboundNotificationKeyService;
 import com.gateway.merchants.notification.persistence.InboundNotificationKeyRepository;
 import com.gateway.merchants.notification.persistence.InboundNotificationKeyRepositoryImpl;
+import com.gateway.merchants.user.persistence.UserRepositoryImpl;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.context.annotation.Bean;
@@ -40,19 +41,22 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
   "com.gateway.merchants.merchant.persistence",
   "com.gateway.merchants.apikey.persistence",
   "com.gateway.merchants.credential.persistence",
-  "com.gateway.merchants.notification.persistence"
+  "com.gateway.merchants.notification.persistence",
+  "com.gateway.merchants.user.persistence"
 })
 @EnableJpaRepositories({
   "com.gateway.merchants.merchant.persistence",
   "com.gateway.merchants.apikey.persistence",
   "com.gateway.merchants.credential.persistence",
-  "com.gateway.merchants.notification.persistence"
+  "com.gateway.merchants.notification.persistence",
+  "com.gateway.merchants.user.persistence"
 })
 @Import({
   MerchantRepositoryImpl.class,
   ApiKeyRepositoryImpl.class,
   ProviderCredentialRepositoryImpl.class,
-  InboundNotificationKeyRepositoryImpl.class
+  InboundNotificationKeyRepositoryImpl.class,
+  UserRepositoryImpl.class
 })
 public class MerchantsConfiguration {
   @Bean

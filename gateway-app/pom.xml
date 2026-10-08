@@ -31,6 +31,7 @@
         <dependency><groupId>org.wiremock</groupId><artifactId>wiremock-standalone</artifactId><scope>test</scope></dependency>
         <dependency><groupId>com.gateway</groupId><artifactId>gateway-providers</artifactId><type>test-jar</type><scope>test</scope></dependency>
         <dependency><groupId>com.tngtech.archunit</groupId><artifactId>archunit-junit5</artifactId><scope>test</scope></dependency>
+        <dependency><groupId>com.icegreen</groupId><artifactId>greenmail-junit5</artifactId><scope>test</scope></dependency>
     </dependencies>
     <build>
         <plugins>
