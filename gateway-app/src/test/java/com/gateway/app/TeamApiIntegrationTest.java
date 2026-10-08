@@ -159,6 +159,51 @@ class TeamApiIntegrationTest {
   }
 
   @Test
+  void anOwnerCannotReachAnotherStoresUser() {
+    Logged ana = signupVerified("ana@loja-a.com");
+    Logged bia = invite(ana, "bia@loja-a.com", "FINANCE");
+    Logged caio = signupVerified("caio@loja-b.com");
+
+    String biaUri = "/v1/merchant/users/" + bia.userId();
+    assertThat(patchBody(caio.access(), biaUri, Map.of("role", "READONLY")))
+        .startsWith("404")
+        .contains("NOT_FOUND");
+    assertThat(deleteBody(caio.access(), biaUri)).startsWith("404").contains("NOT_FOUND");
+
+    Map<String, Object> me = get(bia.access(), "/v1/me");
+    assertThat((Map<String, Object>) me.get("user")).containsEntry("role", "FINANCE");
+  }
+
+  @Test
+  void aResendInOneStoreLeavesTheOtherStoresInvite() {
+    Logged ana = signupVerified("ana@loja-c.com");
+    Logged caio = signupVerified("caio@loja-d.com");
+    String guest = "duda@dois.com";
+
+    post(ana.access(), "/v1/invites", Map.of("email", guest, "role", "FINANCE"));
+    String firstOfA = awaitNewLink(guest, List.of());
+    post(caio.access(), "/v1/invites", Map.of("email", guest, "role", "READONLY"));
+    String ofB = awaitNewLink(guest, List.of(firstOfA));
+    post(ana.access(), "/v1/invites", Map.of("email", guest, "role", "FINANCE"));
+    awaitNewLink(guest, List.of(firstOfA, ofB));
+
+    assertThat(
+            post(
+                    "/v1/auth/invite/accept",
+                    Map.of("token", tokenOf(ofB), "name", "Duda", "password", "senha-forte-2"))
+                .getStatus()
+                .value())
+        .isEqualTo(201);
+    assertThat(
+            post(
+                    "/v1/auth/invite/accept",
+                    Map.of("token", tokenOf(firstOfA), "name", "Duda", "password", "senha-forte-2"))
+                .getStatus()
+                .value())
+        .isEqualTo(410);
+  }
+
+  @Test
   void meSessionsAndPasswordChange() {
     Logged ana = signupVerified("ana@sessao.com");
     EntityExchangeResult<Map> phone =
@@ -351,6 +396,21 @@ class TeamApiIntegrationTest {
         .until(() -> firstLink(MAIL, recipient, marker), Objects::nonNull);
   }
 
+  /** The invite link that was not among {@code seen}: the same address gets several here. */
+  private static String awaitNewLink(String recipient, List<String> seen) {
+    return Awaitility.await()
+        .atMost(Duration.ofSeconds(10))
+        .until(
+            () ->
+                Arrays.stream(MAIL.getReceivedMessagesForDomain(recipient))
+                    .map(message -> firstLink(GreenMailUtil.getBody(message), "/invite/"))
+                    .filter(Objects::nonNull)
+                    .filter(link -> !seen.contains(link))
+                    .findFirst()
+                    .orElse(null),
+            Objects::nonNull);
+  }
+
   /**
    * By recipient: SEND_EMAIL runs on the job scheduler, so another test's e-mail can land after
    * GreenMail was reset for this one.
@@ -360,6 +420,19 @@ class TeamApiIntegrationTest {
         .map(GreenMailUtil::getBody)
         .map(LINK::matcher)
         .flatMap(Matcher::results)
+        .map(MatchResult::group)
+        .filter(link -> link.contains(marker))
+        .findFirst()
+        .orElse(null);
+  }
+
+  /**
+   * The first link of one message only: a later part (the HTML one) can carry the same link wrapped
+   * by quoted-printable, which reads as a different, truncated link.
+   */
+  private static String firstLink(String body, String marker) {
+    return LINK.matcher(body)
+        .results()
         .map(MatchResult::group)
         .filter(link -> link.contains(marker))
         .findFirst()
