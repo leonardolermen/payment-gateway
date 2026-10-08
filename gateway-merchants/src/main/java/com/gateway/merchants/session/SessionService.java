@@ -132,6 +132,14 @@ public class SessionService {
         .map(fresh -> new Issued(fresh, Secret.of(access), Secret.of(refresh), accessTtl));
   }
 
+  /** Lookup without rotation, for logout: only a live session is worth revoking. */
+  @Transactional(readOnly = true)
+  public Optional<Session> findByRefresh(String refreshToken) {
+    Instant now = clock.instant();
+
+    return sessions.findByRefreshHash(hash(refreshToken)).filter(session -> session.isLive(now));
+  }
+
   @Transactional
   public void revoke(String sessionId) {
     sessions.revoke(sessionId, clock.instant());

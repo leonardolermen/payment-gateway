@@ -65,6 +65,11 @@ public class UserService {
   }
 
   @Transactional(readOnly = true)
+  public Optional<User> findActiveByEmail(EmailAddress email) {
+    return users.findActiveByEmail(email.normalized());
+  }
+
+  @Transactional(readOnly = true)
   public List<User> listByMerchant(MerchantId merchantId) {
     return users.findActiveByMerchant(merchantId);
   }
