@@ -52,7 +52,7 @@ public class SessionService {
             null,
             now.plus(accessTtl),
             now.plus(properties.auth().refreshTtl()),
-            ip,
+            ip == null ? null : ip.substring(0, Math.min(45, ip.length())),
             userAgent == null ? null : userAgent.substring(0, Math.min(200, userAgent.length())),
             now,
             now,
@@ -64,55 +64,77 @@ public class SessionService {
 
   @Transactional
   public Optional<Session> authenticate(String accessToken) {
+    if (accessToken == null) {
+      return Optional.empty();
+    }
+
     Instant now = clock.instant();
 
     return sessions
         .findByAccessHash(hash(accessToken))
         .filter(session -> session.accessValid(now))
-        .map(
-            session ->
-                session.lastUsedAt().plus(TOUCH_EVERY).isBefore(now)
-                    ? sessions.save(session.touched(now))
-                    : session);
+        .flatMap(session -> touchIfStale(session, now));
+  }
+
+  /** Targeted update: a concurrent revoke must not be overwritten by this touch. */
+  private Optional<Session> touchIfStale(Session session, Instant now) {
+    if (!session.lastUsedAt().plus(TOUCH_EVERY).isBefore(now)) {
+      return Optional.of(session);
+    }
+
+    sessions.touch(session.id(), now);
+
+    return sessions.findById(session.id()).filter(fresh -> fresh.accessValid(now));
   }
 
   @Transactional
   public Optional<Issued> refresh(String refreshToken) {
+    if (refreshToken == null) {
+      return Optional.empty();
+    }
+
     Instant now = clock.instant();
     String presented = hash(refreshToken);
 
     Optional<Session> replayed = sessions.findByPreviousRefreshHash(presented);
     if (replayed.isPresent()) {
-      sessions.save(replayed.get().revoked(now));
+      sessions.revoke(replayed.get().id(), now);
       return Optional.empty();
     }
 
     return sessions
         .findByRefreshHash(presented)
         .filter(session -> session.isLive(now))
-        .map(
-            session -> {
-              Duration accessTtl = properties.auth().accessTtl();
-              String access = token("gs_");
-              String refresh = token("gr_");
-              Session rotated =
-                  sessions.save(
-                      session.rotated(
-                          hash(access),
-                          hash(refresh),
-                          now.plus(accessTtl),
-                          now.plus(properties.auth().refreshTtl()),
-                          now));
-              return new Issued(rotated, Secret.of(access), Secret.of(refresh), accessTtl);
-            });
+        .flatMap(session -> rotate(session, presented, now));
+  }
+
+  /** Empty when another caller rotated first: it won, and this one is not a theft signal. */
+  private Optional<Issued> rotate(Session session, String presentedHash, Instant now) {
+    Duration accessTtl = properties.auth().accessTtl();
+    String access = token("gs_");
+    String refresh = token("gr_");
+
+    boolean rotated =
+        sessions.rotate(
+            session.id(),
+            presentedHash,
+            hash(access),
+            hash(refresh),
+            now.plus(accessTtl),
+            now.plus(properties.auth().refreshTtl()),
+            now);
+    if (!rotated) {
+      return Optional.empty();
+    }
+
+    return sessions
+        .findById(session.id())
+        .map(fresh -> new Issued(fresh, Secret.of(access), Secret.of(refresh), accessTtl));
   }
 
   @Transactional
   public void revoke(String sessionId) {
-    sessions
-        .findById(sessionId)
-        .filter(session -> session.revokedAt() == null)
-        .ifPresent(session -> sessions.save(session.revoked(clock.instant())));
+    sessions.revoke(sessionId, clock.instant());
   }
 
   @Transactional
@@ -121,7 +143,7 @@ public class SessionService {
 
     sessions.findLiveByUser(userId, now).stream()
         .filter(session -> !session.id().equals(keepSessionId))
-        .forEach(session -> sessions.save(session.revoked(now)));
+        .forEach(session -> sessions.revoke(session.id(), now));
   }
 
   @Transactional

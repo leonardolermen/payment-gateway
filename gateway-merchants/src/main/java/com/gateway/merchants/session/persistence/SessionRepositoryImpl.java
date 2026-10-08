@@ -29,9 +29,29 @@ public class SessionRepositoryImpl implements SessionRepository {
 
   @Override
   @Transactional
-  public Session save(Session session) {
-    SessionEntity entity = jpa.findById(session.id()).orElseGet(SessionEntity::new);
-    return toDomain(jpa.save(toEntity(session, entity)));
+  public boolean touch(String id, Instant now) {
+    return jpa.touch(id, now) == 1;
+  }
+
+  @Override
+  @Transactional
+  public boolean revoke(String id, Instant now) {
+    return jpa.revoke(id, now) == 1;
+  }
+
+  @Override
+  @Transactional
+  public boolean rotate(
+      String id,
+      String oldRefreshHash,
+      String accessHash,
+      String refreshHash,
+      Instant accessExpiresAt,
+      Instant refreshExpiresAt,
+      Instant now) {
+    return jpa.rotate(
+            id, oldRefreshHash, accessHash, refreshHash, accessExpiresAt, refreshExpiresAt, now)
+        == 1;
   }
 
   @Override
