@@ -16,6 +16,9 @@ import com.gateway.merchants.merchant.persistence.MerchantRepositoryImpl;
 import com.gateway.merchants.notification.InboundNotificationKeyService;
 import com.gateway.merchants.notification.persistence.InboundNotificationKeyRepository;
 import com.gateway.merchants.notification.persistence.InboundNotificationKeyRepositoryImpl;
+import com.gateway.merchants.session.SessionService;
+import com.gateway.merchants.session.persistence.SessionRepository;
+import com.gateway.merchants.session.persistence.SessionRepositoryImpl;
 import com.gateway.merchants.user.PasswordService;
 import com.gateway.merchants.user.UserService;
 import com.gateway.merchants.user.persistence.UserRepository;
@@ -46,21 +49,24 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
   "com.gateway.merchants.apikey.persistence",
   "com.gateway.merchants.credential.persistence",
   "com.gateway.merchants.notification.persistence",
-  "com.gateway.merchants.user.persistence"
+  "com.gateway.merchants.user.persistence",
+  "com.gateway.merchants.session.persistence"
 })
 @EnableJpaRepositories({
   "com.gateway.merchants.merchant.persistence",
   "com.gateway.merchants.apikey.persistence",
   "com.gateway.merchants.credential.persistence",
   "com.gateway.merchants.notification.persistence",
-  "com.gateway.merchants.user.persistence"
+  "com.gateway.merchants.user.persistence",
+  "com.gateway.merchants.session.persistence"
 })
 @Import({
   MerchantRepositoryImpl.class,
   ApiKeyRepositoryImpl.class,
   ProviderCredentialRepositoryImpl.class,
   InboundNotificationKeyRepositoryImpl.class,
-  UserRepositoryImpl.class
+  UserRepositoryImpl.class,
+  SessionRepositoryImpl.class
 })
 public class MerchantsConfiguration {
   @Bean
@@ -110,5 +116,11 @@ public class MerchantsConfiguration {
   @Bean
   public UserService userService(UserRepository users, PasswordService passwords, Clock clock) {
     return new UserService(users, passwords, clock);
+  }
+
+  @Bean
+  public SessionService sessionService(
+      SessionRepository sessions, MerchantsProperties properties, Clock clock) {
+    return new SessionService(sessions, properties, clock);
   }
 }
