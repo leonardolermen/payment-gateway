@@ -21,7 +21,13 @@ final class ProtectedRoutes {
     return path.startsWith("/v1/")
         && !isAdmin(path)
         && !path.startsWith("/v1/providers/")
-        && !isCheckout(path);
+        && !isCheckout(path)
+        && !isAuth(path);
+  }
+
+  /** Sign-up, login, refresh, reset: no key and no session yet, limited per IP. */
+  static boolean isAuth(String path) {
+    return path.equals("/v1/auth") || path.startsWith("/v1/auth/");
   }
 
   /** The payer's routes: no key, a token in the path, limited per IP by CheckoutRateLimitFilter. */

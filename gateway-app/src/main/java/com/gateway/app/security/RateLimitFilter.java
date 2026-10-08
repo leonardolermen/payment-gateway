@@ -16,13 +16,13 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * One bucket per API key, in memory: there is a single instance of this service today (spec §8), so
- * a process-local map is exact. The day there is more than one instance this moves to Redis,
- * because an in-memory bucket per instance would let a merchant multiply its limit by the instance
- * count.
+ * One bucket per caller (API key or user), in memory: there is a single instance of this service
+ * today (spec §8), so a process-local map is exact. The day there is more than one instance this
+ * moves to Redis, because an in-memory bucket per instance would let a merchant multiply its limit
+ * by the instance count.
  *
  * <p>Runs after {@link ApiKeyAuthFilter} (@Order(20) then 30) and only on the routes that filter
- * covers, since the key id it limits on comes from {@link MerchantContext}.
+ * covers, since the actor id it limits on comes from {@link MerchantContext}.
  */
 @Component
 @Order(30)
@@ -43,8 +43,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
-    String apiKeyId = MerchantContext.current().apiKeyId();
-    Bucket bucket = buckets.computeIfAbsent(apiKeyId, id -> newBucket());
+    String actorId = MerchantContext.current().actor().id();
+    Bucket bucket = buckets.computeIfAbsent(actorId, id -> newBucket());
     ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
     if (!probe.isConsumed()) {
       long retryAfterSeconds =

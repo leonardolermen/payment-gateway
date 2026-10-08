@@ -11,7 +11,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 
 class CheckoutRateLimitFilterTest {
   private final CheckoutRateLimitFilter filter =
-      new CheckoutRateLimitFilter(new CheckoutProperties(null, List.of(), 3));
+      new CheckoutRateLimitFilter(new CheckoutProperties(null, List.of(), 3, 10));
 
   private MockHttpServletResponse call(String path, String remoteAddress) throws Exception {
     MockHttpServletRequest request = new MockHttpServletRequest("GET", path);

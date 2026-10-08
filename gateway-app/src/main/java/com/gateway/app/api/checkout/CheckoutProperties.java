@@ -7,9 +7,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param baseUrl where the payer-facing front serves /pay/; the token is appended as is
  * @param corsOrigins exact origins allowed to call /v1 from a browser; empty = no CORS at all
  * @param rateLimitPerMinute per client IP on /v1/checkout; a payer needs a handful per minute
+ * @param authRateLimitPerMinute per client IP on /v1/auth; low, since every login attempt is a
+ *     password guess
  */
 @ConfigurationProperties("gateway.checkout")
-public record CheckoutProperties(String baseUrl, List<String> corsOrigins, int rateLimitPerMinute) {
+public record CheckoutProperties(
+    String baseUrl, List<String> corsOrigins, int rateLimitPerMinute, int authRateLimitPerMinute) {
   public CheckoutProperties {
     if (baseUrl == null || baseUrl.isBlank()) {
       baseUrl = "http://localhost:5173/pay/";
@@ -26,6 +29,10 @@ public record CheckoutProperties(String baseUrl, List<String> corsOrigins, int r
 
     if (rateLimitPerMinute <= 0) {
       rateLimitPerMinute = 60;
+    }
+
+    if (authRateLimitPerMinute <= 0) {
+      authRateLimitPerMinute = 10;
     }
   }
 

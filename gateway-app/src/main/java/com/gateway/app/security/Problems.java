@@ -14,14 +14,34 @@ public final class Problems {
 
   public static void write(HttpServletResponse response, int status, String code, String detail)
       throws IOException {
+    writeBody(response, status, problem(code, status, detail) + "}");
+  }
+
+  /** {@link #write} plus one string member, such as the {@code required_role} a 403 names. */
+  public static void writeWithExtra(
+      HttpServletResponse response,
+      int status,
+      String code,
+      String detail,
+      String extraName,
+      String extraValue)
+      throws IOException {
+    String extra = String.format(",\"%s\":\"%s\"", escape(extraName), escape(extraValue));
+    writeBody(response, status, problem(code, status, detail) + extra + "}");
+  }
+
+  /** The object without its closing brace, so a sibling can append members. */
+  private static String problem(String code, int status, String detail) {
+    return String.format(
+        "{\"type\":\"urn:gateway:%s\",\"title\":\"%s\",\"status\":%d,\"detail\":\"%s\"",
+        code, code, status, escape(detail));
+  }
+
+  private static void writeBody(HttpServletResponse response, int status, String body)
+      throws IOException {
     response.setStatus(status);
     response.setContentType("application/problem+json");
-    response
-        .getWriter()
-        .write(
-            String.format(
-                "{\"type\":\"urn:gateway:%s\",\"title\":\"%s\",\"status\":%d,\"detail\":\"%s\"}",
-                code, code, status, escape(detail)));
+    response.getWriter().write(body);
   }
 
   /**

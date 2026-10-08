@@ -66,6 +66,7 @@ gateway:
     base-url: ${GATEWAY_CHECKOUT_BASE_URL:http://localhost:5173/pay/}   # the front's /pay/ route; the token is appended
     cors-origins: ${GATEWAY_CORS_ORIGINS:}                               # comma-separated exact origins; empty = CORS off
     rate-limit-per-minute: 60                                            # per client IP on /v1/checkout/**
+    auth-rate-limit-per-minute: ${gateway.auth.rate-limit-per-minute:10}   # per client IP on /v1/auth/**; the one knob is gateway.auth
   webhooks:
     mtls:
       port: ${WEBHOOK_MTLS_PORT:8443}                 # 0 = no inbound bank webhook connector

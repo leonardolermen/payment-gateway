@@ -16,9 +16,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Per-IP limit on the public checkout routes, which have no API key to limit on. Same shape as
- * {@link RateLimitFilter} (in-memory, one instance today). Order 31, right after it: the two never
- * run on the same request, since {@code ProtectedRoutes.requiresApiKey} excludes checkout.
+ * Per-IP limit on the public checkout and auth routes, which have no API key to limit on. Same
+ * shape as {@link RateLimitFilter} (in-memory, one instance today). Order 31, right after it: the
+ * two never run on the same request, since {@code ProtectedRoutes.requiresApiKey} excludes checkout
+ * and auth.
  */
 @Component
 @Order(31)
@@ -34,7 +35,8 @@ public class CheckoutRateLimitFilter extends OncePerRequestFilter {
 
   @Override
   protected boolean shouldNotFilter(HttpServletRequest request) {
-    return !ProtectedRoutes.isCheckout(RequestPath.of(request).normalized());
+    String path = RequestPath.of(request).normalized();
+    return !ProtectedRoutes.isCheckout(path) && !ProtectedRoutes.isAuth(path);
   }
 
   @Override
@@ -47,7 +49,11 @@ public class CheckoutRateLimitFilter extends OncePerRequestFilter {
       buckets.clear();
     }
 
-    Bucket bucket = buckets.computeIfAbsent(ClientIp.of(request).value(), ip -> newBucket());
+    // Separate buckets per scope: a payer polling a checkout must not lock themselves out of login.
+    boolean isAuth = ProtectedRoutes.isAuth(RequestPath.of(request).normalized());
+    String key = (isAuth ? "auth|" : "checkout|") + ClientIp.of(request).value();
+    int capacity = isAuth ? properties.authRateLimitPerMinute() : properties.rateLimitPerMinute();
+    Bucket bucket = buckets.computeIfAbsent(key, ignored -> newBucket(capacity));
     ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
 
     if (!probe.isConsumed()) {
@@ -66,8 +72,7 @@ public class CheckoutRateLimitFilter extends OncePerRequestFilter {
     chain.doFilter(request, response);
   }
 
-  private Bucket newBucket() {
-    int capacity = properties.rateLimitPerMinute();
+  private static Bucket newBucket(int capacity) {
     return Bucket.builder()
         .addLimit(
             Bandwidth.builder()
