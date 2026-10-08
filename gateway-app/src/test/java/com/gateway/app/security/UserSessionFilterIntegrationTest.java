@@ -52,7 +52,9 @@ class UserSessionFilterIntegrationTest {
   void aSessionListsOrdersInTestByDefaultAndLiveOnlyWhenVerified() {
     Logged ana = user(Role.OWNER, false);
     assertThat(status(ana.access(), "GET", "/v1/orders", null)).isEqualTo(200);
-    assertThat(status(ana.access(), "GET", "/v1/orders", "LIVE")).isEqualTo(403);
+    assertThat(statusBody(ana.access(), "GET", "/v1/orders", "LIVE"))
+        .contains("urn:gateway:EMAIL_NOT_VERIFIED");
+    assertThat(status(ana.access(), "GET", "/v1/orders", "live")).isEqualTo(200);
 
     Logged verified = user(Role.OWNER, true);
     assertThat(status(verified.access(), "GET", "/v1/orders", "LIVE")).isEqualTo(200);
@@ -62,12 +64,12 @@ class UserSessionFilterIntegrationTest {
   void rolesGateWrites() {
     Logged reader = user(Role.READONLY, true);
     assertThat(status(reader.access(), "GET", "/v1/orders", null)).isEqualTo(200);
-    assertThat(statusBody(reader.access(), "POST", "/v1/plans"))
+    assertThat(statusBody(reader.access(), "POST", "/v1/plans", null))
         .contains("FORBIDDEN_FOR_ROLE")
         .contains("\"required_role\":\"FINANCE\"");
 
     Logged finance = user(Role.FINANCE, true);
-    assertThat(statusBody(finance.access(), "POST", "/v1/webhooks/endpoints"))
+    assertThat(statusBody(finance.access(), "POST", "/v1/webhooks/endpoints", null))
         .contains("FORBIDDEN_FOR_ROLE")
         .contains("OWNER");
   }
@@ -75,6 +77,8 @@ class UserSessionFilterIntegrationTest {
   @Test
   void anExpiredOrGarbageSessionIs401() {
     assertThat(status("gs_garbage", "GET", "/v1/orders", null)).isEqualTo(401);
+    assertThat(statusBody("gs_garbage", "GET", "/v1/orders", null))
+        .contains("urn:gateway:SESSION_EXPIRED");
   }
 
   @Test
@@ -83,6 +87,40 @@ class UserSessionFilterIntegrationTest {
 
     assertThat(status(keys.test(), "POST", "/v1/webhooks/endpoints", null)).isNotEqualTo(403);
     assertThat(status(keys.test(), "GET", "/v1/me", null)).isEqualTo(403);
+    assertThat(statusBody(keys.test(), "GET", "/v1/me", null))
+        .contains("urn:gateway:USER_SESSION_REQUIRED");
+    assertThat(status(keys.test(), "GET", "/v1/merchant", null)).isEqualTo(200);
+  }
+
+  @Test
+  void aRemovedUsersSessionIs401NotA500() {
+    Logged bruno = user(Role.FINANCE, true);
+    users.remove(bruno.store().id(), bruno.user().id());
+
+    assertThat(status(bruno.access(), "GET", "/v1/orders", null)).isEqualTo(401);
+    assertThat(statusBody(bruno.access(), "GET", "/v1/orders", null))
+        .contains("urn:gateway:SESSION_EXPIRED");
+  }
+
+  @Test
+  void aSuspendedMerchantsSessionIs401() {
+    Logged carla = user(Role.OWNER, true);
+    merchants.suspend(carla.store().id());
+
+    assertThat(status(carla.access(), "GET", "/v1/orders", null)).isEqualTo(401);
+    assertThat(statusBody(carla.access(), "GET", "/v1/orders", null))
+        .contains("urn:gateway:SESSION_EXPIRED");
+  }
+
+  @Test
+  void authIsLimitedPerIpInItsOwnBucket() {
+    // The route 404s until the auth controller exists; the filter counts it all the same.
+    for (int i = 0; i < 10; i++) {
+      assertThat(status("none", "POST", "/v1/auth/login", null)).isNotEqualTo(429);
+    }
+
+    assertThat(status("none", "POST", "/v1/auth/login", null)).isEqualTo(429);
+    assertThat(status("none", "GET", "/v1/checkout/chk_unknown", null)).isNotEqualTo(429);
   }
 
   private Logged user(Role role, boolean verified) {
@@ -119,8 +157,8 @@ class UserSessionFilterIntegrationTest {
     return exchange(bearer, method, path, environment).getStatus().value();
   }
 
-  private String statusBody(String bearer, String method, String path) {
-    return exchange(bearer, method, path, null).getResponseBody();
+  private String statusBody(String bearer, String method, String path, String environment) {
+    return exchange(bearer, method, path, environment).getResponseBody();
   }
 
   private RestTestClient http() {

@@ -23,6 +23,15 @@ class RoleRoutesTest {
   }
 
   @Test
+  void prefixesMatchWholeSegments() {
+    assertThat(RoleRoutes.required("GET", "/v1/merchant")).contains(Role.READONLY);
+    assertThat(RoleRoutes.required("PATCH", "/v1/merchant")).contains(Role.OWNER);
+    assertThat(RoleRoutes.required("POST", "/v1/metrics")).contains(Role.FINANCE);
+    assertThat(RoleRoutes.userOnly("/v1/merchant")).isFalse();
+    assertThat(RoleRoutes.userOnly("/v1/merchant/users/01X")).isTrue();
+  }
+
+  @Test
   void userOnlyRoutesAreTheAccountOnes() {
     assertThat(RoleRoutes.userOnly("/v1/me")).isTrue();
     assertThat(RoleRoutes.userOnly("/v1/merchant/users/01X")).isTrue();

@@ -8,6 +8,10 @@ import java.util.Optional;
  * The least role a signed-in user needs for a merchant route. Reading is for everyone; writing
  * money-moving resources needs FINANCE; settings, integrations and the team need OWNER. API keys
  * are not gated here: a key is the merchant's own server, with the whole merchant's reach.
+ *
+ * <p>Prefixes match whole path segments: a bare {@code startsWith("/v1/me")} also matched {@code
+ * /v1/merchant} and {@code /v1/metrics}, which made a merchant write READONLY and closed {@code GET
+ * /v1/merchant} to API keys.
  */
 final class RoleRoutes {
   private static final List<String> OWNER_PREFIXES =
@@ -32,14 +36,14 @@ final class RoleRoutes {
       return Optional.of(Role.READONLY);
     }
     // The user's own account (name, password, sessions): every role manages its own.
-    if (path.startsWith("/v1/me")) {
+    if (under(path, "/v1/me")) {
       return Optional.of(Role.READONLY);
     }
     // Deleting a customer erases a payer's history, so it is an owner's call, not finance's.
     if (method.equals("DELETE") && path.startsWith("/v1/customers/")) {
       return Optional.of(Role.OWNER);
     }
-    if (OWNER_PREFIXES.stream().anyMatch(path::startsWith)) {
+    if (OWNER_PREFIXES.stream().anyMatch(prefix -> under(path, prefix))) {
       return Optional.of(Role.OWNER);
     }
 
@@ -48,8 +52,10 @@ final class RoleRoutes {
 
   /** Routes about a person, which an API key has no person to answer for. */
   static boolean userOnly(String path) {
-    return path.startsWith("/v1/me")
-        || path.startsWith("/v1/merchant/users")
-        || path.startsWith("/v1/invites");
+    return under(path, "/v1/me") || under(path, "/v1/merchant/users") || under(path, "/v1/invites");
+  }
+
+  private static boolean under(String path, String prefix) {
+    return path.equals(prefix) || path.startsWith(prefix + "/");
   }
 }

@@ -21,8 +21,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * moves to Redis, because an in-memory bucket per instance would let a merchant multiply its limit
  * by the instance count.
  *
- * <p>Runs after {@link ApiKeyAuthFilter} (@Order(20) then 30) and only on the routes that filter
- * covers, since the actor id it limits on comes from {@link MerchantContext}.
+ * <p>Runs after {@link UserSessionFilter} (19) and {@link ApiKeyAuthFilter} (20), the two sources
+ * of the context, at @Order(30), and only on the routes that filter covers, since the actor id it
+ * limits on comes from {@link MerchantContext}.
  */
 @Component
 @Order(30)

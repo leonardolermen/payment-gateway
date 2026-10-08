@@ -58,7 +58,15 @@ public class UserSessionFilter extends OncePerRequestFilter {
       return;
     }
 
-    User user = users.get(session.get().userId());
+    // A removed user keeps its sessions until they expire; it must read as signed out, not as a 500
+    // thrown from a filter that ErrorHandler never sees.
+    Optional<User> found = users.findActive(session.get().userId());
+    if (found.isEmpty()) {
+      Problems.write(response, 401, "SESSION_EXPIRED", "sign in again");
+      return;
+    }
+
+    User user = found.get();
     Merchant merchant = merchants.get(user.merchantId());
     if (!merchant.isActive()) {
       Problems.write(response, 401, "SESSION_EXPIRED", "merchant is suspended");
@@ -91,8 +99,7 @@ public class UserSessionFilter extends OncePerRequestFilter {
   }
 
   // Default TEST; anything that is not exactly LIVE stays TEST, never a 400: a wrong header must
-  // not
-  // widen what the caller reaches.
+  // not widen what the caller reaches.
   private static ApiKeyEnvironment environmentOf(String header) {
     return "LIVE".equals(header) ? ApiKeyEnvironment.LIVE : ApiKeyEnvironment.TEST;
   }

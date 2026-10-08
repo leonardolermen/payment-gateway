@@ -55,10 +55,13 @@ public class UserService {
 
   @Transactional(readOnly = true)
   public User get(String id) {
-    return users
-        .findById(id)
-        .filter(User::isActive)
-        .orElseThrow(() -> new NotFoundException("user", id));
+    return findActive(id).orElseThrow(() -> new NotFoundException("user", id));
+  }
+
+  /** For callers that cannot throw, such as a servlet filter: a removed user is simply absent. */
+  @Transactional(readOnly = true)
+  public Optional<User> findActive(String id) {
+    return users.findById(id).filter(User::isActive);
   }
 
   @Transactional(readOnly = true)
