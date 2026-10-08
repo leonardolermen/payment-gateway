@@ -23,6 +23,9 @@ import com.gateway.merchants.user.PasswordService;
 import com.gateway.merchants.user.UserService;
 import com.gateway.merchants.user.persistence.UserRepository;
 import com.gateway.merchants.user.persistence.UserRepositoryImpl;
+import com.gateway.merchants.usertoken.UserTokenService;
+import com.gateway.merchants.usertoken.persistence.UserTokenRepository;
+import com.gateway.merchants.usertoken.persistence.UserTokenRepositoryImpl;
 import java.time.Clock;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
@@ -50,7 +53,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
   "com.gateway.merchants.credential.persistence",
   "com.gateway.merchants.notification.persistence",
   "com.gateway.merchants.user.persistence",
-  "com.gateway.merchants.session.persistence"
+  "com.gateway.merchants.session.persistence",
+  "com.gateway.merchants.usertoken.persistence"
 })
 @EnableJpaRepositories({
   "com.gateway.merchants.merchant.persistence",
@@ -58,7 +62,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
   "com.gateway.merchants.credential.persistence",
   "com.gateway.merchants.notification.persistence",
   "com.gateway.merchants.user.persistence",
-  "com.gateway.merchants.session.persistence"
+  "com.gateway.merchants.session.persistence",
+  "com.gateway.merchants.usertoken.persistence"
 })
 @Import({
   MerchantRepositoryImpl.class,
@@ -66,7 +71,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
   ProviderCredentialRepositoryImpl.class,
   InboundNotificationKeyRepositoryImpl.class,
   UserRepositoryImpl.class,
-  SessionRepositoryImpl.class
+  SessionRepositoryImpl.class,
+  UserTokenRepositoryImpl.class
 })
 public class MerchantsConfiguration {
   @Bean
@@ -122,5 +128,11 @@ public class MerchantsConfiguration {
   public SessionService sessionService(
       SessionRepository sessions, MerchantsProperties properties, Clock clock) {
     return new SessionService(sessions, properties, clock);
+  }
+
+  @Bean
+  public UserTokenService userTokenService(
+      UserTokenRepository tokens, MerchantsProperties properties, Clock clock) {
+    return new UserTokenService(tokens, properties, clock);
   }
 }
