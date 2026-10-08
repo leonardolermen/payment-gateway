@@ -34,6 +34,11 @@ public class UserTokenRepositoryImpl implements UserTokenRepository {
   }
 
   @Override
+  public Optional<UserToken> findByHash(String tokenHash) {
+    return jpa.findByTokenHash(tokenHash).map(UserTokenRepositoryImpl::toDomain);
+  }
+
+  @Override
   @Transactional
   public Optional<UserToken> consume(String tokenHash, UserToken.Kind kind, Instant now) {
     if (jpa.consume(tokenHash, kind.name(), now) != 1) {

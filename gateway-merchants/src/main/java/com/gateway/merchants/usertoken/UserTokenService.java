@@ -63,6 +63,21 @@ public class UserTokenService {
     return tokens.consume(ApiKey.hashOf(plain, properties.apiKeyPepper()), kind, clock.instant());
   }
 
+  /**
+   * Reads a token that consume would still accept, without spending it: the caller checks the
+   * request first, so a request that fails validation leaves the link usable.
+   */
+  @Transactional(readOnly = true)
+  public Optional<UserToken> peek(UserToken.Kind kind, String plain) {
+    Instant now = clock.instant();
+
+    return tokens
+        .findByHash(ApiKey.hashOf(plain, properties.apiKeyPepper()))
+        .filter(token -> token.kind() == kind)
+        .filter(token -> token.usedAt() == null)
+        .filter(token -> token.expiresAt().isAfter(now));
+  }
+
   /** A resend replaces the previous link, so the old one must stop working. */
   @Transactional
   public void invalidateOpen(UserToken.Kind kind, String userId) {

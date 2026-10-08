@@ -2,6 +2,11 @@ package com.gateway.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.gateway.app.api.auth.AuthMailService;
+import com.gateway.merchants.merchant.Merchant;
+import com.gateway.merchants.merchant.MerchantService;
+import com.gateway.merchants.user.EmailAddress;
+import com.gateway.merchants.user.Role;
 import com.icegreen.greenmail.junit5.GreenMailExtension;
 import com.icegreen.greenmail.util.GreenMailUtil;
 import com.icegreen.greenmail.util.ServerSetupTest;
@@ -15,6 +20,7 @@ import java.util.regex.Pattern;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -53,6 +59,8 @@ class AuthApiIntegrationTest {
   private static final Pattern LINK = Pattern.compile("https?://\\S+");
 
   @LocalServerPort int port;
+  @Autowired MerchantService merchants;
+  @Autowired AuthMailService mail;
 
   @Test
   void signupSendsVerificationAndLiveOpensAfterIt() {
@@ -168,6 +176,49 @@ class AuthApiIntegrationTest {
     EntityExchangeResult<Map> loggedIn =
         post("/v1/auth/login", Map.of("email", "caio@loja.com", "password", "nova-senha-11"));
     assertThat(loggedIn.getStatus().value()).isEqualTo(200);
+  }
+
+  @Test
+  void aWeakPasswordDoesNotBurnTheResetLink() {
+    signup("duda@loja.com");
+    post("/v1/auth/password/forgot", Map.of("email", "duda@loja.com"));
+    String link =
+        Awaitility.await()
+            .atMost(Duration.ofSeconds(10))
+            .until(() -> firstLink(MAIL, "duda@loja.com", "/reset/"), Objects::nonNull);
+
+    EntityExchangeResult<Map> weak =
+        post("/v1/auth/password/reset", Map.of("token", tokenOf(link), "password", "curta"));
+    assertThat(weak.getStatus().value()).isEqualTo(422);
+    assertThat(weak.getResponseBody()).containsEntry("type", "urn:gateway:WEAK_PASSWORD");
+
+    EntityExchangeResult<Map> strong =
+        post(
+            "/v1/auth/password/reset", Map.of("token", tokenOf(link), "password", "nova-senha-11"));
+    assertThat(strong.getStatus().value()).isEqualTo(204);
+  }
+
+  @Test
+  void aWeakPasswordDoesNotBurnTheInvite() {
+    Merchant store = merchants.create("Loja do Convite");
+    mail.sendInvite(store, new EmailAddress("edu@loja.com"), Role.FINANCE);
+    String link =
+        Awaitility.await()
+            .atMost(Duration.ofSeconds(10))
+            .until(() -> firstLink(MAIL, "edu@loja.com", "/invite/"), Objects::nonNull);
+
+    EntityExchangeResult<Map> weak =
+        post(
+            "/v1/auth/invite/accept",
+            Map.of("token", tokenOf(link), "name", "Edu", "password", "curta"));
+    assertThat(weak.getStatus().value()).isEqualTo(422);
+
+    EntityExchangeResult<Map> accepted =
+        post(
+            "/v1/auth/invite/accept",
+            Map.of("token", tokenOf(link), "name", "Edu", "password", "senha-forte-1"));
+    assertThat(accepted.getStatus().value()).isEqualTo(201);
+    assertThat(accessOf(accepted)).startsWith("gs_");
   }
 
   private String signup(String email) {

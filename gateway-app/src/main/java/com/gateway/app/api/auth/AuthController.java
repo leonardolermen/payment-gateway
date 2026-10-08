@@ -109,6 +109,8 @@ public class AuthController {
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void reset(@RequestBody ResetPasswordRequest request) {
     request.validate();
+    // Checked before consume: a rejected password must not spend the one-time link.
+    users.requireStrongPassword(request.password());
 
     UserToken token = consume(UserToken.Kind.RESET_PASSWORD, request.token());
 
@@ -131,9 +133,18 @@ public class AuthController {
       @RequestBody AcceptInviteRequest request, HttpServletRequest http) {
     request.validate();
 
+    // Peek, check, then consume: a request that fails validation must not spend the invite.
+    UserToken invite =
+        tokens.peek(UserToken.Kind.INVITE, request.token()).orElseThrow(AuthController::linkGone);
+    EmailAddress email = new EmailAddress(invite.payload().get("email"));
+    Role role = Role.valueOf(invite.payload().get("role"));
+
+    users.requireStrongPassword(request.password());
+    if (users.findActiveByEmail(email).isPresent()) {
+      throw new DomainException("EMAIL_TAKEN", "email is already in use");
+    }
+
     UserToken token = consume(UserToken.Kind.INVITE, request.token());
-    EmailAddress email = new EmailAddress(token.payload().get("email"));
-    Role role = Role.valueOf(token.payload().get("role"));
 
     User user = users.register(token.merchantId(), request.name(), email, role, request.password());
     // The invite reached this inbox: that is the verification.
@@ -143,9 +154,11 @@ public class AuthController {
   }
 
   private UserToken consume(UserToken.Kind kind, String plain) {
-    return tokens
-        .consume(kind, plain)
-        .orElseThrow(() -> new DomainException("TOKEN_EXPIRED", "this link is no longer valid"));
+    return tokens.consume(kind, plain).orElseThrow(AuthController::linkGone);
+  }
+
+  private static DomainException linkGone() {
+    return new DomainException("TOKEN_EXPIRED", "this link is no longer valid");
   }
 
   private SessionService.Issued open(User user, HttpServletRequest http) {

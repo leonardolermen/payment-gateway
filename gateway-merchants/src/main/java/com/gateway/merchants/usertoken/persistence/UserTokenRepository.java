@@ -9,6 +9,8 @@ public interface UserTokenRepository {
 
   Optional<UserToken> findById(String id);
 
+  Optional<UserToken> findByHash(String tokenHash);
+
   /** Empty unless this call is the one that marked the token used. */
   Optional<UserToken> consume(String tokenHash, UserToken.Kind kind, Instant now);
 

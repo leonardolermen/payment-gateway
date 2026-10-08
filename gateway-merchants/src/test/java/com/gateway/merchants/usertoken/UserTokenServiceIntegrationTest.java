@@ -54,6 +54,28 @@ class UserTokenServiceIntegrationTest {
   }
 
   @Test
+  void peekReadsALiveTokenWithoutConsumingIt() {
+    Merchant store = merchants.create("Loja");
+    User ana = ana(store, "ana@peek.com");
+    UserTokenService.Issued issued =
+        tokens.issue(
+            UserToken.Kind.VERIFY_EMAIL, ana.id(), store.id(), Map.of(), Duration.ofHours(24));
+    String plain = issued.plain().reveal();
+
+    assertThat(tokens.peek(UserToken.Kind.RESET_PASSWORD, plain)).isEmpty();
+    assertThat(tokens.peek(UserToken.Kind.VERIFY_EMAIL, plain))
+        .map(UserToken::userId)
+        .contains(ana.id());
+    assertThat(tokens.consume(UserToken.Kind.VERIFY_EMAIL, plain)).isPresent();
+    assertThat(tokens.peek(UserToken.Kind.VERIFY_EMAIL, plain)).isEmpty();
+
+    UserTokenService.Issued expired =
+        tokens.issue(
+            UserToken.Kind.VERIFY_EMAIL, ana.id(), store.id(), Map.of(), Duration.ofSeconds(-1));
+    assertThat(tokens.peek(UserToken.Kind.VERIFY_EMAIL, expired.plain().reveal())).isEmpty();
+  }
+
+  @Test
   void aResendInvalidatesTheOpenOnes() {
     Merchant store = merchants.create("Loja");
     User ana = ana(store, "ana@resend.com");

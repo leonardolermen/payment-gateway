@@ -36,6 +36,11 @@ public class UserService {
     return user;
   }
 
+  /** For a caller that must refuse a weak password before spending a one-time link. */
+  public void requireStrongPassword(String password) {
+    passwords.requireStrong(password);
+  }
+
   /** Same answer and same Argon2 cost whether the e-mail exists or the password is wrong. */
   @Transactional
   public Optional<User> authenticate(EmailAddress email, String password) {
