@@ -5,6 +5,7 @@ import com.gateway.merchants.usertoken.UserToken;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.stereotype.Repository;
@@ -52,6 +53,28 @@ public class UserTokenRepositoryImpl implements UserTokenRepository {
   @Transactional
   public void markUsedOpenOf(UserToken.Kind kind, String userId, Instant now) {
     jpa.markUsedOpenOf(kind.name(), userId, now);
+  }
+
+  @Override
+  public Optional<UserToken> findNewestOpen(UserToken.Kind kind, String userId) {
+    return jpa.findFirstByUserIdAndKindAndUsedAtIsNullOrderByCreatedAtDesc(userId, kind.name())
+        .map(UserTokenRepositoryImpl::toDomain);
+  }
+
+  @Override
+  public List<UserToken> findOpenInvites(MerchantId merchantId, Instant now) {
+    return jpa
+        .findByMerchantIdAndKindAndUsedAtIsNullAndExpiresAtAfterOrderByCreatedAt(
+            merchantId.value(), UserToken.Kind.INVITE.name(), now)
+        .stream()
+        .map(UserTokenRepositoryImpl::toDomain)
+        .toList();
+  }
+
+  @Override
+  @Transactional
+  public void markUsed(String id, Instant now) {
+    jpa.markUsed(id, now);
   }
 
   private static UserTokenEntity toEntity(UserToken token) {

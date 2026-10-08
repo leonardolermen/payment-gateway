@@ -1,5 +1,7 @@
 package com.gateway.app.api.auth.dto;
 
+import com.gateway.app.api.support.Required;
+
 /** POST /v1/auth/signup: a new store and its first owner. */
 public record SignupRequest(String storeName, String name, String email, String password) {
 

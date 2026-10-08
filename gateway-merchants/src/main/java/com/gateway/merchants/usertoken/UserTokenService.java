@@ -11,6 +11,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.transaction.annotation.Transactional;
@@ -82,6 +83,31 @@ public class UserTokenService {
   @Transactional
   public void invalidateOpen(UserToken.Kind kind, String userId) {
     tokens.markUsedOpenOf(kind, userId, clock.instant());
+  }
+
+  /** The link most recently sent and still unused, for a resend that must not come too often. */
+  @Transactional(readOnly = true)
+  public Optional<UserToken> newestOpen(UserToken.Kind kind, String userId) {
+    return tokens.findNewestOpen(kind, userId);
+  }
+
+  /** The invites still waiting to be accepted. */
+  @Transactional(readOnly = true)
+  public List<UserToken> openInvites(MerchantId merchantId) {
+    return tokens.findOpenInvites(merchantId, clock.instant());
+  }
+
+  /**
+   * An invite resent to the same address replaces the previous one. INVITE tokens have no user yet,
+   * so the address in the payload is what identifies them.
+   */
+  @Transactional
+  public void invalidateOpenInvites(MerchantId merchantId, String emailNormalized) {
+    Instant now = clock.instant();
+
+    tokens.findOpenInvites(merchantId, now).stream()
+        .filter(invite -> emailNormalized.equalsIgnoreCase(invite.payload().get("email")))
+        .forEach(invite -> tokens.markUsed(invite.id(), now));
   }
 
   private static String token(String prefix) {
