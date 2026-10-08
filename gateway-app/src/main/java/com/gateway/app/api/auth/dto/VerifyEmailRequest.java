@@ -4,13 +4,7 @@ package com.gateway.app.api.auth.dto;
 public record VerifyEmailRequest(String token) {
 
   public void validate() {
-    required(token, "token");
-  }
-
-  private static void required(String value, String field) {
-    if (value == null || value.isBlank()) {
-      throw new IllegalArgumentException(field + " is required");
-    }
+    Required.field(token, "token");
   }
 
   @Override

@@ -11,7 +11,6 @@ import com.gateway.app.security.ClientIp;
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.merchants.session.SessionService;
 import com.gateway.merchants.user.EmailAddress;
-import com.gateway.merchants.user.Role;
 import com.gateway.merchants.user.User;
 import com.gateway.merchants.user.UserService;
 import com.gateway.merchants.usertoken.UserToken;
@@ -38,18 +37,21 @@ public class AuthController {
   private final SessionService sessions;
   private final UserTokenService tokens;
   private final AuthMailService mail;
+  private final InviteAcceptService invites;
 
   public AuthController(
       SignupService signup,
       UserService users,
       SessionService sessions,
       UserTokenService tokens,
-      AuthMailService mail) {
+      AuthMailService mail,
+      InviteAcceptService invites) {
     this.signup = signup;
     this.users = users;
     this.sessions = sessions;
     this.tokens = tokens;
     this.mail = mail;
+    this.invites = invites;
   }
 
   @PostMapping("/signup")
@@ -133,22 +135,7 @@ public class AuthController {
       @RequestBody AcceptInviteRequest request, HttpServletRequest http) {
     request.validate();
 
-    // Peek, check, then consume: a request that fails validation must not spend the invite.
-    UserToken invite =
-        tokens.peek(UserToken.Kind.INVITE, request.token()).orElseThrow(AuthController::linkGone);
-    EmailAddress email = new EmailAddress(invite.payload().get("email"));
-    Role role = Role.valueOf(invite.payload().get("role"));
-
-    users.requireStrongPassword(request.password());
-    if (users.findActiveByEmail(email).isPresent()) {
-      throw new DomainException("EMAIL_TAKEN", "email is already in use");
-    }
-
-    UserToken token = consume(UserToken.Kind.INVITE, request.token());
-
-    User user = users.register(token.merchantId(), request.name(), email, role, request.password());
-    // The invite reached this inbox: that is the verification.
-    users.markEmailVerified(user.id());
+    User user = invites.accept(request.token(), request.name(), request.password());
 
     return opened(open(user, http), HttpStatus.CREATED);
   }

@@ -4,16 +4,10 @@ package com.gateway.app.api.auth.dto;
 public record SignupRequest(String storeName, String name, String email, String password) {
 
   public void validate() {
-    required(storeName, "store_name");
-    required(name, "name");
-    required(email, "email");
-    required(password, "password");
-  }
-
-  private static void required(String value, String field) {
-    if (value == null || value.isBlank()) {
-      throw new IllegalArgumentException(field + " is required");
-    }
+    Required.field(storeName, "store_name");
+    Required.field(name, "name");
+    Required.field(email, "email");
+    Required.field(password, "password");
   }
 
   @Override

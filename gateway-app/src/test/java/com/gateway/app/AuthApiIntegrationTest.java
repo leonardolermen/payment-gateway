@@ -83,6 +83,8 @@ class AuthApiIntegrationTest {
         .startsWith("gw_refresh=gr_")
         .contains("HttpOnly")
         .contains("SameSite=None")
+        .contains("Secure")
+        .contains("Max-Age=2592000")
         .contains("Path=/v1/auth");
 
     assertThat(status(access, "GET", "/v1/orders", "LIVE")).isEqualTo(403);

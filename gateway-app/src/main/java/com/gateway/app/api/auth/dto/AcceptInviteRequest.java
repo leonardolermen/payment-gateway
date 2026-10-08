@@ -4,15 +4,9 @@ package com.gateway.app.api.auth.dto;
 public record AcceptInviteRequest(String token, String name, String password) {
 
   public void validate() {
-    required(token, "token");
-    required(name, "name");
-    required(password, "password");
-  }
-
-  private static void required(String value, String field) {
-    if (value == null || value.isBlank()) {
-      throw new IllegalArgumentException(field + " is required");
-    }
+    Required.field(token, "token");
+    Required.field(name, "name");
+    Required.field(password, "password");
   }
 
   @Override
