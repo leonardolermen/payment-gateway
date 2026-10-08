@@ -16,7 +16,11 @@ import com.gateway.merchants.merchant.persistence.MerchantRepositoryImpl;
 import com.gateway.merchants.notification.InboundNotificationKeyService;
 import com.gateway.merchants.notification.persistence.InboundNotificationKeyRepository;
 import com.gateway.merchants.notification.persistence.InboundNotificationKeyRepositoryImpl;
+import com.gateway.merchants.user.PasswordService;
+import com.gateway.merchants.user.UserService;
+import com.gateway.merchants.user.persistence.UserRepository;
 import com.gateway.merchants.user.persistence.UserRepositoryImpl;
+import java.time.Clock;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.context.annotation.Bean;
@@ -96,5 +100,15 @@ public class MerchantsConfiguration {
   public InboundNotificationKeyService inboundNotificationKeyService(
       InboundNotificationKeyRepository keys) {
     return new InboundNotificationKeyService(keys);
+  }
+
+  @Bean
+  public PasswordService passwordService() {
+    return new PasswordService();
+  }
+
+  @Bean
+  public UserService userService(UserRepository users, PasswordService passwords, Clock clock) {
+    return new UserService(users, passwords, clock);
   }
 }
