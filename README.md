@@ -100,6 +100,60 @@ curl -s -XPOST localhost:8080/v1/admin/merchants/<id>/api-keys -H 'X-Admin-Key: 
 curl -s localhost:8080/v1/merchant -H 'Authorization: Bearer gk_test_…'
 ```
 
+## Panel login
+
+The merchant panel signs people in; API keys (`gk_…`) keep working everywhere, unchanged. Spec:
+`docs/superpowers/specs/2026-10-08-usuarios-e-sessao-design.md`.
+
+- **Signup** (`POST /v1/auth/signup`) creates a merchant and its first user, an `OWNER`, and opens a
+  session. TEST works at once; LIVE answers `403 EMAIL_NOT_VERIFIED` until the link sent by e-mail is used.
+- **Session**: the response carries a `gs_…` access token (15 min), sent as `Authorization: Bearer`; keep
+  it in memory. The refresh token is the `gw_refresh` cookie (`HttpOnly`, `Secure`, `SameSite=None`,
+  `Path=/v1/auth`, 30 days), rotated on every `POST /v1/auth/refresh`; replaying an old cookie ends the
+  session. Only hashes are stored.
+- **`X-Environment: TEST|LIVE`** picks the environment of a user session (an API key carries its own).
+  Missing or invalid means `TEST`.
+- **Roles** (`RoleRoutes`), the least role a route needs:
+
+| Role | May |
+|---|---|
+| `READONLY` | every `GET`; its own account under `/v1/me` |
+| `FINANCE` | the above, plus writes that move money or data: payments, refunds, orders, customers, plans, subscriptions, disputes |
+| `OWNER` | everything: webhook endpoints, `/v1/merchant`, providers, installment settings, the team and invites, deleting customers |
+
+- **E-mail** goes out through SMTP as a `SEND_EMAIL` job. With `GATEWAY_MAIL_HOST` empty the message is
+  logged instead (the link too, so only use that in dev). STARTTLS and authentication are on only when
+  `GATEWAY_MAIL_USERNAME` is set. Links (verify, reset, invite) start at `GATEWAY_PANEL_BASE_URL`.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `GATEWAY_MAIL_HOST` / `GATEWAY_MAIL_PORT` | empty / `587` | SMTP relay |
+| `GATEWAY_MAIL_USERNAME` / `GATEWAY_MAIL_PASSWORD` | empty | set to turn on STARTTLS and auth |
+| `GATEWAY_MAIL_FROM` | `no-reply@localhost` | sender address |
+| `GATEWAY_PANEL_BASE_URL` | `http://localhost:5173` | where the panel is served |
+
+| Route | Success | Errors |
+|---|---|---|
+| `POST /v1/auth/signup` | 201 session | 409 `EMAIL_TAKEN`; 400/422 on a weak password |
+| `POST /v1/auth/login` | 200 session | 401 `INVALID_CREDENTIALS` (same answer for a wrong password and an unknown e-mail) |
+| `POST /v1/auth/refresh` (cookie) | 200 session | 401 `SESSION_EXPIRED` |
+| `POST /v1/auth/logout` (cookie) | 204 | |
+| `POST /v1/auth/password/forgot` | 202, always | |
+| `POST /v1/auth/password/reset` | 204; every session is closed | 410 `TOKEN_EXPIRED`; 400/422 on a weak password |
+| `POST /v1/auth/email/verify` | 204 | 410 `TOKEN_EXPIRED` |
+| `POST /v1/auth/invite/accept` | 201 session | 410 `TOKEN_EXPIRED`; 409 `EMAIL_TAKEN` |
+| `GET /v1/me`, `PATCH /v1/me` | 200 | |
+| `POST /v1/me/password` | 204; other sessions are closed | 401 `INVALID_CREDENTIALS` |
+| `POST /v1/me/email/resend` | 202 | 409 `ALREADY_VERIFIED`; 429 `RESEND_TOO_SOON` |
+| `GET /v1/me/sessions`, `DELETE /v1/me/sessions/others` | 200 / 204 | |
+| `GET /v1/merchant/users` | 200 users and open invites | |
+| `POST /v1/invites` (`OWNER`) | 202 | 409 `EMAIL_TAKEN` |
+| `PATCH /v1/merchant/users/{id}` (`OWNER`) | 200 | 409 `LAST_OWNER` |
+| `DELETE /v1/merchant/users/{id}` (`OWNER`) | 204 | 409 `LAST_OWNER` |
+
+`/v1/auth/*` is rate limited per client IP (`gateway.auth.rate-limit-per-minute`, default 10). The `/v1/me`,
+`/v1/merchant/users` and `/v1/invites` routes need a user session: an API key has no person behind it.
+
 ## Modules
 
 - `gateway-kernel` — dependency-free shared types and the provider contracts.
