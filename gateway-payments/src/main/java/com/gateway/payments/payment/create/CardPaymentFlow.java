@@ -84,9 +84,7 @@ public class CardPaymentFlow implements PaymentFlow {
     SoftDescriptor softDescriptor = softDescriptorOf(cardPayment);
     CardCustomer customer = CardCustomerFactory.from(cardPayment.customer());
     String documentHash =
-        cardPayment.customer() == null
-            ? null
-            : CustomerDocumentHash.of(cardPayment.customer().document());
+        CustomerDocumentHash.of(cardPayment.customer().document());
 
     ChosenCard chosen = choose(cardPayment);
 
@@ -103,6 +101,7 @@ public class CardPaymentFlow implements PaymentFlow {
             documentHash);
 
     CardToSave toSave = toSaveOf(cardPayment, documentHash);
+
     CardIssueRequest request =
         new CardIssueRequest(
             payment.id(),
