@@ -688,3 +688,21 @@ Rejeitado: um campo `payer_name` separado — o painel teria de escolher entre d
 coluna. Custo se errado: quem usava `customer_name` nulo para saber que a ordem não tem cliente passa a
 olhar `customer_id`, que sempre foi o sinal certo.
 
+
+## 2026-10-08 — Busca de cliente por nome com `LIKE`, sem índice
+`GET /v1/customers?q=` faz `LOWER(name) LIKE '%q%'` na tabela, filtrada por merchant e ambiente, sem
+índice de texto. Rejeitado: `pg_trgm` com índice GIN — uma extensão nova no banco por uma caixa de busca
+do painel, numa tabela que é pequena por merchant. Custo se errado: um merchant com dezenas de milhares
+de clientes sente a busca lenta, e aí a extensão entra como decisão nova.
+
+## 2026-10-08 — `GET /v1/subscriptions?customer_id=` continua sem página
+A listagem geral (`status`, `limit`, `cursor`) é nova e pagina pelo ambiente da chave; a de um cliente
+devolve todas as assinaturas dele, como antes. Rejeitado: paginar as duas — o detalhe do cliente quer o
+histórico inteiro, e um cliente com mais de cem assinaturas não é um caso real. Custo se errado: a
+tela do cliente cresce sem "carregar mais" até alguém paginar.
+
+## 2026-10-08 — Pedidos por cliente sem filtro de ambiente
+`GET /v1/orders?customer_id=` filtra por merchant e cliente, não pelo ambiente da chave: um cliente vive
+num ambiente só, então o filtro seria redundante. Rejeitado: exigir o ambiente também — uma condição a
+mais no índice por nada. Custo se errado: se um dia um cliente puder existir nos dois ambientes, a
+chave TEST veria os pedidos LIVE dele até o filtro entrar.
