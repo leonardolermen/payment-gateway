@@ -51,6 +51,17 @@ gateway:
     hmac-key: ${GATEWAY_IDEMPOTENCY_HMAC_KEY:}      # empty = the api-key pepper; request bodies carry PAN + CVV
   rate-limit:
     requests-per-minute: 600
+  mail:
+    host: ${GATEWAY_MAIL_HOST:}        # empty = e-mails are logged, not sent
+    port: ${GATEWAY_MAIL_PORT:587}
+    username: ${GATEWAY_MAIL_USERNAME:}
+    password: ${GATEWAY_MAIL_PASSWORD:}
+    from: ${GATEWAY_MAIL_FROM:no-reply@localhost}
+    panel-base-url: ${GATEWAY_PANEL_BASE_URL:http://localhost:5173}
+  auth:
+    rate-limit-per-minute: 10
+    access-ttl: PT15M
+    refresh-ttl: P30D
   checkout:
     base-url: ${GATEWAY_CHECKOUT_BASE_URL:http://localhost:5173/pay/}   # the front's /pay/ route; the token is appended
     cors-origins: ${GATEWAY_CORS_ORIGINS:}                               # comma-separated exact origins; empty = CORS off

@@ -14,5 +14,8 @@ public enum JobType {
   BILL_SUBSCRIPTION,
 
   /** Billing's: one scheduled retry of a failed invoice; the handler lives in gateway-billing. */
-  DUNNING_RETRY
+  DUNNING_RETRY,
+
+  /** The app's: one outbound e-mail by id; the handler lives in gateway-app. */
+  SEND_EMAIL
 }
