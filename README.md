@@ -148,8 +148,8 @@ The merchant panel signs people in; API keys (`gk_…`) keep working everywhere,
 | `GET /v1/me/sessions`, `DELETE /v1/me/sessions/others` | 200 / 204 | |
 | `GET /v1/merchant/users` | 200 users and open invites | |
 | `POST /v1/invites` (`OWNER`) | 202 | 409 `EMAIL_TAKEN` |
-| `PATCH /v1/merchant/users/{id}` (`OWNER`) | 200 | 409 `LAST_OWNER` |
-| `DELETE /v1/merchant/users/{id}` (`OWNER`) | 204 | 409 `LAST_OWNER` |
+| `PATCH /v1/merchant/users/{id}` (`OWNER`) | 200 | 404 `NOT_FOUND`; 400 `INVALID_REQUEST` (own account) |
+| `DELETE /v1/merchant/users/{id}` (`OWNER`) | 204 | 404 `NOT_FOUND`; 400 `INVALID_REQUEST` (own account) |
 
 `/v1/auth/*` is rate limited per client IP (`gateway.auth.rate-limit-per-minute`, default 10). The `/v1/me`,
 `/v1/merchant/users` and `/v1/invites` routes need a user session: an API key has no person behind it.

@@ -688,7 +688,6 @@ Rejeitado: um campo `payer_name` separado — o painel teria de escolher entre d
 coluna. Custo se errado: quem usava `customer_name` nulo para saber que a ordem não tem cliente passa a
 olhar `customer_id`, que sempre foi o sinal certo.
 
-
 ## 2026-10-08 — Tokens opacos com hash no banco, não JWT
 Sessão do painel: access `gs_…` e refresh `gr_…` são aleatórios, e só o hash fica no banco. Rejeitado: JWT
 assinado — lib nova, revogação exige lista negra, e "encerrar outras sessões" vira um problema. Custo se

@@ -83,6 +83,10 @@ class SessionsNeverHoldPlaintextTest {
               .map(row -> row.get("row_text").toString())
               .collect(Collectors.joining("\n"));
 
+      if (!table.equals("payments.jobs")) {
+        assertThat(dump).as(table + " has rows").isNotBlank();
+      }
+
       assertThat(dump)
           .as(table)
           .doesNotContain(PASSWORD)
