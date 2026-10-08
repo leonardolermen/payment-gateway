@@ -136,7 +136,10 @@ public class UserService {
   }
 
   // A store with no owner has nobody who can invite one: the last owner stays until another exists.
+  // The lock comes before the count: two owners removing each other at once would otherwise both
+  // count two and both commit, leaving the store with none. The second waits, then counts one.
   private void requireAnotherOwner(MerchantId merchantId) {
+    users.lockActiveOwners(merchantId);
     if (users.countActiveByMerchantAndRole(merchantId, Role.OWNER) <= 1) {
       throw new DomainException("LAST_OWNER", "the last owner cannot be demoted or removed");
     }

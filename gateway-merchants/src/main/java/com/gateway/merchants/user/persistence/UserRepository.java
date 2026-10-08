@@ -18,5 +18,11 @@ public interface UserRepository {
 
   List<User> findActiveByMerchant(MerchantId merchantId);
 
+  /**
+   * SELECT ... FOR UPDATE on the merchant's active owners; must run inside the caller's
+   * transaction.
+   */
+  void lockActiveOwners(MerchantId merchantId);
+
   long countActiveByMerchantAndRole(MerchantId merchantId, Role role);
 }

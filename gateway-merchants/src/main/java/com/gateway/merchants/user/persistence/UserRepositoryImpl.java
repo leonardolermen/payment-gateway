@@ -55,6 +55,11 @@ public class UserRepositoryImpl implements UserRepository {
   }
 
   @Override
+  public void lockActiveOwners(MerchantId merchantId) {
+    jpa.lockActiveOwners(merchantId.value());
+  }
+
+  @Override
   public long countActiveByMerchantAndRole(MerchantId merchantId, Role role) {
     return jpa.countByMerchantIdAndRoleAndDeletedAtIsNull(merchantId.value(), role.name());
   }

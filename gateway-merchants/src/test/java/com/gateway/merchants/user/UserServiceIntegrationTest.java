@@ -7,6 +7,12 @@ import com.gateway.kernel.errors.DomainException;
 import com.gateway.merchants.TestApp;
 import com.gateway.merchants.merchant.Merchant;
 import com.gateway.merchants.merchant.MerchantService;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -77,6 +83,58 @@ class UserServiceIntegrationTest {
     users.changeRole(store.id(), bia.id(), Role.OWNER);
     users.remove(store.id(), ana.id());
     assertThat(users.listByMerchant(store.id())).extracting(User::id).containsExactly(bia.id());
+  }
+
+  @Test
+  void twoOwnersRemovingEachOtherAtOnceLeaveOneOwner() throws Exception {
+    // Several rounds: one round can serialise by luck, and the bug only shows when both count
+    // first.
+    for (int round = 0; round < 5; round++) {
+      Merchant store = merchants.create("Loja");
+      User ana =
+          users.register(
+              store.id(),
+              "Ana",
+              new EmailAddress("ana" + round + "@race.com"),
+              Role.OWNER,
+              "senha-forte-1");
+      User bia =
+          users.register(
+              store.id(),
+              "Bia",
+              new EmailAddress("bia" + round + "@race.com"),
+              Role.OWNER,
+              "senha-forte-2");
+
+      CountDownLatch start = new CountDownLatch(1);
+      List<Future<String>> outcomes = new ArrayList<>();
+      try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+        for (User target : List.of(ana, bia)) {
+          outcomes.add(
+              executor.submit(
+                  () -> {
+                    start.await();
+                    try {
+                      users.remove(store.id(), target.id());
+                      return "removed";
+                    } catch (DomainException e) {
+                      return e.code();
+                    }
+                  }));
+        }
+        start.countDown();
+      }
+
+      List<String> results = new ArrayList<>();
+      for (Future<String> outcome : outcomes) {
+        results.add(outcome.get());
+      }
+
+      assertThat(results).containsExactlyInAnyOrder("removed", "LAST_OWNER");
+      assertThat(users.listByMerchant(store.id()))
+          .filteredOn(user -> user.role() == Role.OWNER)
+          .hasSize(1);
+    }
   }
 
   @Test
