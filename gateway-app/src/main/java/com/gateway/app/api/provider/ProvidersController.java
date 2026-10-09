@@ -2,6 +2,7 @@ package com.gateway.app.api.provider;
 
 import com.gateway.app.api.provider.dto.CredentialsRequest;
 import com.gateway.app.api.provider.dto.NotificationKeyRequest;
+import com.gateway.app.api.provider.dto.ProbeOutcomeResponse;
 import com.gateway.app.api.provider.dto.ProviderStatusResponse;
 import com.gateway.app.api.provider.dto.ProvidersResponse;
 import com.gateway.app.inbound.mtls.WebhookMtlsProperties;
@@ -13,6 +14,7 @@ import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,16 +32,19 @@ import tools.jackson.databind.ObjectMapper;
 @RequestMapping("/v1/merchant/providers")
 public class ProvidersController {
   private final MerchantProviderService providers;
+  private final ProviderProbeService probes;
   private final MerchantService merchants;
   private final WebhookMtlsProperties mtls;
   private final ObjectMapper objectMapper;
 
   public ProvidersController(
       MerchantProviderService providers,
+      ProviderProbeService probes,
       MerchantService merchants,
       WebhookMtlsProperties mtls,
       ObjectMapper objectMapper) {
     this.providers = providers;
+    this.probes = probes;
     this.merchants = merchants;
     this.mtls = mtls;
     this.objectMapper = objectMapper;
@@ -71,6 +76,14 @@ public class ProvidersController {
     byte[] submitted = objectMapper.writeValueAsBytes(request.payload());
 
     providers.store(caller.merchantId(), provider, caller.environment(), submitted);
+  }
+
+  @PostMapping("/{provider}/test")
+  public ProbeOutcomeResponse test(@PathVariable Provider provider) {
+    MerchantContext.Current caller = MerchantContext.current();
+
+    return ProbeOutcomeResponse.from(
+        probes.test(caller.merchantId(), provider, caller.environment()));
   }
 
   @PutMapping("/{provider}/notification-key")

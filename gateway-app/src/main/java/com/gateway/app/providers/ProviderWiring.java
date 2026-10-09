@@ -1,7 +1,9 @@
 package com.gateway.app.providers;
 
+import com.gateway.app.api.provider.CredentialProbes;
 import com.gateway.billing.BillingConfiguration;
 import com.gateway.kernel.provider.CredentialLookup;
+import com.gateway.kernel.provider.CredentialProbe;
 import com.gateway.kernel.provider.ProviderCredentials;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.merchants.apikey.ApiKeyEnvironment;
@@ -9,6 +11,7 @@ import com.gateway.merchants.credential.Provider;
 import com.gateway.merchants.credential.ProviderCredentialService;
 import com.gateway.payments.PaymentsConfiguration;
 import com.gateway.providers.ProvidersConfiguration;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -47,5 +50,11 @@ public class ProviderWiring {
           .decrypt(merchantId, p, keyEnv)
           .map(bytes -> new ProviderCredentials(bytes, env));
     };
+  }
+
+  /** The banks' probes, one per provider id, for the owner's "test connection". */
+  @Bean
+  CredentialProbes credentialProbes(List<CredentialProbe> probes) {
+    return new CredentialProbes(probes);
   }
 }

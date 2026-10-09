@@ -21,6 +21,16 @@ public final class ProviderEvents {
         merchantId);
   }
 
+  /** Only the verdict travels: the phrase is on the credential and the bank body nowhere. */
+  public static void tested(String merchantId, String provider, String environment, boolean ok) {
+    log.info(
+        "provider.test provider={} env={} ok={} merchant={}",
+        provider,
+        environment,
+        ok,
+        merchantId);
+  }
+
   public static void notificationKeySet(String merchantId, String provider) {
     log.info("provider.notification_key.set provider={} merchant={}", provider, merchantId);
   }

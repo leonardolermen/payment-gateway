@@ -1,5 +1,14 @@
 package com.gateway.app;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
+import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.status;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import ch.qos.logback.classic.Logger;
@@ -16,11 +25,15 @@ import com.gateway.merchants.user.EmailAddress;
 import com.gateway.merchants.user.Role;
 import com.gateway.merchants.user.User;
 import com.gateway.merchants.user.UserService;
+import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.client.WireMock;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,6 +44,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.client.EntityExchangeResult;
 import org.springframework.test.web.servlet.client.RestTestClient;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -53,7 +68,31 @@ class ProvidersApiIntegrationTest {
 
   private static final String PROVIDERS = "/v1/merchant/providers";
   private static final String ITAU_CREDENTIALS = PROVIDERS + "/ITAU/credentials";
+  private static final String ITAU_TEST = PROVIDERS + "/ITAU/test";
+  private static final String CIELO_CREDENTIALS = PROVIDERS + "/CIELO/credentials";
+  private static final String CIELO_TEST = PROVIDERS + "/CIELO/test";
   private static final String NOTIFICATION_KEY = PROVIDERS + "/CIELO/notification-key";
+  private static final String ITAU_TOKEN = "/api/oauth/jwt";
+  private static final String CIELO_NULL_SALE =
+      "/query/1/sales/00000000-0000-0000-0000-000000000000";
+  private static final String A_TOKEN = "{\"access_token\":\"tok\",\"expires_in\":300}";
+
+  static final WireMockServer ITAU = new WireMockServer(options().dynamicPort());
+  static final WireMockServer CIELO = new WireMockServer(options().dynamicPort());
+
+  static {
+    ITAU.start();
+    CIELO.start();
+  }
+
+  @DynamicPropertySource
+  static void providers(DynamicPropertyRegistry registry) {
+    registry.add("gateway.providers.itau.test-api-base", () -> ITAU.baseUrl() + "/pix");
+    registry.add("gateway.providers.itau.test-token-url", () -> ITAU.baseUrl() + ITAU_TOKEN);
+    registry.add("gateway.providers.itau.test-mutual-tls", () -> "false");
+    registry.add("gateway.providers.cielo.test-api-base", () -> CIELO.baseUrl() + "/api");
+    registry.add("gateway.providers.cielo.test-query-api-base", () -> CIELO.baseUrl() + "/query");
+  }
 
   @LocalServerPort int port;
 
@@ -64,6 +103,132 @@ class ProvidersApiIntegrationTest {
   @Autowired ProviderCredentialService credentials;
 
   record Logged(String access, User user, Merchant store) {}
+
+  @AfterAll
+  static void stopBanks() {
+    ITAU.stop();
+    CIELO.stop();
+  }
+
+  @BeforeEach
+  void resetBanks() {
+    ITAU.resetAll();
+    CIELO.resetAll();
+  }
+
+  @Test
+  void anItauTokenMeansConnectedAndTheGetRemembersIt() {
+    Logged owner = user(Role.OWNER);
+    put(owner.access(), ITAU_CREDENTIALS, null, Map.of("payload", itauSandbox()));
+    ITAU.stubFor(post(ITAU_TOKEN).willReturn(okJson(A_TOKEN)));
+
+    EntityExchangeResult<String> tested = exchange(owner.access(), "POST", ITAU_TEST, null, null);
+
+    assertThat(tested.getStatus().value()).isEqualTo(200);
+    assertThat(tested.getResponseBody())
+        .contains("\"ok\":true")
+        .contains("\"detail\":\"Conectado\"")
+        .contains("\"checked_at\":");
+    Map lastTest = (Map) providerIn(get(owner.access(), null), "ITAU").get("last_test");
+    assertThat(lastTest).containsEntry("ok", true).containsEntry("detail", "Conectado");
+    assertThat(lastTest.get("checked_at")).isNotNull();
+    // Only the token: a probe never issues anything.
+    ITAU.verify(1, postRequestedFor(urlEqualTo(ITAU_TOKEN)));
+    assertThat(ITAU.findAll(anyRequestedFor(anyUrl()))).hasSize(1);
+  }
+
+  @Test
+  void anItauRejectionIsTheFixedPhraseNotTheBankBody() {
+    Logged owner = user(Role.OWNER);
+    put(owner.access(), ITAU_CREDENTIALS, null, Map.of("payload", itauSandbox()));
+    ITAU.stubFor(
+        post(ITAU_TOKEN).willReturn(status(401).withBody("{\"error\":\"invalid_client sbx-id\"}")));
+
+    EntityExchangeResult<String> tested = exchange(owner.access(), "POST", ITAU_TEST, null, null);
+
+    assertThat(tested.getStatus().value()).isEqualTo(200);
+    assertThat(tested.getResponseBody())
+        .contains("\"ok\":false")
+        .contains("\"detail\":\"Credencial recusada pelo banco\"")
+        .doesNotContain("invalid_client");
+    Map lastTest = (Map) providerIn(get(owner.access(), null), "ITAU").get("last_test");
+    assertThat(lastTest)
+        .containsEntry("ok", false)
+        .containsEntry("detail", "Credencial recusada pelo banco");
+  }
+
+  @Test
+  void aCieloNotFoundMeansAuthenticatedAndAnUnauthorizedIsRefused() {
+    Logged owner = user(Role.OWNER);
+    put(owner.access(), CIELO_CREDENTIALS, null, Map.of("payload", cieloSandbox()));
+
+    CIELO.stubFor(WireMock.get(CIELO_NULL_SALE).willReturn(status(404)));
+    EntityExchangeResult<String> authenticated =
+        exchange(owner.access(), "POST", CIELO_TEST, null, null);
+    assertThat(authenticated.getStatus().value()).isEqualTo(200);
+    assertThat(authenticated.getResponseBody())
+        .contains("\"ok\":true")
+        .contains("\"detail\":\"Conectado\"");
+    // One GET on a sale that cannot exist, and nothing on the transactional host.
+    CIELO.verify(1, getRequestedFor(urlEqualTo(CIELO_NULL_SALE)));
+    assertThat(CIELO.findAll(anyRequestedFor(anyUrl()))).hasSize(1);
+
+    CIELO.resetAll();
+    CIELO.stubFor(WireMock.get(CIELO_NULL_SALE).willReturn(status(401)));
+    EntityExchangeResult<String> refused = exchange(owner.access(), "POST", CIELO_TEST, null, null);
+    assertThat(refused.getStatus().value()).isEqualTo(200);
+    assertThat(refused.getResponseBody())
+        .contains("\"ok\":false")
+        .contains("\"detail\":\"Credencial recusada pelo banco\"");
+    Map lastTest = (Map) providerIn(get(owner.access(), null), "CIELO").get("last_test");
+    assertThat(lastTest).containsEntry("ok", false);
+  }
+
+  @Test
+  void aTestWithoutACredentialIsMissingNotABankCall() {
+    Logged owner = user(Role.OWNER);
+
+    EntityExchangeResult<String> missing = exchange(owner.access(), "POST", ITAU_TEST, null, null);
+
+    assertThat(missing.getStatus().value()).isEqualTo(422);
+    assertThat(missing.getResponseBody()).contains("urn:gateway:PROVIDER_CREDENTIALS_MISSING");
+    assertThat(ITAU.findAll(anyRequestedFor(anyUrl()))).isEmpty();
+  }
+
+  @Test
+  void theTestIsOwnerOnlyAndItsAuditCarriesNoSecret() {
+    Logged owner = user(Role.OWNER);
+    put(owner.access(), ITAU_CREDENTIALS, null, Map.of("payload", itauSandbox()));
+    ITAU.stubFor(post(ITAU_TOKEN).willReturn(okJson(A_TOKEN)));
+
+    Logged finance = user(Role.FINANCE);
+    EntityExchangeResult<String> forbidden =
+        exchange(finance.access(), "POST", ITAU_TEST, null, null);
+    assertThat(forbidden.getStatus().value()).isEqualTo(403);
+    assertThat(forbidden.getResponseBody()).contains("urn:gateway:FORBIDDEN_FOR_ROLE");
+
+    Logger audit = (Logger) LoggerFactory.getLogger("gateway.audit.account");
+    ListAppender<ILoggingEvent> lines = new ListAppender<>();
+    lines.start();
+    audit.addAppender(lines);
+    try {
+      exchange(owner.access(), "POST", ITAU_TEST, null, null);
+    } finally {
+      audit.detachAppender(lines);
+    }
+
+    assertThat(lines.list)
+        .extracting(ILoggingEvent::getFormattedMessage)
+        .filteredOn(line -> line.contains("provider.test"))
+        .singleElement()
+        .satisfies(
+            line ->
+                assertThat(line)
+                    .contains("provider=ITAU")
+                    .contains("env=TEST")
+                    .contains("ok=true")
+                    .doesNotContain("sbx-secret", "sbx-id", "tok"));
+  }
 
   @Test
   void anOwnerStoresItauTestCredentialsAndTheGetShowsStateNotSecrets() {
@@ -293,6 +458,14 @@ class ProvidersApiIntegrationTest {
   private static Map<String, Object> itauSandbox() {
     return Map.of(
         "client_id", "sbx-id", "client_secret", "sbx-secret", "pix_key", "60701190000104");
+  }
+
+  private static Map<String, Object> cieloSandbox() {
+    return Map.of(
+        "merchant_id",
+        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        "merchant_key",
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890123");
   }
 
   private static Map providerIn(Map body, String provider) {
