@@ -817,3 +817,71 @@ significa nada; o que precisa ser monotônico é a sequência de cada módulo. R
 como V310 — quebra a convenção e a próxima migração de merchants tropeça de novo; uma tabela de
 histórico por módulo — o Flyway do Spring Boot configura uma só. Custo se errado: uma migração fora de
 ordem dentro do mesmo módulo também passaria; a revisão de PR é o que a pega.
+
+## 2026-10-09 — Rotas do lojista em `/v1/merchant/providers`, não em `/v1/providers`
+`/v1/providers/**` é o banco chamando (webhook de entrada), sem autenticação de merchant; o lojista configura
+credencial em `/v1/merchant/providers`, que herda o `OWNER` de `/v1/merchant/**`. O prefixo morto
+`/v1/providers` saiu de `OWNER_PREFIXES`. Rejeitado: reaproveitar `/v1/providers` para as duas coisas —
+uma rota de banco e uma de lojista sob o mesmo prefixo acabam com regra de segurança diferente numa
+mesma tabela de caminhos. Custo se errado: dois prefixos parecidos; o pacote (`api/provider`) e o
+comentário no `ProtectedRoutes` dizem qual é qual.
+
+## 2026-10-09 — Só sessão de dono grava credencial; chave de API não
+`/v1/merchant/providers/**` está em `userOnly`: uma chave `gk_…`, de qualquer papel, recebe
+`403 USER_SESSION_REQUIRED`. Rejeitado: permitir à chave — uma chave vazada trocaria a conta beneficiária e
+o dinheiro iria para outro lugar. Custo se errado: integração por script precisa de um usuário.
+
+## 2026-10-09 — Segredo omitido no `PUT` mantém o anterior
+`client_secret`, `x_itau_apikey`, `private_key_pem` e `merchant_key` omitidos no `PUT` mantêm o valor
+guardado; `""` apaga; os campos públicos vêm sempre do request. O merge (`SecretMerge`) é só sobre a linha
+ativa — linha inativa não é "configurada", então nada é mantido dela em silêncio. Rejeitado: `PUT` substitui
+tudo — a tela obrigaria a colar certificado e chave a cada edição de campo. Custo se errado: merge sobre o
+payload decifrado, mais um lugar que abre a credencial (só dentro do serviço, nunca sai).
+
+## 2026-10-09 — Probe como port do kernel implementado em `providers`
+`CredentialProbe { providerId(); probe(ProviderCredentials) }` vive no kernel; `providers` implementa um
+por banco (`ItauCredentialProbe`, `CieloCredentialProbe`) e `app` os indexa por nome (`CredentialProbes`).
+Rejeitado: o app chamar o token client direto — amarra o app ao vocabulário do banco (a regra "Itau só em
+providers"). Custo se errado: uma interface a mais.
+
+## 2026-10-09 — Resultado do teste gravado na credencial
+`last_test_ok`, `last_test_detail`, `last_test_at` ficam na própria linha da credencial (V104) e o `GET`
+os devolve como `last_test`. Gravar uma credencial de novo zera o `last_test`: o probe antigo atestou outro
+segredo. Rejeitado: testar a cada `GET` — uma chamada ao banco por abertura de tela. Custo se errado: três
+colunas e um "testado em" que pode envelhecer; um clique a mais em Testar depois de editar.
+
+## 2026-10-09 — `fingerprint`, `secrets_set` e `public_fields` gravados na hora de guardar
+A linha da credencial guarda, fora do ciphertext, o fingerprint, quais segredos estão definidos (V104) e os
+valores dos campos públicos (V105). `GET /v1/merchant/providers` lê só isso e nunca decifra; a tela mostra
+`client_id`/`pix_key`/`merchant_id` sem obrigar a redigitar. Rejeitado: decifrar no `GET` e filtrar — abre a
+credencial a cada abertura de tela só para esconder o que não pode sair. Custo se errado: mais colunas e uma
+pequena duplicação de dado não-secreto fora do ciphertext, que precisa ser reescrita a cada `PUT`.
+
+## 2026-10-09 — Lista de campos fechada por provedor; chave desconhecida é 422
+`ProviderCatalog` declara, por provedor, os campos públicos e os secretos; `CredentialShape` recusa uma
+chave fora da lista (`clientSecret`, `client_secret ` com espaço) com `422 PROVIDER_CREDENTIALS_INVALID` e
+`field` = a chave como veio, antes de qualquer parser. Sem isso, a revisão da Task 3 mostrou, um segredo
+digitado errado passava pelo merge como campo público e ficava guardado — e exibido no `GET` — em claro.
+Rejeitado: ignorar chaves desconhecidas (o segredo some em silêncio e o lojista não entende por que a
+conexão falha). Custo se errado: um campo novo do banco exige entrada no catálogo antes de ser aceito.
+
+## 2026-10-09 — `PROVIDER_CREDENTIALS_MISSING` é 422 em toda rota, inclusive `/test`
+A spec escrevia `404` para `POST /v1/merchant/providers/{provider}/test` sem credencial; ficou `422`, o
+mesmo status que o código já tem nas rotas de pagamento e checkout. Um código, um status: o painel decide
+pelo código e o contrato de erro existente não muda. Rejeitado: `404` só no `/test` — o mesmo código com dois
+status em rotas diferentes é a armadilha que "código e mensagem são contrato" existe para evitar. Custo se
+errado: um `404` leria mais natural para "não há o que testar"; ninguém depende disso.
+
+## 2026-10-09 — Cache de token esvaziado antes do probe do Itaú
+`ItauCredentialProbe` chama `tokens.evict(fingerprint)` antes de pedir o token. Sem isso, trocar o
+`client_secret` e clicar em Testar devolveria "Conectado" com o token obtido pelo segredo antigo, ainda
+válido no cache, e o erro só apareceria na primeira cobrança. Rejeitado: pedir o token por um caminho sem
+cache — duplica o client só para o teste. Custo se errado: o primeiro pagamento depois de um teste pede
+token de novo.
+
+## 2026-10-09 — O probe roda em `ProviderProbeService`, fora de transação
+Decifrar, chamar o banco, gravar o resultado e auditar ficam num serviço próprio que não é
+`@Transactional`, pela mesma regra do `PaymentService`: um timeout de 30 s no banco não pode segurar
+conexão e lock por 30 s. `recordTest` abre a sua própria transação curta depois da chamada. Rejeitado:
+o método de teste dentro do `MerchantProviderService`, que é transacional. Custo se errado: um serviço a
+mais no pacote `api/provider`.

@@ -163,8 +163,9 @@ The merchant panel signs people in; API keys (`gk_…`) keep working everywhere,
 | `PATCH /v1/merchant/users/{id}` (`OWNER`) | 200 | 404 `NOT_FOUND`; 400 `OWN_ACCOUNT` |
 | `DELETE /v1/merchant/users/{id}` (`OWNER`) | 204 | 404 `NOT_FOUND`; 400 `OWN_ACCOUNT` |
 | `GET /v1/merchant/providers` (`OWNER`) | 200 state per provider for the `X-Environment`: `configured`, `fingerprint` (8 hex), `secrets_set`, public `fields`, `last_test`, `notification_key_set`, plus `inbound_webhook_url` — never a secret | |
-| `PUT /v1/merchant/providers/{ITAU\|CIELO}/credentials` (`OWNER`) | 204; an omitted secret keeps the stored value, `""` removes it | 422 `PROVIDER_CREDENTIALS_INVALID` with `field`; 400 unknown provider |
-| `PUT /v1/merchant/providers/CIELO/notification-key` (`OWNER`) | 204 | 400 blank or over 1500 characters |
+| `PUT /v1/merchant/providers/{ITAU\|CIELO}/credentials` (`OWNER`) | 204; an omitted secret keeps the stored value, `""` removes it | 422 `PROVIDER_CREDENTIALS_INVALID` with `field` (an unknown key included); 400 unknown provider |
+| `POST /v1/merchant/providers/{ITAU\|CIELO}/test` (`OWNER`) | 200 `{ok, detail, checked_at}`, also stored as `last_test` | 422 `PROVIDER_CREDENTIALS_MISSING` (no credential in the `X-Environment`); 400 unknown provider |
+| `PUT /v1/merchant/providers/CIELO/notification-key` (`OWNER`) | 204 | 400 blank or over 1500 characters; 400 for `ITAU` |
 
 Any route that hashes a password (signup, login, reset, invite accept, password change) can answer
 `503 AUTH_BUSY` when `gateway.auth.max-concurrent-hashes` are already running; retry in a moment.
@@ -174,6 +175,75 @@ client is counted by its /64). With `GATEWAY_CORS_ORIGINS` set, a request to `/v
 is not in the list is refused with `403 ORIGIN_NOT_ALLOWED`; no `Origin` (curl, a server) passes. The `/v1/me`,
 `/v1/merchant/users`, `/v1/invites` and `/v1/merchant/providers` routes need a user session: an API key has no
 person behind it, and a leaked key must not be able to swap the bank credentials.
+
+## Providers (merchant self-service)
+
+An owner configures the bank credentials from the panel, under `/v1/merchant/providers`, without an
+operator. Spec: `docs/superpowers/specs/2026-10-09-provedores-self-service-design.md`. The admin routes
+(`PUT /v1/admin/merchants/{id}/providers/...`, further down) keep working for operators.
+
+- **Who.** Only an `OWNER` *session*. An API key, whatever its role, gets `403 USER_SESSION_REQUIRED`:
+  a leaked key must not be able to swap the beneficiary account.
+- **Environment** comes from `X-Environment: TEST|LIVE` (missing means `TEST`), never from the body.
+  Each environment has its own credential.
+- **Fields per provider.** The list is closed: a key outside it (`clientSecret`, `client_secret ` with a
+  trailing space) is refused with `422 PROVIDER_CREDENTIALS_INVALID` and `field` set to the key as it
+  was sent, before any parser runs — otherwise a misspelled secret would be stored, and shown, in the
+  clear as a public field.
+
+| Provider | Public fields (returned by `GET` in `fields`) | Secrets (never returned; only `secrets_set`) |
+|---|---|---|
+| `ITAU` (Pix, Bolecode) | `client_id`, `pix_key`, `beneficiary_id`, `wallet_code`, `species_code`, `certificate_pem` | `client_secret`, `x_itau_apikey`, `private_key_pem` |
+| `CIELO` (card) | `merchant_id` | `merchant_key` |
+
+`LIVE` for Itaú requires `certificate_pem`, `private_key_pem` and `x_itau_apikey` (the mTLS production
+shape); `TEST` does not. A `LIVE` `PUT` that leaves one of them out is `422 PROVIDER_CREDENTIALS_INVALID`
+with the missing `field`.
+
+- **Secrets merge on `PUT`.** A secret that is *omitted* keeps the stored value; a secret sent as `""`
+  removes it; any other value replaces it. Public fields are always taken from the request. So the panel
+  edits `pix_key` without pasting the certificate and the private key again. The merge runs over the
+  decrypted payload of the *active* credential, inside the service only, and the result is validated and
+  encrypted again; nothing is kept from an inactive credential. Storing a credential clears `last_test`:
+  the old probe vouched for another secret.
+
+```bash
+curl -s -XPUT localhost:8080/v1/merchant/providers/ITAU/credentials \
+  -H "Authorization: Bearer $SESSION_TOKEN" -H 'X-Environment: TEST' -H 'Content-Type: application/json' \
+  -d '{"payload":{"client_id":"<client_id>","client_secret":"<client_secret>","pix_key":"<pix_key>"}}'
+```
+
+- **`GET /v1/merchant/providers`** answers for the `X-Environment`: `environment`, `inbound_webhook_url`
+  and one entry per provider with `provider`, `methods`, `configured`, `updated_at`, `fingerprint` (the
+  first 8 hex of the credential fingerprint — enough for the panel to say "set on …" and to notice a
+  change, not for comparing outside), `secrets_set` (`{"client_secret": true, ...}`), `fields` (the
+  public values; `{}` with no credential), `last_test` (`{ok, detail, checked_at}` or `null`) and, for
+  Cielo, `notification_key_set`. Never a secret: `fingerprint`, `secrets_set` and `fields` are written
+  at store time, so the `GET` decrypts nothing.
+- **`inbound_webhook_url`** is the URL the merchant registers at the bank (the Itaú webhook, the Cielo
+  notification URL). It carries the merchant's webhook token, which is not a secret.
+- **Test connection.** `POST /v1/merchant/providers/{provider}/test` makes one authentication call to
+  the bank for the `X-Environment` — Itaú: fetch a token, after evicting the cached one so a rotated
+  secret is really tested; Cielo: query a sale that does not exist, where `404` means the credential
+  authenticated. No charge is created and nothing changes at the bank. The result is stored on the
+  credential and comes back as `last_test` on every `GET`. `detail` is one of a fixed set of phrases;
+  the bank's body never reaches it (a token endpoint's error can echo the client id):
+
+| `detail` | Meaning |
+|---|---|
+| `Conectado` | authenticated (`ok: true`) |
+| `Credencial recusada pelo banco` | 401/403, or any other 4xx from the token endpoint (the Itaú STS answers 400 `invalid_client` to a wrong secret) |
+| `Certificado ou chave privada inválidos` | the mTLS material could not be loaded or was not accepted (LIVE) |
+| `Credencial incompleta: <field>` | the stored payload lacks a field the environment needs; fix it with a `PUT` |
+| `O banco não respondeu` | timeout or unavailable — says nothing about the credential; try again |
+| `O banco respondeu de forma inesperada` | 5xx or an answer the probe does not know |
+
+- **`PROVIDER_CREDENTIALS_MISSING` is always 422**, on `/test` as on a payment: one code, one status, so
+  the panel keys on the code.
+- **Cielo notification key**: `PUT /v1/merchant/providers/CIELO/notification-key` with `{"key": "..."}`
+  (see "Cielo notifications" under Card); `ITAU` answers 400.
+- **Audit**: `provider.credentials.set`, `provider.test` (with `ok`) and `provider.notification_key.set`
+  are INFO lines on `gateway.audit.account`, with merchant, provider and environment — never a value.
 
 ## Modules
 
@@ -1505,6 +1575,7 @@ The sandboxes cannot call back into a gateway, so outbound webhooks are proved b
   - 2026-10-04 outbound webhooks — delivery log, redelivery, the documented contract.
   - 2026-10-04 operations and disputes — design only (plan G).
   - 2026-10-04 security and operators — design only (plan H).
+  - 2026-10-09 provider self-service — credentials from the panel, secrets merge, test connection.
 - `docs/superpowers/plans/` — how each spec was built; indexed in `docs/superpowers/README.md`.
 - `docs/superpowers/DECISOES.md` — append-only decisions with the rejected alternative and the cost of being wrong.
 - `docs/providers/itau/NOTES.md`, `docs/providers/cielo/NOTES.md` — provider facts and sandbox limits.
