@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 
 /**
  * The resolution rules, which used to live half here and half in every caller that unwrapped an
@@ -55,6 +56,27 @@ class ProviderGatewayTest {
         .hasMessage("ITAU has no boleto product")
         .extracting(thrown -> ((DomainException) thrown).code())
         .isEqualTo("METHOD_NOT_SUPPORTED");
+  }
+
+  @Test
+  void aBankCallRunsWithTheProviderAndOperationInTheContext() {
+    ProviderGateway gateway =
+        new ProviderGateway(
+            List.of(new PixOnlyProvider()),
+            List.of(),
+            List.of(),
+            oneCredential,
+            requests,
+            new SimpleMeterRegistry());
+    var resolved = gateway.resolvePix(MERCHANT, ProviderEnvironment.TEST, "ITAU");
+
+    String seen =
+        gateway.call(
+            null, "listCharges", resolved, target -> MDC.get("provider") + "/" + MDC.get("op"));
+
+    assertThat(seen).isEqualTo("ITAU/listCharges");
+    assertThat(MDC.get("provider")).isNull();
+    assertThat(MDC.get("op")).isNull();
   }
 
   @Test

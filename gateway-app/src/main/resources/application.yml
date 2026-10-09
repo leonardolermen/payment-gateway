@@ -41,6 +41,8 @@ webhook-delivery:
   workers: 3
 
 gateway:
+  logging:
+    format: ${LOG_FORMAT:json}   # json (production) or pretty (colored text for a dev console
   # Filled by Maven (spring-boot-starter-parent resource filtering) from the POM version: the
   # banner reads it here, so bumping the POM is enough for the banner to follow.
   version: @project.version@
