@@ -17,10 +17,16 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/** The probe only ever asks the STS for a token; every outcome is one of the fixed phrases. */
+/**
+ * The probe only ever asks the STS for a token; every outcome is one of the fixed phrases. Both
+ * environments point at WireMock under their own prefix, so a probe reaching the wrong one shows up
+ * as a request where none is expected rather than a call to the real bank.
+ */
 class ItauCredentialProbeTest {
   private static final String SANDBOX =
       "{\"client_id\":\"c\",\"client_secret\":\"s\",\"pix_key\":\"k\"}";
+  private static final String TEST_TOKEN = "/test/api/oauth/jwt";
+  private static final String LIVE_TOKEN = "/live/as/token.oauth2";
 
   static WireMockServer server;
   ItauCredentialProbe probe;
@@ -39,35 +45,29 @@ class ItauCredentialProbeTest {
   @BeforeEach
   void setUp() {
     server.resetAll();
-    ItauEndpoints test =
-        ItauEndpoints.plain(
-            URI.create(server.baseUrl() + "/v2"), URI.create(server.baseUrl() + "/api/oauth/jwt"));
-    ItauTokenClient tokens =
-        new ItauTokenClient(Clock.systemUTC(), Duration.ofSeconds(1), Duration.ofSeconds(1));
-    probe =
-        new ItauCredentialProbe(
-            tokens, null, ItauEndpoints.forEnvironment(ProviderEnvironment.LIVE), test);
+    probe = new ItauCredentialProbe(tokenClient(), null, liveAtWireMock(), testAtWireMock());
   }
 
   @Test
-  void aTokenMeansConnected() {
+  void aTokenMeansConnectedAndOnlyTheTestStsIsAsked() {
     server.stubFor(
-        post("/api/oauth/jwt").willReturn(okJson("{\"access_token\":\"t\",\"expires_in\":300}")));
+        post(TEST_TOKEN).willReturn(okJson("{\"access_token\":\"t\",\"expires_in\":300}")));
 
     ProbeResult result = probe.probe(test(SANDBOX));
 
     assertThat(result).isEqualTo(new ProbeResult(true, "Conectado"));
-    server.verify(1, postRequestedFor(urlEqualTo("/api/oauth/jwt")));
+    server.verify(1, postRequestedFor(urlEqualTo(TEST_TOKEN)));
     assertThat(server.findAll(anyRequestedFor(anyUrl()))).hasSize(1);
+    assertThat(server.findAll(anyRequestedFor(urlMatching("/live/.*")))).isEmpty();
   }
 
   @Test
   void asksTheBankAgainInsteadOfTrustingTheCachedToken() {
     server.stubFor(
-        post("/api/oauth/jwt").willReturn(okJson("{\"access_token\":\"t\",\"expires_in\":300}")));
+        post(TEST_TOKEN).willReturn(okJson("{\"access_token\":\"t\",\"expires_in\":300}")));
     probe.probe(test(SANDBOX));
     server.resetAll();
-    server.stubFor(post("/api/oauth/jwt").willReturn(status(401)));
+    server.stubFor(post(TEST_TOKEN).willReturn(status(401)));
 
     ProbeResult result = probe.probe(test(SANDBOX));
 
@@ -77,7 +77,7 @@ class ItauCredentialProbeTest {
   @Test
   void aRejectedCredentialNeverCarriesTheBankBody() {
     server.stubFor(
-        post("/api/oauth/jwt")
+        post(TEST_TOKEN)
             .willReturn(status(401).withBody("{\"error\":\"invalid_client secret-echo\"}")));
 
     ProbeResult result = probe.probe(test(SANDBOX));
@@ -87,7 +87,7 @@ class ItauCredentialProbeTest {
 
   @Test
   void aBankErrorIsNoAnswer() {
-    server.stubFor(post("/api/oauth/jwt").willReturn(status(503)));
+    server.stubFor(post(TEST_TOKEN).willReturn(status(503)));
 
     assertThat(probe.probe(test(SANDBOX)))
         .isEqualTo(new ProbeResult(false, "O banco não respondeu"));
@@ -95,7 +95,7 @@ class ItauCredentialProbeTest {
 
   @Test
   void aTimeoutIsNoAnswer() {
-    server.stubFor(post("/api/oauth/jwt").willReturn(ok().withFixedDelay(1500)));
+    server.stubFor(post(TEST_TOKEN).willReturn(ok().withFixedDelay(1500)));
 
     assertThat(probe.probe(test(SANDBOX)))
         .isEqualTo(new ProbeResult(false, "O banco não respondeu"));
@@ -103,7 +103,15 @@ class ItauCredentialProbeTest {
 
   @Test
   void anUnexpectedStatusIsUnexpected() {
-    server.stubFor(post("/api/oauth/jwt").willReturn(status(302)));
+    server.stubFor(post(TEST_TOKEN).willReturn(status(302)));
+
+    assertThat(probe.probe(test(SANDBOX)))
+        .isEqualTo(new ProbeResult(false, "O banco respondeu de forma inesperada"));
+  }
+
+  @Test
+  void aMalformedTokenBodyIsUnexpectedNotAnException() {
+    server.stubFor(post(TEST_TOKEN).willReturn(ok("<html>not the STS</html>")));
 
     assertThat(probe.probe(test(SANDBOX)))
         .isEqualTo(new ProbeResult(false, "O banco respondeu de forma inesperada"));
@@ -112,10 +120,7 @@ class ItauCredentialProbeTest {
   @Test
   void anIncompleteCredentialNamesTheFieldWithoutGoingToTheNetwork() {
     ProbeResult missingSecret = probe.probe(test("{\"client_id\":\"c\",\"pix_key\":\"k\"}"));
-    ProbeResult liveWithoutCertificate =
-        probe.probe(
-            new ProviderCredentials(
-                SANDBOX.getBytes(StandardCharsets.UTF_8), ProviderEnvironment.LIVE));
+    ProbeResult liveWithoutCertificate = probe.probe(live(SANDBOX));
 
     assertThat(missingSecret)
         .isEqualTo(new ProbeResult(false, "Credencial incompleta: client_secret"));
@@ -125,31 +130,38 @@ class ItauCredentialProbeTest {
   }
 
   @Test
-  void aBrokenKeyOnLiveIsAnInvalidCertificate() {
-    ItauEndpoints liveAtWireMock =
-        ItauEndpoints.mutualTls(
-            URI.create(server.baseUrl() + "/v2"), URI.create(server.baseUrl() + "/as/token"));
-    ItauTokenClient tokens =
-        new ItauTokenClient(Clock.systemUTC(), Duration.ofSeconds(1), Duration.ofSeconds(1));
-    ItauCredentialProbe live =
-        new ItauCredentialProbe(
-            tokens, null, liveAtWireMock, ItauEndpoints.forEnvironment(ProviderEnvironment.TEST));
+  void aBrokenKeyOnLiveIsAnInvalidCertificateWithoutGoingToTheNetwork() {
     String payload =
         "{\"client_id\":\"c\",\"client_secret\":\"s\",\"pix_key\":\"k\","
             + "\"x_itau_apikey\":\"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\","
             + "\"certificate_pem\":\"-----BEGIN CERTIFICATE-----\\nAAAA\\n-----END CERTIFICATE-----\","
             + "\"private_key_pem\":\"-----BEGIN PRIVATE KEY-----\\nAAAA\\n-----END PRIVATE KEY-----\"}";
 
-    ProbeResult result =
-        live.probe(
-            new ProviderCredentials(
-                payload.getBytes(StandardCharsets.UTF_8), ProviderEnvironment.LIVE));
+    ProbeResult result = probe.probe(live(payload));
 
     assertThat(result).isEqualTo(new ProbeResult(false, "Certificado ou chave privada inválidos"));
     assertThat(server.findAll(anyRequestedFor(anyUrl()))).isEmpty();
   }
 
+  private static ItauTokenClient tokenClient() {
+    return new ItauTokenClient(Clock.systemUTC(), Duration.ofSeconds(1), Duration.ofSeconds(1));
+  }
+
+  private static ItauEndpoints testAtWireMock() {
+    return ItauEndpoints.plain(
+        URI.create(server.baseUrl() + "/test/v2"), URI.create(server.baseUrl() + TEST_TOKEN));
+  }
+
+  private static ItauEndpoints liveAtWireMock() {
+    return ItauEndpoints.mutualTls(
+        URI.create(server.baseUrl() + "/live/v2"), URI.create(server.baseUrl() + LIVE_TOKEN));
+  }
+
   private static ProviderCredentials test(String json) {
     return new ProviderCredentials(json.getBytes(StandardCharsets.UTF_8), ProviderEnvironment.TEST);
+  }
+
+  private static ProviderCredentials live(String json) {
+    return new ProviderCredentials(json.getBytes(StandardCharsets.UTF_8), ProviderEnvironment.LIVE);
   }
 }

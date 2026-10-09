@@ -57,11 +57,18 @@ public class ProviderCredentialService {
     return repo.save(credential);
   }
 
+  /**
+   * The verdict lands only on the credential it was obtained for: a PUT that replaced the payload
+   * while the probe was out at the bank changes the fingerprint, and the old credential's answer
+   * must not be shown as the new one's. Returns whether the row was written; the caller still owns
+   * the outcome either way.
+   */
   @Transactional
-  public void recordTest(
+  public boolean recordTest(
       MerchantId merchantId,
       Provider provider,
       ApiKeyEnvironment environment,
+      String testedFingerprint,
       ProviderCredential.ProbeOutcome outcome) {
     ProviderCredential credential =
         repo.find(merchantId, provider, environment)
@@ -71,7 +78,12 @@ public class ProviderCredentialService {
                         "PROVIDER_CREDENTIALS_MISSING",
                         "no credential stored for " + provider + " in " + environment));
 
+    if (!credential.active() || !testedFingerprint.equals(credential.fingerprint())) {
+      return false;
+    }
+
     repo.save(credential.withLastTest(outcome));
+    return true;
   }
 
   @Transactional(readOnly = true)

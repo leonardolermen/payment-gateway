@@ -8,6 +8,8 @@ import com.gateway.kernel.provider.ProviderException;
 import com.gateway.providers.ProbePhrases;
 import com.gateway.providers.cielo.CieloHttp;
 import java.net.http.HttpResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * "Test connection" for the Cielo, which has no token endpoint: one GET on the query host for a
@@ -15,6 +17,7 @@ import java.net.http.HttpResponse;
  * credential and 401 refutes it — and a query never creates or changes a sale.
  */
 public final class CieloCredentialProbe implements CredentialProbe {
+  private static final Logger LOG = LoggerFactory.getLogger(CieloCredentialProbe.class);
   private static final String NULL_SALE = "/1/sales/00000000-0000-0000-0000-000000000000";
 
   private final CieloHttp http;
@@ -47,13 +50,28 @@ public final class CieloCredentialProbe implements CredentialProbe {
       response = http.send(parsed, http.request(endpoints.apiQuery(), NULL_SALE).GET());
     } catch (ProviderException e) {
       return ProbePhrases.from(e);
+    } catch (RuntimeException e) {
+      // A verdict, never a 500; the class name says enough and carries nothing of the credential.
+      LOG.warn("cielo credential probe failed unexpectedly: {}", e.getClass().getName());
+      return ProbePhrases.UNEXPECTED;
     }
 
     return switch (response.statusCode()) {
-      case 404 -> ProbePhrases.CONNECTED;
+      case 404 -> isCielosOwn(response) ? ProbePhrases.CONNECTED : ProbePhrases.UNEXPECTED;
       case 401, 403 -> ProbePhrases.REFUSED;
       default -> ProbePhrases.UNEXPECTED;
     };
+  }
+
+  /**
+   * A 404 only proves the credential when it is the Cielo's: an empty body or a JSON one. A proxy
+   * or a wrong base URL answers 404 too, with an HTML page, and that would read as "Conectado" for
+   * a credential nobody checked.
+   */
+  private static boolean isCielosOwn(HttpResponse<String> response) {
+    String body = response.body() == null ? "" : response.body().strip();
+
+    return body.isEmpty() || body.startsWith("{") || body.startsWith("[");
   }
 
   private CieloEndpoints endpointsFor(ProviderEnvironment environment) {

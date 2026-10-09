@@ -65,7 +65,7 @@ class ProviderCredentialTestIntegrationTest {
     assertThatThrownBy(
             () ->
                 credentials.recordTest(
-                    merchant.id(), Provider.CIELO, ApiKeyEnvironment.TEST, outcome))
+                    merchant.id(), Provider.CIELO, ApiKeyEnvironment.TEST, "any", outcome))
         .isInstanceOfSatisfying(
             DomainException.class,
             failure -> assertThat(failure.code()).isEqualTo("PROVIDER_CREDENTIALS_MISSING"));
@@ -81,11 +81,14 @@ class ProviderCredentialTestIntegrationTest {
         "{}".getBytes(StandardCharsets.UTF_8));
     Instant checkedAt = Instant.parse("2026-10-09T12:00:00Z");
 
-    credentials.recordTest(
-        merchant.id(),
-        Provider.ITAU,
-        ApiKeyEnvironment.TEST,
-        new ProviderCredential.ProbeOutcome(true, "authenticated", checkedAt));
+    boolean recorded =
+        credentials.recordTest(
+            merchant.id(),
+            Provider.ITAU,
+            ApiKeyEnvironment.TEST,
+            Sha256.hex("{}".getBytes(StandardCharsets.UTF_8)),
+            new ProviderCredential.ProbeOutcome(true, "authenticated", checkedAt));
+    assertThat(recorded).isTrue();
 
     ProviderCredential.ProbeOutcome outcome =
         credentials
@@ -95,6 +98,32 @@ class ProviderCredentialTestIntegrationTest {
     assertThat(outcome.ok()).isTrue();
     assertThat(outcome.detail()).isEqualTo("authenticated");
     assertThat(outcome.checkedAt()).isEqualTo(checkedAt);
+  }
+
+  @Test
+  void aVerdictForAReplacedCredentialIsNotRecorded() {
+    Merchant merchant = merchants.create("Probe Store E");
+    byte[] before = "{\"v\":1}".getBytes(StandardCharsets.UTF_8);
+    byte[] after = "{\"v\":2}".getBytes(StandardCharsets.UTF_8);
+    credentials.store(merchant.id(), Provider.ITAU, ApiKeyEnvironment.TEST, before);
+    // The probe went out with "before"; a PUT landed "after" while it was at the bank.
+    credentials.store(merchant.id(), Provider.ITAU, ApiKeyEnvironment.TEST, after);
+
+    boolean recorded =
+        credentials.recordTest(
+            merchant.id(),
+            Provider.ITAU,
+            ApiKeyEnvironment.TEST,
+            Sha256.hex(before),
+            new ProviderCredential.ProbeOutcome(true, "authenticated", Instant.now()));
+
+    assertThat(recorded).isFalse();
+    assertThat(
+            credentials
+                .find(merchant.id(), Provider.ITAU, ApiKeyEnvironment.TEST)
+                .orElseThrow()
+                .lastTest())
+        .isNull();
   }
 
   @Test

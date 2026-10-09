@@ -7,6 +7,8 @@ import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.providers.ProbePhrases;
 import java.security.KeyStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * "Test connection" for the Itaú: one token request at the STS and nothing else, so a probe can
@@ -14,6 +16,8 @@ import java.security.KeyStore;
  * not the bank's defaults, so a test points where the payments will go.
  */
 public final class ItauCredentialProbe implements CredentialProbe {
+  private static final Logger LOG = LoggerFactory.getLogger(ItauCredentialProbe.class);
+
   private final ItauTokenClient tokens;
   private final KeyStore trustStore;
   private final ItauEndpoints live;
@@ -41,19 +45,26 @@ public final class ItauCredentialProbe implements CredentialProbe {
       return ProbePhrases.incomplete(e);
     }
 
+    ItauEndpoints endpoints = endpointsFor(credentials.environment());
+    if (endpoints.mutualTls() && !pemMaterialBuilds(parsed)) {
+      return ProbePhrases.INVALID_CERTIFICATE;
+    }
+
     // The token client caches a token per credential for 300 s. A test is the merchant asking the
     // bank now — a cached "yes" from before a secret was rotated at the bank would lie — so the
     // entry goes first. The payments flow rebuilds it on its next call, which is the usual cost.
     tokens.evict(parsed.fingerprint());
 
     try {
-      tokens.tokenFor(parsed, endpointsFor(credentials.environment()), trustStore);
+      tokens.tokenFor(parsed, endpoints, trustStore);
       return ProbePhrases.CONNECTED;
-    } catch (IllegalArgumentException e) {
-      // Shape was checked above, so what is left is the PEM material failing to become a key store.
-      return ProbePhrases.INVALID_CERTIFICATE;
     } catch (ProviderException e) {
       return ProbePhrases.from(e);
+    } catch (RuntimeException e) {
+      // A malformed 200 body, a TLS context that failed past the PEM check: a verdict, never a
+      // 500. The class name is enough to investigate and carries nothing of the credential.
+      LOG.warn("itau credential probe failed unexpectedly: {}", e.getClass().getName());
+      return ProbePhrases.UNEXPECTED;
     }
   }
 
@@ -66,6 +77,20 @@ public final class ItauCredentialProbe implements CredentialProbe {
     }
 
     return parsed;
+  }
+
+  /**
+   * The key store is built here first, on its own, so that an {@code IllegalArgumentException}
+   * means the PEM material and nothing else; the token client builds it again, which is the price
+   * of not reporting an unrelated failure as a certificate problem.
+   */
+  private boolean pemMaterialBuilds(ItauCredentials parsed) {
+    try {
+      PemKeyStores.mutualTls(parsed.certificatePem(), parsed.privateKeyPem().reveal(), trustStore);
+      return true;
+    } catch (IllegalArgumentException e) {
+      return false;
+    }
   }
 
   private ItauEndpoints endpointsFor(ProviderEnvironment environment) {
