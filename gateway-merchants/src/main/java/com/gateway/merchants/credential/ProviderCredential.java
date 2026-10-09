@@ -20,6 +20,7 @@ public record ProviderCredential(
     Encrypted payload,
     String fingerprint,
     Map<String, Boolean> secretsSet,
+    Map<String, String> publicFields,
     ProbeOutcome lastTest,
     boolean active,
     Instant createdAt,
@@ -33,7 +34,8 @@ public record ProviderCredential(
       ApiKeyEnvironment environment,
       Encrypted payload,
       String fingerprint,
-      Map<String, Boolean> secretsSet) {
+      Map<String, Boolean> secretsSet,
+      Map<String, String> publicFields) {
     Instant now = Instant.now();
     return new ProviderCredential(
         Ulid.next(),
@@ -43,6 +45,7 @@ public record ProviderCredential(
         payload,
         fingerprint,
         Map.copyOf(secretsSet),
+        Map.copyOf(publicFields),
         null,
         true,
         now,
@@ -51,7 +54,10 @@ public record ProviderCredential(
 
   /** New secrets invalidate the previous test: it vouched for a different blob. */
   public ProviderCredential withPayload(
-      Encrypted next, String nextFingerprint, Map<String, Boolean> nextSecretsSet) {
+      Encrypted next,
+      String nextFingerprint,
+      Map<String, Boolean> nextSecretsSet,
+      Map<String, String> nextPublicFields) {
     return new ProviderCredential(
         id,
         merchantId,
@@ -60,6 +66,7 @@ public record ProviderCredential(
         next,
         nextFingerprint,
         Map.copyOf(nextSecretsSet),
+        Map.copyOf(nextPublicFields),
         null,
         active,
         createdAt,
@@ -75,6 +82,7 @@ public record ProviderCredential(
         payload,
         fingerprint,
         secretsSet,
+        publicFields,
         outcome,
         active,
         createdAt,
@@ -90,6 +98,7 @@ public record ProviderCredential(
         payload,
         fingerprint,
         secretsSet,
+        publicFields,
         lastTest,
         false,
         createdAt,

@@ -32,13 +32,14 @@ class ErrorHandlerTest {
     assertThat(problem.getProperties()).containsEntry("field", "merchant_key");
   }
 
+  /** The payment and checkout routes document this code as 422; the table must not move it. */
   @Test
-  void missingProviderCredentialsAreNotFound() {
+  void missingProviderCredentialsStayUnprocessable() {
     assertThat(
             handler
                 .domainError(new DomainException("PROVIDER_CREDENTIALS_MISSING", "none stored"))
                 .getStatus())
-        .isEqualTo(404);
+        .isEqualTo(422);
   }
 
   @Test

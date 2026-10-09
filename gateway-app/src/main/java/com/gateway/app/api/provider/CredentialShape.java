@@ -5,6 +5,8 @@ import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.merchants.credential.Provider;
 import com.gateway.providers.cielo.auth.CieloCredentials;
 import com.gateway.providers.itau.auth.ItauCredentials;
+import java.util.Objects;
+import tools.jackson.core.JacksonException;
 
 /**
  * Checks a merged credential with the provider's own parser before it is stored, so a merchant
@@ -22,6 +24,11 @@ final class CredentialShape {
     } catch (IllegalArgumentException e) {
       throw new FieldDomainException(
           "PROVIDER_CREDENTIALS_INVALID", e.getMessage(), fieldOf(e.getMessage()));
+    } catch (JacksonException e) {
+      // A secret sent as {} or []: the parsers' Raw record cannot bind it. Jackson's own message
+      // quotes a slice of the body, so a fixed detail goes out and only the field name travels.
+      throw new FieldDomainException(
+          "PROVIDER_CREDENTIALS_INVALID", "payload has a field of the wrong type", fieldOf(e));
     }
   }
 
@@ -42,5 +49,17 @@ final class CredentialShape {
 
   private static String fieldOf(String message) {
     return message.split("\\s+", 2)[0];
+  }
+
+  private static String fieldOf(JacksonException e) {
+    if (e.getPath() == null) {
+      return null;
+    }
+
+    return e.getPath().stream()
+        .map(JacksonException.Reference::getPropertyName)
+        .filter(Objects::nonNull)
+        .findFirst()
+        .orElse(null);
   }
 }

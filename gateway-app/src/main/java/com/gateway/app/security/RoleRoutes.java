@@ -14,13 +14,10 @@ import java.util.Optional;
  * /v1/merchant} to API keys.
  */
 final class RoleRoutes {
+  private static final String PROVIDER_SETTINGS = "/v1/merchant/providers";
+
   private static final List<String> OWNER_PREFIXES =
-      List.of(
-          "/v1/webhooks/endpoints",
-          "/v1/merchant",
-          "/v1/providers",
-          "/v1/installment-settings",
-          "/v1/invites");
+      List.of("/v1/webhooks/endpoints", "/v1/merchant", "/v1/installment-settings", "/v1/invites");
 
   private RoleRoutes() {}
 
@@ -31,6 +28,11 @@ final class RoleRoutes {
         || ProtectedRoutes.isCheckout(path)
         || ProtectedRoutes.isAuth(path)) {
       return Optional.empty();
+    }
+    // Even to read: the page shows client ids, the Pix key and the certificate — the relationship
+    // with the bank is the owner's, not something finance or a reader needs to see.
+    if (under(path, PROVIDER_SETTINGS)) {
+      return Optional.of(Role.OWNER);
     }
     if (method.equals("GET") || method.equals("HEAD") || method.equals("OPTIONS")) {
       return Optional.of(Role.READONLY);
@@ -50,9 +52,15 @@ final class RoleRoutes {
     return Optional.of(Role.FINANCE);
   }
 
-  /** Routes about a person, which an API key has no person to answer for. */
+  /**
+   * Routes about a person, which an API key has no person to answer for — and the provider
+   * settings, because a leaked key must not be able to swap the bank credentials.
+   */
   static boolean userOnly(String path) {
-    return under(path, "/v1/me") || under(path, "/v1/merchant/users") || under(path, "/v1/invites");
+    return under(path, "/v1/me")
+        || under(path, "/v1/merchant/users")
+        || under(path, "/v1/invites")
+        || under(path, PROVIDER_SETTINGS);
   }
 
   private static boolean under(String path, String prefix) {

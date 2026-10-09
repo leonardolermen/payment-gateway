@@ -8,12 +8,14 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The providers a merchant can configure, with the methods each serves and the fields that are
- * secrets (never shown back, kept when submitted absent). FAKE is not listed: it is a test double,
- * not something a merchant configures.
+ * The providers a merchant can configure, with the methods each serves, the fields that are secrets
+ * (never shown back, kept when submitted absent) and whether the bank authenticates its
+ * notifications with a fixed header the merchant sets (the Cielo offers neither mTLS nor a
+ * signature). FAKE is not listed: it is a test double, not something a merchant configures.
  */
 public final class ProviderCatalog {
-  public record Entry(List<PaymentMethod> methods, Set<String> secretFields) {}
+  public record Entry(
+      List<PaymentMethod> methods, Set<String> secretFields, boolean hasNotificationKey) {}
 
   private static final Map<Provider, Entry> ENTRIES = new EnumMap<>(Provider.class);
 
@@ -22,8 +24,10 @@ public final class ProviderCatalog {
         Provider.ITAU,
         new Entry(
             List.of(PaymentMethod.PIX, PaymentMethod.BOLECODE),
-            Set.of("client_secret", "x_itau_apikey", "private_key_pem")));
-    ENTRIES.put(Provider.CIELO, new Entry(List.of(PaymentMethod.CARD), Set.of("merchant_key")));
+            Set.of("client_secret", "x_itau_apikey", "private_key_pem"),
+            false));
+    ENTRIES.put(
+        Provider.CIELO, new Entry(List.of(PaymentMethod.CARD), Set.of("merchant_key"), true));
   }
 
   private ProviderCatalog() {}

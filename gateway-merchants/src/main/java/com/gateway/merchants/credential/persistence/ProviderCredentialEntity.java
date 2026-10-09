@@ -47,6 +47,10 @@ class ProviderCredentialEntity {
   @Column(name = "secrets_set", nullable = false)
   Map<String, Boolean> secretsSet;
 
+  @JdbcTypeCode(SqlTypes.JSON)
+  @Column(name = "public_fields", nullable = false)
+  Map<String, String> publicFields;
+
   @Column(name = "last_test_ok")
   Boolean lastTestOk;
 

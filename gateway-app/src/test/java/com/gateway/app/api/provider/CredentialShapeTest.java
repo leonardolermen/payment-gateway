@@ -60,6 +60,21 @@ class CredentialShapeTest {
   }
 
   @Test
+  void aSecretOfTheWrongTypeIsAFieldErrorNotAFiveHundred() {
+    String objectSecret =
+        "{\"client_id\":\"id\",\"client_secret\":{\"nested\":true},\"pix_key\":\"k\"}";
+
+    assertThatThrownBy(() -> validate(Provider.ITAU, ProviderEnvironment.TEST, objectSecret))
+        .isInstanceOfSatisfying(
+            FieldDomainException.class,
+            failure -> {
+              assertThat(failure.code()).isEqualTo("PROVIDER_CREDENTIALS_INVALID");
+              assertThat(failure.getMessage()).isEqualTo("payload has a field of the wrong type");
+              assertThat(failure.getMessage()).doesNotContain("nested");
+            });
+  }
+
+  @Test
   void anUnknownProviderIsABadRequest() {
     assertThatThrownBy(() -> validate(Provider.FAKE, ProviderEnvironment.TEST, "{}"))
         .isExactlyInstanceOf(IllegalArgumentException.class)

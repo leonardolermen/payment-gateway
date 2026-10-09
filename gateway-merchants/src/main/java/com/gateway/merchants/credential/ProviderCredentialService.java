@@ -1,5 +1,6 @@
 package com.gateway.merchants.credential;
 
+import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.security.Sha256;
 import com.gateway.merchants.apikey.ApiKeyEnvironment;
@@ -24,7 +25,8 @@ public class ProviderCredentialService {
   @Transactional
   public ProviderCredential store(
       MerchantId merchantId, Provider provider, ApiKeyEnvironment environment, byte[] plaintext) {
-    return store(merchantId, provider, environment, plaintext, Sha256.hex(plaintext), Map.of());
+    return store(
+        merchantId, provider, environment, plaintext, Sha256.hex(plaintext), Map.of(), Map.of());
   }
 
   @Transactional
@@ -34,16 +36,23 @@ public class ProviderCredentialService {
       ApiKeyEnvironment environment,
       byte[] plaintext,
       String fingerprint,
-      Map<String, Boolean> secretsSet) {
+      Map<String, Boolean> secretsSet,
+      Map<String, String> publicFields) {
     Encrypted enc = cipher.encrypt(plaintext, aad(merchantId, provider, environment));
 
     ProviderCredential credential =
         repo.find(merchantId, provider, environment)
-            .map(existing -> existing.withPayload(enc, fingerprint, secretsSet))
+            .map(existing -> existing.withPayload(enc, fingerprint, secretsSet, publicFields))
             .orElseGet(
                 () ->
                     ProviderCredential.create(
-                        merchantId, provider, environment, enc, fingerprint, secretsSet));
+                        merchantId,
+                        provider,
+                        environment,
+                        enc,
+                        fingerprint,
+                        secretsSet,
+                        publicFields));
 
     return repo.save(credential);
   }
@@ -54,8 +63,15 @@ public class ProviderCredentialService {
       Provider provider,
       ApiKeyEnvironment environment,
       ProviderCredential.ProbeOutcome outcome) {
-    repo.find(merchantId, provider, environment)
-        .ifPresent(credential -> repo.save(credential.withLastTest(outcome)));
+    ProviderCredential credential =
+        repo.find(merchantId, provider, environment)
+            .orElseThrow(
+                () ->
+                    new DomainException(
+                        "PROVIDER_CREDENTIALS_MISSING",
+                        "no credential stored for " + provider + " in " + environment));
+
+    repo.save(credential.withLastTest(outcome));
   }
 
   @Transactional(readOnly = true)

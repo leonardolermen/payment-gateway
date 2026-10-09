@@ -31,6 +31,7 @@ public class ProviderCredentialRepositoryImpl implements ProviderCredentialRepos
     entity.dekNonce = credential.payload().dekNonce();
     entity.fingerprint = credential.fingerprint();
     entity.secretsSet = credential.secretsSet();
+    entity.publicFields = credential.publicFields();
     entity.lastTestOk = credential.lastTest() == null ? null : credential.lastTest().ok();
     entity.lastTestDetail = credential.lastTest() == null ? null : credential.lastTest().detail();
     entity.lastTestAt = credential.lastTest() == null ? null : credential.lastTest().checkedAt();
@@ -70,6 +71,7 @@ public class ProviderCredentialRepositoryImpl implements ProviderCredentialRepos
         payload,
         e.fingerprint,
         e.secretsSet,
+        e.publicFields,
         lastTest,
         e.active,
         e.createdAt,

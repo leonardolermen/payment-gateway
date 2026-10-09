@@ -1,7 +1,9 @@
 package com.gateway.merchants.credential;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.security.Sha256;
 import com.gateway.merchants.TestApp;
 import com.gateway.merchants.apikey.ApiKeyEnvironment;
@@ -40,7 +42,8 @@ class ProviderCredentialTestIntegrationTest {
         ApiKeyEnvironment.TEST,
         plaintext,
         fingerprint,
-        Map.of("clientSecret", true, "certificate", false));
+        Map.of("clientSecret", true, "certificate", false),
+        Map.of("client_id", "x"));
 
     ProviderCredential found =
         credentials.find(merchant.id(), Provider.ITAU, ApiKeyEnvironment.TEST).orElseThrow();
@@ -49,7 +52,23 @@ class ProviderCredentialTestIntegrationTest {
     assertThat(found.secretsSet())
         .containsEntry("clientSecret", true)
         .containsEntry("certificate", false);
+    assertThat(found.publicFields()).containsExactly(Map.entry("client_id", "x"));
     assertThat(found.lastTest()).isNull();
+  }
+
+  @Test
+  void recordTestOnAMissingCredentialIsAnError() {
+    Merchant merchant = merchants.create("Probe Store D");
+    ProviderCredential.ProbeOutcome outcome =
+        new ProviderCredential.ProbeOutcome(true, "authenticated", Instant.now());
+
+    assertThatThrownBy(
+            () ->
+                credentials.recordTest(
+                    merchant.id(), Provider.CIELO, ApiKeyEnvironment.TEST, outcome))
+        .isInstanceOfSatisfying(
+            DomainException.class,
+            failure -> assertThat(failure.code()).isEqualTo("PROVIDER_CREDENTIALS_MISSING"));
   }
 
   @Test
@@ -89,6 +108,7 @@ class ProviderCredentialTestIntegrationTest {
         credentials.find(merchant.id(), Provider.ITAU, ApiKeyEnvironment.LIVE).orElseThrow();
     assertThat(found.fingerprint()).isEqualTo(Sha256.hex(plaintext));
     assertThat(found.secretsSet()).isEmpty();
+    assertThat(found.publicFields()).isEmpty();
     assertThat(credentials.decrypt(merchant.id(), Provider.ITAU, ApiKeyEnvironment.LIVE))
         .hasValueSatisfying(bytes -> assertThat(bytes).isEqualTo(plaintext));
   }

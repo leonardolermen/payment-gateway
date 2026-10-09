@@ -60,8 +60,9 @@ public class ErrorHandler {
    * own account on a team route. ORIGIN_NOT_ALLOWED is 403 (AuthOriginFilter writes it; listed here
    * so the table is the one place to read). PROVIDER_CREDENTIALS_INVALID is listed although 422 is
    * the default: the panel form keys on it, so the status is pinned rather than inherited.
-   * PROVIDER_CREDENTIALS_MISSING is 404: nothing stored for that provider and environment. {@code
-   * Map.ofEntries}: {@code Map.of} stops at ten pairs.
+   * PROVIDER_CREDENTIALS_MISSING stays 422: a payment or checkout attempt without a credential is
+   * documented as 422 (README, "Dinheiro não perdoa"), and a code cannot be 404 on one route and
+   * 422 on another. {@code Map.ofEntries}: {@code Map.of} stops at ten pairs.
    */
   private static final Map<String, HttpStatus> STATUS_BY_CODE =
       Map.ofEntries(
@@ -92,8 +93,7 @@ public class ErrorHandler {
           Map.entry("EMAIL_NOT_VERIFIED", HttpStatus.FORBIDDEN),
           Map.entry("OWN_ACCOUNT", HttpStatus.BAD_REQUEST),
           Map.entry("ORIGIN_NOT_ALLOWED", HttpStatus.FORBIDDEN),
-          Map.entry("PROVIDER_CREDENTIALS_INVALID", HttpStatus.UNPROCESSABLE_ENTITY),
-          Map.entry("PROVIDER_CREDENTIALS_MISSING", HttpStatus.NOT_FOUND));
+          Map.entry("PROVIDER_CREDENTIALS_INVALID", HttpStatus.UNPROCESSABLE_ENTITY));
 
   @ExceptionHandler(DomainException.class)
   public ProblemDetail domainError(DomainException e) {

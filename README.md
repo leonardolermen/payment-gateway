@@ -162,6 +162,9 @@ The merchant panel signs people in; API keys (`gk_…`) keep working everywhere,
 | `POST /v1/invites` (`OWNER`) | 202 | 409 `EMAIL_TAKEN`; 403 `EMAIL_NOT_VERIFIED` (the inviter's own e-mail) |
 | `PATCH /v1/merchant/users/{id}` (`OWNER`) | 200 | 404 `NOT_FOUND`; 400 `OWN_ACCOUNT` |
 | `DELETE /v1/merchant/users/{id}` (`OWNER`) | 204 | 404 `NOT_FOUND`; 400 `OWN_ACCOUNT` |
+| `GET /v1/merchant/providers` (`OWNER`) | 200 state per provider for the `X-Environment`: `configured`, `fingerprint` (8 hex), `secrets_set`, public `fields`, `last_test`, `notification_key_set`, plus `inbound_webhook_url` — never a secret | |
+| `PUT /v1/merchant/providers/{ITAU\|CIELO}/credentials` (`OWNER`) | 204; an omitted secret keeps the stored value, `""` removes it | 422 `PROVIDER_CREDENTIALS_INVALID` with `field`; 400 unknown provider |
+| `PUT /v1/merchant/providers/CIELO/notification-key` (`OWNER`) | 204 | 400 blank or over 1500 characters |
 
 Any route that hashes a password (signup, login, reset, invite accept, password change) can answer
 `503 AUTH_BUSY` when `gateway.auth.max-concurrent-hashes` are already running; retry in a moment.
@@ -169,7 +172,8 @@ Any route that hashes a password (signup, login, reset, invite accept, password 
 `/v1/auth/*` is rate limited per client IP (`gateway.auth.rate-limit-per-minute`, default 10; an IPv6
 client is counted by its /64). With `GATEWAY_CORS_ORIGINS` set, a request to `/v1/auth/*` whose `Origin`
 is not in the list is refused with `403 ORIGIN_NOT_ALLOWED`; no `Origin` (curl, a server) passes. The `/v1/me`,
-`/v1/merchant/users` and `/v1/invites` routes need a user session: an API key has no person behind it.
+`/v1/merchant/users`, `/v1/invites` and `/v1/merchant/providers` routes need a user session: an API key has no
+person behind it, and a leaked key must not be able to swap the bank credentials.
 
 ## Modules
 
