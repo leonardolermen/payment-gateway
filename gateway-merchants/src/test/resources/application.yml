@@ -1,4 +1,6 @@
 spring:
+  profiles:
+    active: test   # MailProperties fails startup outside local/test without SMTP
   jpa:
     hibernate:
       ddl-auto: validate

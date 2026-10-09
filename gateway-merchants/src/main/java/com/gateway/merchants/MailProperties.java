@@ -19,6 +19,24 @@ public record MailProperties(
     return host != null && !host.isBlank();
   }
 
+  /**
+   * Called outside the local and test profiles. A production box with no SMTP would log the reset
+   * and invite links nobody reads, and a localhost panel URL would e-mail links to the user's own
+   * machine: both look like a working signup until the first person waits for an e-mail.
+   */
+  public void requireProductionReady() {
+    if (!isConfigured()) {
+      throw new IllegalStateException(
+          "gateway.mail.host is empty: set GATEWAY_MAIL_HOST (or run with the local profile)");
+    }
+
+    if (panelBaseUrl.isBlank() || panelBaseUrl.startsWith("http://localhost")) {
+      throw new IllegalStateException(
+          "gateway.mail.panel-base-url points at localhost: set GATEWAY_PANEL_BASE_URL to the"
+              + " panel's public URL (or run with the local profile)");
+    }
+  }
+
   public boolean hasCredentials() {
     return username != null && !username.isBlank();
   }

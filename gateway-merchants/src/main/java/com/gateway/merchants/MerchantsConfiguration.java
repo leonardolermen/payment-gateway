@@ -33,6 +33,7 @@ import com.gateway.merchants.usertoken.UserTokenService;
 import com.gateway.merchants.usertoken.persistence.UserTokenRepository;
 import com.gateway.merchants.usertoken.persistence.UserTokenRepositoryImpl;
 import java.time.Clock;
+import java.util.Properties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -90,6 +91,9 @@ import org.springframework.mail.javamail.JavaMailSenderImpl;
 })
 public class MerchantsConfiguration {
   private static final Logger log = LoggerFactory.getLogger(MerchantsConfiguration.class);
+  // JavaMail's defaults are infinite: a relay that accepts the connection and then hangs would
+  // stall the e-mail jobs batch forever. Ten seconds is generous for one SMTP exchange.
+  private static final String SMTP_TIMEOUT_MILLIS = "10000";
 
   @Bean
   public MasterKey masterKey(MerchantsProperties p) {
@@ -159,28 +163,52 @@ public class MerchantsConfiguration {
 
   /**
    * No host = the logging gateway, so a dev box needs no SMTP; links reach the log only in local
-   * and test, where they are how a developer clicks through. STARTTLS and auth only when a username
-   * is set: a local relay (GreenMail, MailHog) offers neither.
+   * and test, where they are how a developer clicks through. Any other profile refuses to start
+   * without a host and a public panel URL ({@link MailProperties#requireProductionReady}).
    */
   @Bean
   public MailGateway mailGateway(MailProperties mail, Environment env) {
+    boolean isDevelopment = env.acceptsProfiles(Profiles.of("local", "test"));
+    if (!isDevelopment) {
+      mail.requireProductionReady();
+    }
+
     if (!mail.isConfigured()) {
       log.warn("e-mail is off: GATEWAY_MAIL_HOST is empty");
-      boolean revealLinks = env.acceptsProfiles(Profiles.of("local", "test"));
-      return new LoggingMailGateway(revealLinks);
+      return new LoggingMailGateway(isDevelopment);
     }
 
     JavaMailSenderImpl sender = new JavaMailSenderImpl();
     sender.setHost(mail.host());
     sender.setPort(mail.port());
+    sender.setJavaMailProperties(smtpProperties(mail));
 
     if (mail.hasCredentials()) {
       sender.setUsername(mail.username());
       sender.setPassword(mail.password());
-      sender.getJavaMailProperties().put("mail.smtp.auth", "true");
-      sender.getJavaMailProperties().put("mail.smtp.starttls.enable", "true");
     }
 
     return new SmtpMailGateway(sender, mail.from());
+  }
+
+  /**
+   * STARTTLS and auth only when a username is set: a local relay (GreenMail, MailHog) offers
+   * neither. With credentials STARTTLS is required, not just enabled: "enable" silently falls back
+   * to plaintext when the server (or a man in the middle) does not offer it, sending the password
+   * in the clear.
+   */
+  static Properties smtpProperties(MailProperties mail) {
+    Properties properties = new Properties();
+    properties.put("mail.smtp.connectiontimeout", SMTP_TIMEOUT_MILLIS);
+    properties.put("mail.smtp.timeout", SMTP_TIMEOUT_MILLIS);
+    properties.put("mail.smtp.writetimeout", SMTP_TIMEOUT_MILLIS);
+
+    if (mail.hasCredentials()) {
+      properties.put("mail.smtp.auth", "true");
+      properties.put("mail.smtp.starttls.enable", "true");
+      properties.put("mail.smtp.starttls.required", "true");
+    }
+
+    return properties;
   }
 }
