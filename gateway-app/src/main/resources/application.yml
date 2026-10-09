@@ -31,6 +31,11 @@ spring:
     enabled: true
     # One schema per module; Flyway creates the listed schemas. Versions are prefixed per module
     # (1xx merchants, 2xx payments, 3xx billing) because a single history table needs unique versions.
+    # out-of-order: with that prefixing, a new merchants migration (V103) is "older" than every
+    # applied billing one (V3xx), and Flyway refuses it on any existing database — CI never sees
+    # this because its databases are fresh. The schemas are independent, so cross-module order is
+    # meaningless; each module's own sequence is what must stay monotonic (DECISOES 2026-10-09).
+    out-of-order: true
     schemas: merchants,payments,billing
     locations: classpath:db/migration/merchants,classpath:db/migration/payments,classpath:db/migration/billing
 

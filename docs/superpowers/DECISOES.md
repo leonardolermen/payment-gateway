@@ -807,3 +807,13 @@ de host SMTP e URL do painel roda só com `prod` ativo; produção sobe com `SPR
 perfil, ou em `local`/`test`, fica o gateway de log com o WARN; o link só aparece no log em `local`/`test`.
 Rejeitado: exigir `local` no dev (quebra o comando documentado). Custo se errado: um deploy sem `prod` volta
 a subir sem e-mail, só com o WARN.
+
+## 2026-10-09 — Flyway com `out-of-order` por causa do prefixo por módulo
+As versões são prefixadas por módulo (1xx merchants, 2xx payments, 3xx billing) numa única tabela de
+histórico, então toda migração nova de merchants (V103) é "mais antiga" que as de billing já aplicadas
+e o Flyway a recusa em qualquer banco existente — o CI nunca viu isso porque seus bancos nascem vazios.
+`spring.flyway.out-of-order: true` resolve: os schemas são independentes e a ordem entre módulos não
+significa nada; o que precisa ser monotônico é a sequência de cada módulo. Rejeitado: renumerar V103
+como V310 — quebra a convenção e a próxima migração de merchants tropeça de novo; uma tabela de
+histórico por módulo — o Flyway do Spring Boot configura uma só. Custo se errado: uma migração fora de
+ordem dentro do mesmo módulo também passaria; a revisão de PR é o que a pega.
