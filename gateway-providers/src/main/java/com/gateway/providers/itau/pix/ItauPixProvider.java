@@ -106,8 +106,7 @@ public class ItauPixProvider implements PixMethodProvider {
     try {
       return creds(providerCredentials);
     } catch (IllegalArgumentException e) {
-      String field =
-          e.getMessage() == null ? null : e.getMessage().replace("missing required field: ", "");
+      String field = e.getMessage() == null ? null : e.getMessage().split("\s+", 2)[0];
       throw new ProviderException(
           ProviderException.Code.CREDENTIALS_INCOMPLETE, 0, field, e.getMessage());
     }

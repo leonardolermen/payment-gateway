@@ -35,10 +35,12 @@ public record ItauCredentials(
   static final String DEFAULT_WALLET = "109";
   static final String DEFAULT_SPECIES = "01";
 
+  // Every message starts with the field name as the client sends it: the merchant API and the
+  // provider's CREDENTIALS_INCOMPLETE take the first token as the field. The value is never echoed.
   public ItauCredentials {
     requireNonBlank(clientId, "client_id");
     if (clientSecret == null) {
-      throw new IllegalArgumentException("missing required field: client_secret");
+      throw new IllegalArgumentException("client_secret is required");
     }
     requireNonBlank(pixKey, "pix_key");
     if (apiKey != null && !API_KEY.matcher(apiKey).matches()) {
@@ -51,8 +53,8 @@ public record ItauCredentials(
     if (hasCert != hasKey) {
       throw new IllegalArgumentException(
           hasCert
-              ? "certificate_pem present without private_key_pem"
-              : "private_key_pem present without certificate_pem");
+              ? "private_key_pem is required: certificate_pem present without private_key_pem"
+              : "certificate_pem is required: private_key_pem present without certificate_pem");
     }
     if (beneficiaryId != null && !BENEFICIARY.matcher(beneficiaryId).matches()) {
       throw new IllegalArgumentException(
@@ -74,7 +76,7 @@ public record ItauCredentials(
 
   private static void requireNonBlank(String value, String field) {
     if (value == null || value.isBlank()) {
-      throw new IllegalArgumentException("missing required field: " + field);
+      throw new IllegalArgumentException(field + " is required");
     }
   }
 
@@ -92,10 +94,10 @@ public record ItauCredentials(
   public void requireProductionShape() {
     if (!hasCertificate()) {
       throw new IllegalArgumentException(
-          "production credential missing certificate_pem/private_key_pem");
+          "certificate_pem is required in production (with private_key_pem)");
     }
     if (apiKey == null) {
-      throw new IllegalArgumentException("production credential missing x_itau_apikey");
+      throw new IllegalArgumentException("x_itau_apikey is required in production");
     }
   }
 
@@ -148,13 +150,13 @@ public record ItauCredentials(
     String fingerprint = Sha256.hex(json);
     Raw raw = new ObjectMapper().readValue(json, Raw.class);
     if (raw.clientId == null || raw.clientId.isBlank()) {
-      throw new IllegalArgumentException("missing required field: client_id");
+      throw new IllegalArgumentException("client_id is required");
     }
     if (raw.clientSecret == null || raw.clientSecret.isBlank()) {
-      throw new IllegalArgumentException("missing required field: client_secret");
+      throw new IllegalArgumentException("client_secret is required");
     }
     if (raw.pixKey == null || raw.pixKey.isBlank()) {
-      throw new IllegalArgumentException("missing required field: pix_key");
+      throw new IllegalArgumentException("pix_key is required");
     }
     return new ItauCredentials(
         raw.clientId,
