@@ -163,19 +163,20 @@ public class MerchantsConfiguration {
 
   /**
    * No host = the logging gateway, so a dev box needs no SMTP; links reach the log only in local
-   * and test, where they are how a developer clicks through. Any other profile refuses to start
-   * without a host and a public panel URL ({@link MailProperties#requireProductionReady}).
+   * and test, where they are how a developer clicks through. The prod profile refuses to start
+   * without a host and a public panel URL ({@link MailProperties#requireProductionReady}); a run
+   * with no profile is a dev box and keeps the WARN.
    */
   @Bean
   public MailGateway mailGateway(MailProperties mail, Environment env) {
-    boolean isDevelopment = env.acceptsProfiles(Profiles.of("local", "test"));
-    if (!isDevelopment) {
+    if (env.acceptsProfiles(Profiles.of("prod"))) {
       mail.requireProductionReady();
     }
 
     if (!mail.isConfigured()) {
       log.warn("e-mail is off: GATEWAY_MAIL_HOST is empty");
-      return new LoggingMailGateway(isDevelopment);
+      boolean revealLinks = env.acceptsProfiles(Profiles.of("local", "test"));
+      return new LoggingMailGateway(revealLinks);
     }
 
     JavaMailSenderImpl sender = new JavaMailSenderImpl();

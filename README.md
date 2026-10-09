@@ -22,12 +22,11 @@ GATEWAY_ADMIN_KEY=dev-admin
 GATEWAY_API_KEY_PEPPER=dev-pepper
 GATEWAY_MASTER_KEY=<output of: openssl rand -base64 32>
 WEBHOOK_MTLS_PORT=0
-spring.profiles.active=local
 ```
 
-Outside the `local` and `test` profiles the app refuses to start with `GATEWAY_MAIL_HOST` empty or
-`GATEWAY_PANEL_BASE_URL` blank or on `http://localhost`: a production box would otherwise log the
-reset and invite links nobody reads. Hence `local` in the minimum above.
+Production deployments run with `SPRING_PROFILES_ACTIVE=prod`. Under `prod` the app refuses to start
+with `GATEWAY_MAIL_HOST` empty or `GATEWAY_PANEL_BASE_URL` blank or on `http://localhost`: it would
+otherwise log the reset and invite links nobody reads. A dev run needs no profile.
 
 Without `GATEWAY_MASTER_KEY` the app does not start (the master key encrypts merchant credentials).
 Keep the same key across runs: a new one cannot decrypt the credentials saved under the previous one.
@@ -127,8 +126,8 @@ The merchant panel signs people in; API keys (`gk_…`) keep working everywhere,
 | `OWNER` | everything: webhook endpoints, `/v1/merchant`, providers, installment settings, the team and invites, deleting customers |
 
 - **E-mail** goes out through SMTP as a `SEND_EMAIL` job. With `GATEWAY_MAIL_HOST` empty the message is
-  logged instead (the link too, so only use that in dev; outside the `local` and `test` profiles an empty
-  host fails startup). STARTTLS (required, not just offered) and authentication are on only when
+  logged instead (the link too, so only use that in dev; under the `prod` profile an empty host fails
+  startup). STARTTLS (required, not just offered) and authentication are on only when
   `GATEWAY_MAIL_USERNAME` is set. Connect, read and write time out after 10 s. Links (verify, reset,
   invite) start at `GATEWAY_PANEL_BASE_URL`.
 - **Invites** need a verified e-mail: an owner who has not used the verification link gets
@@ -142,7 +141,7 @@ The merchant panel signs people in; API keys (`gk_…`) keep working everywhere,
 | `GATEWAY_MAIL_HOST` / `GATEWAY_MAIL_PORT` | empty / `587` | SMTP relay |
 | `GATEWAY_MAIL_USERNAME` / `GATEWAY_MAIL_PASSWORD` | empty | set to turn on STARTTLS and auth |
 | `GATEWAY_MAIL_FROM` | `no-reply@localhost` | sender address |
-| `GATEWAY_PANEL_BASE_URL` | `http://localhost:5173` | where the panel is served (must not be localhost outside `local`/`test`) |
+| `GATEWAY_PANEL_BASE_URL` | `http://localhost:5173` | where the panel is served (must not be localhost under `prod`) |
 | `GATEWAY_AUTH_MAX_CONCURRENT_HASHES` (`gateway.auth.max-concurrent-hashes`) | `8` | Argon2 hashes running at once (64 MB each); past it, `503 AUTH_BUSY` |
 
 | Route | Success | Errors |

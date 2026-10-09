@@ -800,3 +800,10 @@ WARN continuam em `local`/`test`. Hoje dev e produção sobem sem perfil, então
 (`.env.example`, README). Rejeitado: só o WARN (produção "funciona" e ninguém recebe e-mail) e checar só com
 um perfil `prod` (quem esquecer o perfil volta ao problema). Custo se errado: quem roda sem perfil precisa
 acrescentar uma linha no `.env`.
+
+## 2026-10-08 — A checagem de e-mail de produção depende do perfil `prod` (substitui "Fora de `local`/`test`, e-mail sem SMTP não sobe")
+O projeto nunca usou perfis e o dev roda sem nenhum (`./mvnw -pl gateway-app spring-boot:run`). A checagem
+de host SMTP e URL do painel roda só com `prod` ativo; produção sobe com `SPRING_PROFILES_ACTIVE=prod`. Sem
+perfil, ou em `local`/`test`, fica o gateway de log com o WARN; o link só aparece no log em `local`/`test`.
+Rejeitado: exigir `local` no dev (quebra o comando documentado). Custo se errado: um deploy sem `prod` volta
+a subir sem e-mail, só com o WARN.
