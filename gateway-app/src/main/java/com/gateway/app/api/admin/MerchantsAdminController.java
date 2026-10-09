@@ -106,8 +106,11 @@ public class MerchantsAdminController {
       @PathVariable Provider provider,
       @RequestBody ProviderCredentialRequest request) {
     byte[] payload = objectMapper.writeValueAsBytes(request.payload());
+    // FAKE is not in the merchant catalog but the operator may still seed it: no summary then.
     CredentialSummary summary =
-        CredentialSummary.of(payload, ProviderCatalog.of(provider).secretFields());
+        ProviderCatalog.find(provider)
+            .map(entry -> CredentialSummary.of(payload, entry))
+            .orElseGet(CredentialSummary::none);
 
     credentials.store(
         new MerchantId(id),

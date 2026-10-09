@@ -75,7 +75,7 @@ public class MerchantProviderService {
             entry.secretFields());
     CredentialShape.validate(provider, toProviderEnvironment(environment), merged);
 
-    CredentialSummary summary = CredentialSummary.of(merged, entry.secretFields());
+    CredentialSummary summary = CredentialSummary.of(merged, entry);
     credentials.store(
         merchantId,
         provider,

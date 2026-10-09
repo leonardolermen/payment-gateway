@@ -75,6 +75,27 @@ class CredentialShapeTest {
   }
 
   @Test
+  void aKeyOutsideTheProvidersFieldsIsRefusedBeforeTheParserRuns() {
+    String misspelled =
+        "{\"client_id\":\"id\",\"clientSecret\":\"s\",\"client_secret\":\"s\",\"pix_key\":\"k\"}";
+    String trailingSpace =
+        "{\"merchant_id\":\"11111111-2222-3333-4444-555555555555\",\"merchant_key \":\"x\"}";
+
+    assertThatThrownBy(() -> validate(Provider.ITAU, ProviderEnvironment.TEST, misspelled))
+        .isInstanceOfSatisfying(
+            FieldDomainException.class,
+            failure -> {
+              assertThat(failure.code()).isEqualTo("PROVIDER_CREDENTIALS_INVALID");
+              assertThat(failure.field()).isEqualTo("clientSecret");
+              assertThat(failure.getMessage()).isEqualTo("clientSecret is not a field of ITAU");
+            });
+    assertThatThrownBy(() -> validate(Provider.CIELO, ProviderEnvironment.TEST, trailingSpace))
+        .isInstanceOfSatisfying(
+            FieldDomainException.class,
+            failure -> assertThat(failure.field()).isEqualTo("merchant_key "));
+  }
+
+  @Test
   void anUnknownProviderIsABadRequest() {
     assertThatThrownBy(() -> validate(Provider.FAKE, ProviderEnvironment.TEST, "{}"))
         .isExactlyInstanceOf(IllegalArgumentException.class)

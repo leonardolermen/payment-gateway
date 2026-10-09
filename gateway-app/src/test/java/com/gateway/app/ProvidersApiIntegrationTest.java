@@ -183,6 +183,26 @@ class ProvidersApiIntegrationTest {
   }
 
   @Test
+  void aMisspelledSecretKeyIsRefusedAndNothingIsStored() {
+    Logged owner = user(Role.OWNER);
+    Map<String, Object> misspelled = new HashMap<>(itauSandbox());
+    misspelled.remove("client_secret");
+    misspelled.put("clientSecret", "would-leak-in-the-clear");
+
+    EntityExchangeResult<String> refused =
+        put(owner.access(), ITAU_CREDENTIALS, null, Map.of("payload", misspelled));
+
+    assertThat(refused.getStatus().value()).isEqualTo(422);
+    assertThat(refused.getResponseBody())
+        .contains("urn:gateway:PROVIDER_CREDENTIALS_INVALID")
+        .contains("\"field\":\"clientSecret\"")
+        .doesNotContain("would-leak");
+    Map itau = providerIn(get(owner.access(), null), "ITAU");
+    assertThat(itau.get("configured")).isEqualTo(false);
+    assertThat((Map) itau.get("fields")).isEmpty();
+  }
+
+  @Test
   void theGetNeverEchoesASecretAndNeitherDoesTheAudit() {
     Logged owner = user(Role.OWNER);
     Map<String, Object> full = new HashMap<>(itauSandbox());

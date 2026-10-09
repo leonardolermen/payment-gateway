@@ -24,7 +24,7 @@ morto `/v1/providers` sai de `OWNER_PREFIXES`.
 
 | rota | corpo | resposta |
 |---|---|---|
-| `GET /v1/merchant/providers` | — | `{environment, inbound_webhook_url, providers:[{provider: "ITAU"\|"CIELO", methods: ["PIX","BOLECODE"]\|["CARD"], configured, updated_at, fingerprint, secrets_set: {client_secret: bool, …}, last_test: {ok, detail, checked_at}\|null, notification_key_set: bool\|null}]}` |
+| `GET /v1/merchant/providers` | — | `{environment, inbound_webhook_url, providers:[{provider: "ITAU"\|"CIELO", methods: ["PIX","BOLECODE"]\|["CARD"], configured, updated_at, fingerprint, secrets_set: {client_secret: bool, …}, fields: {client_id: "…", pix_key: "…", …} (só os campos públicos; `{}` sem credencial), last_test: {ok, detail, checked_at}\|null, notification_key_set: bool\|null}]}` |
 | `PUT /v1/merchant/providers/{provider}/credentials` | `{payload: {…}}` | `204`; `422 PROVIDER_CREDENTIALS_INVALID` com `field` (nome como o cliente enviou, ex. `private_key_pem`); `400` provider desconhecido |
 | `POST /v1/merchant/providers/{provider}/test` | — | `200 {ok, detail, checked_at}`; `404 PROVIDER_CREDENTIALS_MISSING` sem credencial no ambiente |
 | `PUT /v1/merchant/providers/cielo/notification-key` | `{key}` | `204`; `400` vazio ou > 1500 |
@@ -43,6 +43,10 @@ Campos marcados * são **segredos**: nunca voltam no `GET` (só `secrets_set`), 
 **omitidos** para manter o valor já guardado — o serviço faz merge sobre o payload decifrado da
 credencial existente antes de validar e cifrar. Enviar `""` apaga. Assim a tela edita a chave Pix sem
 obrigar a colar o certificado de novo.
+
+A lista de campos de cada provedor é fechada: uma chave fora dela (`clientSecret`, `client_secret ` com
+espaço) é recusada com `422 PROVIDER_CREDENTIALS_INVALID` e `field` = a chave como veio, antes do parser
+— senão um segredo digitado errado passaria como campo público e ficaria guardado (e exibido) em claro.
 
 ## 3. Testar conexão
 Port novo no kernel: `interface CredentialProbe { String providerId(); ProbeResult probe(ProviderCredentials) }`
