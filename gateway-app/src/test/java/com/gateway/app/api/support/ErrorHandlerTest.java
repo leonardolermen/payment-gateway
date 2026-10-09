@@ -6,6 +6,7 @@ import com.barrier.webhookdelivery.domain.DeliveryStatus;
 import com.gateway.billing.customer.CustomerExistsException;
 import com.gateway.billing.order.OrderHasActivePaymentException;
 import com.gateway.kernel.errors.DomainException;
+import com.gateway.kernel.errors.FieldDomainException;
 import com.gateway.payments.payment.card.CardDeclinedException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ProblemDetail;
@@ -18,6 +19,28 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
  */
 class ErrorHandlerTest {
   private final ErrorHandler handler = new ErrorHandler();
+
+  @Test
+  void aFieldErrorNamesTheField() {
+    ProblemDetail problem =
+        handler.fieldError(
+            new FieldDomainException(
+                "PROVIDER_CREDENTIALS_INVALID", "merchant_key is required", "merchant_key"));
+
+    assertThat(problem.getStatus()).isEqualTo(422);
+    assertThat(problem.getType()).hasToString("urn:gateway:PROVIDER_CREDENTIALS_INVALID");
+    assertThat(problem.getProperties()).containsEntry("field", "merchant_key");
+  }
+
+  /** The payment and checkout routes document this code as 422; the table must not move it. */
+  @Test
+  void missingProviderCredentialsStayUnprocessable() {
+    assertThat(
+            handler
+                .domainError(new DomainException("PROVIDER_CREDENTIALS_MISSING", "none stored"))
+                .getStatus())
+        .isEqualTo(422);
+  }
 
   @Test
   void alreadyPaidIsAConflict() {

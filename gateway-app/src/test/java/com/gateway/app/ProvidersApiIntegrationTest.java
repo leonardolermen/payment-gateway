@@ -1,0 +1,583 @@
+package com.gateway.app;
+
+import static com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
+import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.status;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import com.gateway.merchants.apikey.ApiKeyEnvironment;
+import com.gateway.merchants.apikey.ApiKeyService;
+import com.gateway.merchants.credential.Provider;
+import com.gateway.merchants.credential.ProviderCredentialService;
+import com.gateway.merchants.merchant.Merchant;
+import com.gateway.merchants.merchant.MerchantService;
+import com.gateway.merchants.session.SessionService;
+import com.gateway.merchants.user.EmailAddress;
+import com.gateway.merchants.user.Role;
+import com.gateway.merchants.user.User;
+import com.gateway.merchants.user.UserService;
+import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.client.WireMock;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.client.EntityExchangeResult;
+import org.springframework.test.web.servlet.client.RestTestClient;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+/**
+ * The owner's own provider configuration: credentials in, state (never a secret) out, the Cielo
+ * notification key, and the gates — owner only, session only, environment from the header.
+ */
+@SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = "gateway.rate-limit.requests-per-minute=1000")
+@ActiveProfiles("test")
+@Testcontainers
+@SuppressWarnings({"rawtypes", "unchecked"})
+class ProvidersApiIntegrationTest {
+  @Container @ServiceConnection
+  static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17-alpine");
+
+  private static final String PROVIDERS = "/v1/merchant/providers";
+  private static final String ITAU_CREDENTIALS = PROVIDERS + "/ITAU/credentials";
+  private static final String ITAU_TEST = PROVIDERS + "/ITAU/test";
+  private static final String CIELO_CREDENTIALS = PROVIDERS + "/CIELO/credentials";
+  private static final String CIELO_TEST = PROVIDERS + "/CIELO/test";
+  private static final String NOTIFICATION_KEY = PROVIDERS + "/CIELO/notification-key";
+  private static final String ITAU_TOKEN = "/api/oauth/jwt";
+  private static final String CIELO_NULL_SALE =
+      "/query/1/sales/00000000-0000-0000-0000-000000000000";
+  private static final String A_TOKEN = "{\"access_token\":\"tok\",\"expires_in\":300}";
+
+  static final WireMockServer ITAU = new WireMockServer(options().dynamicPort());
+  static final WireMockServer CIELO = new WireMockServer(options().dynamicPort());
+
+  static {
+    ITAU.start();
+    CIELO.start();
+  }
+
+  @DynamicPropertySource
+  static void providers(DynamicPropertyRegistry registry) {
+    registry.add("gateway.providers.itau.test-api-base", () -> ITAU.baseUrl() + "/pix");
+    registry.add("gateway.providers.itau.test-token-url", () -> ITAU.baseUrl() + ITAU_TOKEN);
+    registry.add("gateway.providers.itau.test-mutual-tls", () -> "false");
+    registry.add("gateway.providers.cielo.test-api-base", () -> CIELO.baseUrl() + "/api");
+    registry.add("gateway.providers.cielo.test-query-api-base", () -> CIELO.baseUrl() + "/query");
+  }
+
+  @LocalServerPort int port;
+
+  @Autowired MerchantService merchants;
+  @Autowired UserService users;
+  @Autowired SessionService sessions;
+  @Autowired ApiKeyService apiKeys;
+  @Autowired ProviderCredentialService credentials;
+
+  record Logged(String access, User user, Merchant store) {}
+
+  @AfterAll
+  static void stopBanks() {
+    ITAU.stop();
+    CIELO.stop();
+  }
+
+  @BeforeEach
+  void resetBanks() {
+    ITAU.resetAll();
+    CIELO.resetAll();
+  }
+
+  @Test
+  void anItauTokenMeansConnectedAndTheGetRemembersIt() {
+    Logged owner = user(Role.OWNER);
+    put(owner.access(), ITAU_CREDENTIALS, null, Map.of("payload", itauSandbox()));
+    ITAU.stubFor(post(ITAU_TOKEN).willReturn(okJson(A_TOKEN)));
+
+    EntityExchangeResult<String> tested = exchange(owner.access(), "POST", ITAU_TEST, null, null);
+
+    assertThat(tested.getStatus().value()).isEqualTo(200);
+    assertThat(tested.getResponseBody())
+        .contains("\"ok\":true")
+        .contains("\"detail\":\"Conectado\"")
+        .contains("\"checked_at\":");
+    Map lastTest = (Map) providerIn(get(owner.access(), null), "ITAU").get("last_test");
+    assertThat(lastTest).containsEntry("ok", true).containsEntry("detail", "Conectado");
+    assertThat(lastTest.get("checked_at")).isNotNull();
+    // Only the token: a probe never issues anything.
+    ITAU.verify(1, postRequestedFor(urlEqualTo(ITAU_TOKEN)));
+    assertThat(ITAU.findAll(anyRequestedFor(anyUrl()))).hasSize(1);
+  }
+
+  @Test
+  void anItauRejectionIsTheFixedPhraseNotTheBankBody() {
+    Logged owner = user(Role.OWNER);
+    put(owner.access(), ITAU_CREDENTIALS, null, Map.of("payload", itauSandbox()));
+    ITAU.stubFor(
+        post(ITAU_TOKEN).willReturn(status(401).withBody("{\"error\":\"invalid_client sbx-id\"}")));
+
+    EntityExchangeResult<String> tested = exchange(owner.access(), "POST", ITAU_TEST, null, null);
+
+    assertThat(tested.getStatus().value()).isEqualTo(200);
+    assertThat(tested.getResponseBody())
+        .contains("\"ok\":false")
+        .contains("\"detail\":\"Credencial recusada pelo banco\"")
+        .doesNotContain("invalid_client");
+    Map lastTest = (Map) providerIn(get(owner.access(), null), "ITAU").get("last_test");
+    assertThat(lastTest)
+        .containsEntry("ok", false)
+        .containsEntry("detail", "Credencial recusada pelo banco");
+  }
+
+  @Test
+  void aCieloNotFoundMeansAuthenticatedAndAnUnauthorizedIsRefused() {
+    Logged owner = user(Role.OWNER);
+    put(owner.access(), CIELO_CREDENTIALS, null, Map.of("payload", cieloSandbox()));
+
+    CIELO.stubFor(WireMock.get(CIELO_NULL_SALE).willReturn(status(404)));
+    EntityExchangeResult<String> authenticated =
+        exchange(owner.access(), "POST", CIELO_TEST, null, null);
+    assertThat(authenticated.getStatus().value()).isEqualTo(200);
+    assertThat(authenticated.getResponseBody())
+        .contains("\"ok\":true")
+        .contains("\"detail\":\"Conectado\"");
+    // One GET on a sale that cannot exist, and nothing on the transactional host.
+    CIELO.verify(1, getRequestedFor(urlEqualTo(CIELO_NULL_SALE)));
+    assertThat(CIELO.findAll(anyRequestedFor(anyUrl()))).hasSize(1);
+
+    CIELO.resetAll();
+    CIELO.stubFor(WireMock.get(CIELO_NULL_SALE).willReturn(status(401)));
+    EntityExchangeResult<String> refused = exchange(owner.access(), "POST", CIELO_TEST, null, null);
+    assertThat(refused.getStatus().value()).isEqualTo(200);
+    assertThat(refused.getResponseBody())
+        .contains("\"ok\":false")
+        .contains("\"detail\":\"Credencial recusada pelo banco\"");
+    Map lastTest = (Map) providerIn(get(owner.access(), null), "CIELO").get("last_test");
+    assertThat(lastTest).containsEntry("ok", false);
+  }
+
+  @Test
+  void aTestWithoutACredentialIsMissingNotABankCall() {
+    Logged owner = user(Role.OWNER);
+
+    EntityExchangeResult<String> missing = exchange(owner.access(), "POST", ITAU_TEST, null, null);
+
+    assertThat(missing.getStatus().value()).isEqualTo(422);
+    assertThat(missing.getResponseBody()).contains("urn:gateway:PROVIDER_CREDENTIALS_MISSING");
+    assertThat(ITAU.findAll(anyRequestedFor(anyUrl()))).isEmpty();
+  }
+
+  @Test
+  void theTestIsOwnerOnlyAndItsAuditCarriesNoSecret() {
+    Logged owner = user(Role.OWNER);
+    put(owner.access(), ITAU_CREDENTIALS, null, Map.of("payload", itauSandbox()));
+    ITAU.stubFor(post(ITAU_TOKEN).willReturn(okJson(A_TOKEN)));
+
+    Logged finance = user(Role.FINANCE);
+    EntityExchangeResult<String> forbidden =
+        exchange(finance.access(), "POST", ITAU_TEST, null, null);
+    assertThat(forbidden.getStatus().value()).isEqualTo(403);
+    assertThat(forbidden.getResponseBody()).contains("urn:gateway:FORBIDDEN_FOR_ROLE");
+
+    Logger audit = (Logger) LoggerFactory.getLogger("gateway.audit.account");
+    ListAppender<ILoggingEvent> lines = new ListAppender<>();
+    lines.start();
+    audit.addAppender(lines);
+    try {
+      exchange(owner.access(), "POST", ITAU_TEST, null, null);
+    } finally {
+      audit.detachAppender(lines);
+    }
+
+    assertThat(lines.list)
+        .extracting(ILoggingEvent::getFormattedMessage)
+        .filteredOn(line -> line.contains("provider.test"))
+        .singleElement()
+        .satisfies(
+            line ->
+                assertThat(line)
+                    .contains("provider=ITAU")
+                    .contains("env=TEST")
+                    .contains("ok=true")
+                    .doesNotContain("sbx-secret", "sbx-id", "tok"));
+  }
+
+  /**
+   * A credential stored before self-service (V104/V105) has no fingerprint and nothing summarised.
+   * The GET says so with {@code legacy} instead of claiming the secrets are absent; a test still
+   * lands on it; the next PUT recomputes everything over the decrypted payload and the row heals.
+   */
+  @Test
+  void aLegacyRowIsFlaggedRecordsItsTestAndHealsOnPut() {
+    Logged owner = user(Role.OWNER);
+    byte[] storedBeforeSelfService =
+        "{\"client_id\":\"sbx-id\",\"client_secret\":\"sbx-secret\",\"pix_key\":\"60701190000104\"}"
+            .getBytes(StandardCharsets.UTF_8);
+    credentials.store(
+        owner.store().id(),
+        Provider.ITAU,
+        ApiKeyEnvironment.TEST,
+        storedBeforeSelfService,
+        null,
+        Map.of(),
+        Map.of());
+
+    Map legacy = providerIn(get(owner.access(), null), "ITAU");
+    assertThat(legacy.get("configured")).isEqualTo(true);
+    assertThat(legacy.get("legacy")).isEqualTo(true);
+    assertThat(legacy.get("fingerprint")).isNull();
+    assertThat((Map) legacy.get("secrets_set")).isEmpty();
+    assertThat((Map) legacy.get("fields")).isEmpty();
+
+    ITAU.stubFor(post(ITAU_TOKEN).willReturn(okJson(A_TOKEN)));
+    EntityExchangeResult<String> tested = exchange(owner.access(), "POST", ITAU_TEST, null, null);
+    assertThat(tested.getStatus().value()).isEqualTo(200);
+    Map afterTest = providerIn(get(owner.access(), null), "ITAU");
+    assertThat((Map) afterTest.get("last_test")).containsEntry("detail", "Conectado");
+    assertThat(afterTest.get("legacy")).isEqualTo(false);
+    assertThat((String) afterTest.get("fingerprint")).hasSize(8);
+
+    // The secret is omitted: the merge must find it in the legacy row's decrypted payload.
+    Map<String, Object> edited = Map.of("client_id", "sbx-id", "pix_key", "60701190000105");
+    put(owner.access(), ITAU_CREDENTIALS, null, Map.of("payload", edited));
+
+    Map healed = providerIn(get(owner.access(), null), "ITAU");
+    assertThat(healed.get("legacy")).isEqualTo(false);
+    assertThat((String) healed.get("fingerprint")).hasSize(8);
+    assertThat((Map) healed.get("secrets_set")).containsEntry("client_secret", true);
+    assertThat((Map) healed.get("fields")).containsEntry("pix_key", "60701190000105");
+  }
+
+  @Test
+  void anOwnerStoresItauTestCredentialsAndTheGetShowsStateNotSecrets() {
+    Logged owner = user(Role.OWNER);
+
+    EntityExchangeResult<String> stored =
+        put(owner.access(), ITAU_CREDENTIALS, null, Map.of("payload", itauSandbox()));
+    assertThat(stored.getStatus().value()).isEqualTo(204);
+
+    Map body = get(owner.access(), null);
+    assertThat(body.get("environment")).isEqualTo("TEST");
+    assertThat(body).containsKey("inbound_webhook_url");
+
+    Map itau = providerIn(body, "ITAU");
+    assertThat(itau.get("methods")).isEqualTo(List.of("PIX", "BOLECODE"));
+    assertThat(itau.get("configured")).isEqualTo(true);
+    assertThat(itau.get("updated_at")).isNotNull();
+    assertThat((String) itau.get("fingerprint")).hasSize(8).matches("[0-9a-f]{8}");
+    assertThat((Map) itau.get("secrets_set"))
+        .containsEntry("client_secret", true)
+        .containsEntry("x_itau_apikey", false)
+        .containsEntry("private_key_pem", false);
+    assertThat(itau.get("last_test")).isNull();
+    assertThat(itau).containsEntry("notification_key_set", null);
+
+    Map cielo = providerIn(body, "CIELO");
+    assertThat(cielo.get("methods")).isEqualTo(List.of("CARD"));
+    assertThat(cielo.get("configured")).isEqualTo(false);
+    assertThat(cielo.get("fingerprint")).isNull();
+    assertThat((Map) cielo.get("fields")).isEmpty();
+    assertThat(cielo.get("notification_key_set")).isEqualTo(false);
+  }
+
+  @Test
+  void theGetCarriesThePublicFields() {
+    Logged owner = user(Role.OWNER);
+    put(owner.access(), ITAU_CREDENTIALS, null, Map.of("payload", itauSandbox()));
+
+    Map fields = (Map) providerIn(get(owner.access(), null), "ITAU").get("fields");
+
+    assertThat(fields)
+        .containsEntry("client_id", "sbx-id")
+        .containsEntry("pix_key", "60701190000104")
+        .doesNotContainKey("client_secret");
+  }
+
+  @Test
+  void anOmittedSecretIsKept() {
+    Logged owner = user(Role.OWNER);
+    put(owner.access(), ITAU_CREDENTIALS, null, Map.of("payload", itauSandbox()));
+
+    Map<String, Object> withoutSecret = new HashMap<>(itauSandbox());
+    withoutSecret.remove("client_secret");
+    withoutSecret.put("pix_key", "outra-chave@loja.com");
+    EntityExchangeResult<String> edited =
+        put(owner.access(), ITAU_CREDENTIALS, null, Map.of("payload", withoutSecret));
+    assertThat(edited.getStatus().value()).isEqualTo(204);
+
+    String plaintext = decrypted(owner, ApiKeyEnvironment.TEST);
+    assertThat(plaintext).contains("\"client_secret\":\"sbx-secret\"");
+    assertThat(plaintext).contains("\"pix_key\":\"outra-chave@loja.com\"");
+  }
+
+  @Test
+  void anEmptySecretIsRemoved() {
+    Logged owner = user(Role.OWNER);
+    Map<String, Object> withApiKey = new HashMap<>(itauSandbox());
+    withApiKey.put("x_itau_apikey", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+    put(owner.access(), ITAU_CREDENTIALS, null, Map.of("payload", withApiKey));
+    assertThat((Map) providerIn(get(owner.access(), null), "ITAU").get("secrets_set"))
+        .containsEntry("x_itau_apikey", true);
+
+    Map<String, Object> removing = new HashMap<>(itauSandbox());
+    removing.remove("client_secret");
+    removing.put("x_itau_apikey", "");
+    EntityExchangeResult<String> edited =
+        put(owner.access(), ITAU_CREDENTIALS, null, Map.of("payload", removing));
+    assertThat(edited.getStatus().value()).isEqualTo(204);
+
+    assertThat(decrypted(owner, ApiKeyEnvironment.TEST)).doesNotContain("x_itau_apikey");
+    assertThat((Map) providerIn(get(owner.access(), null), "ITAU").get("secrets_set"))
+        .containsEntry("x_itau_apikey", false);
+  }
+
+  @Test
+  void liveNeedsTheCertificateEvenIfTheBodySaysTest() {
+    Logged owner = user(Role.OWNER);
+
+    EntityExchangeResult<String> refused =
+        put(
+            owner.access(),
+            ITAU_CREDENTIALS,
+            "LIVE",
+            Map.of("environment", "TEST", "payload", itauSandbox()));
+
+    assertThat(refused.getStatus().value()).isEqualTo(422);
+    assertThat(refused.getResponseBody())
+        .contains("urn:gateway:PROVIDER_CREDENTIALS_INVALID")
+        .contains("\"field\":\"certificate_pem\"");
+    assertThat(credentials.find(owner.store().id(), Provider.ITAU, ApiKeyEnvironment.LIVE))
+        .isEmpty();
+  }
+
+  @Test
+  void aSecretOfTheWrongTypeNamesTheFieldNotTheBody() {
+    Logged owner = user(Role.OWNER);
+    Map<String, Object> wrongType = new HashMap<>(itauSandbox());
+    wrongType.put("client_secret", Map.of("nested", "object"));
+
+    EntityExchangeResult<String> refused =
+        put(owner.access(), ITAU_CREDENTIALS, null, Map.of("payload", wrongType));
+
+    assertThat(refused.getStatus().value()).isEqualTo(422);
+    assertThat(refused.getResponseBody())
+        .contains("urn:gateway:PROVIDER_CREDENTIALS_INVALID")
+        .doesNotContain("nested");
+  }
+
+  @Test
+  void aMisspelledSecretKeyIsRefusedAndNothingIsStored() {
+    Logged owner = user(Role.OWNER);
+    Map<String, Object> misspelled = new HashMap<>(itauSandbox());
+    misspelled.remove("client_secret");
+    misspelled.put("clientSecret", "would-leak-in-the-clear");
+
+    EntityExchangeResult<String> refused =
+        put(owner.access(), ITAU_CREDENTIALS, null, Map.of("payload", misspelled));
+
+    assertThat(refused.getStatus().value()).isEqualTo(422);
+    assertThat(refused.getResponseBody())
+        .contains("urn:gateway:PROVIDER_CREDENTIALS_INVALID")
+        .contains("\"field\":\"clientSecret\"")
+        .doesNotContain("would-leak");
+    Map itau = providerIn(get(owner.access(), null), "ITAU");
+    assertThat(itau.get("configured")).isEqualTo(false);
+    assertThat((Map) itau.get("fields")).isEmpty();
+  }
+
+  @Test
+  void theGetNeverEchoesASecretAndNeitherDoesTheAudit() {
+    Logged owner = user(Role.OWNER);
+    Map<String, Object> full = new HashMap<>(itauSandbox());
+    full.put("x_itau_apikey", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+    full.put("certificate_pem", "-----BEGIN CERTIFICATE-----cert-----END CERTIFICATE-----");
+    full.put("private_key_pem", "-----BEGIN PRIVATE KEY-----pk-----END PRIVATE KEY-----");
+
+    Logger audit = (Logger) LoggerFactory.getLogger("gateway.audit.account");
+    ListAppender<ILoggingEvent> lines = new ListAppender<>();
+    lines.start();
+    audit.addAppender(lines);
+    try {
+      put(owner.access(), ITAU_CREDENTIALS, null, Map.of("payload", full));
+    } finally {
+      audit.detachAppender(lines);
+    }
+
+    String body = exchange(owner.access(), "GET", PROVIDERS, null, null).getResponseBody();
+    // certificate_pem is public (the bank hands it out); the key beside it is not.
+    assertThat(body).doesNotContain("sbx-secret", "aaaaaaaa-bbbb", "pk-----", "PRIVATE KEY");
+    assertThat(lines.list)
+        .extracting(ILoggingEvent::getFormattedMessage)
+        .filteredOn(line -> line.contains("provider.credentials.set"))
+        .singleElement()
+        .satisfies(
+            line ->
+                assertThat(line)
+                    .contains("provider=ITAU")
+                    .contains("env=TEST")
+                    .doesNotContain("sbx-secret", "aaaaaaaa-bbbb", "pk-----", "sbx-id"));
+  }
+
+  @Test
+  void financeIsForbiddenAndAnApiKeyNeedsASession() {
+    Logged finance = user(Role.FINANCE);
+    EntityExchangeResult<String> financeWrite =
+        put(finance.access(), ITAU_CREDENTIALS, null, Map.of("payload", itauSandbox()));
+    EntityExchangeResult<String> financeRead =
+        exchange(finance.access(), "GET", PROVIDERS, null, null);
+    assertThat(financeWrite.getStatus().value()).isEqualTo(403);
+    assertThat(financeWrite.getResponseBody()).contains("urn:gateway:FORBIDDEN_FOR_ROLE");
+    assertThat(financeRead.getStatus().value()).isEqualTo(403);
+    assertThat(financeRead.getResponseBody()).contains("urn:gateway:FORBIDDEN_FOR_ROLE");
+
+    String apiKey = apiKeys.issue(finance.store().id(), ApiKeyEnvironment.TEST).plainKey().reveal();
+    EntityExchangeResult<String> keyRead = exchange(apiKey, "GET", PROVIDERS, null, null);
+    EntityExchangeResult<String> keyWrite =
+        put(apiKey, ITAU_CREDENTIALS, null, Map.of("payload", itauSandbox()));
+    assertThat(keyRead.getStatus().value()).isEqualTo(403);
+    assertThat(keyRead.getResponseBody()).contains("urn:gateway:USER_SESSION_REQUIRED");
+    assertThat(keyWrite.getStatus().value()).isEqualTo(403);
+    assertThat(keyWrite.getResponseBody()).contains("urn:gateway:USER_SESSION_REQUIRED");
+  }
+
+  @Test
+  void anUnknownProviderIsABadRequest() {
+    Logged owner = user(Role.OWNER);
+
+    EntityExchangeResult<String> unknown =
+        put(owner.access(), PROVIDERS + "/BRADESCO/credentials", null, Map.of("payload", Map.of()));
+    EntityExchangeResult<String> unlisted =
+        put(owner.access(), PROVIDERS + "/FAKE/credentials", null, Map.of("payload", Map.of()));
+
+    assertThat(unknown.getStatus().value()).isEqualTo(400);
+    assertThat(unlisted.getStatus().value()).isEqualTo(400);
+  }
+
+  @Test
+  void notificationKeyIsStoredAndTooLongIsRefused() {
+    Logged owner = user(Role.OWNER);
+    assertThat(providerIn(get(owner.access(), null), "CIELO").get("notification_key_set"))
+        .isEqualTo(false);
+
+    EntityExchangeResult<String> stored =
+        put(owner.access(), NOTIFICATION_KEY, null, Map.of("key", "chave-fixa-da-cielo"));
+    assertThat(stored.getStatus().value()).isEqualTo(204);
+    assertThat(providerIn(get(owner.access(), null), "CIELO").get("notification_key_set"))
+        .isEqualTo(true);
+
+    EntityExchangeResult<String> tooLong =
+        put(owner.access(), NOTIFICATION_KEY, null, Map.of("key", "k".repeat(1501)));
+    EntityExchangeResult<String> blank =
+        put(owner.access(), NOTIFICATION_KEY, null, Map.of("key", "   "));
+    assertThat(tooLong.getStatus().value()).isEqualTo(400);
+    assertThat(blank.getStatus().value()).isEqualTo(400);
+  }
+
+  private static Map<String, Object> itauSandbox() {
+    return Map.of(
+        "client_id", "sbx-id", "client_secret", "sbx-secret", "pix_key", "60701190000104");
+  }
+
+  private static Map<String, Object> cieloSandbox() {
+    return Map.of(
+        "merchant_id",
+        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        "merchant_key",
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890123");
+  }
+
+  private static Map providerIn(Map body, String provider) {
+    List<Map> providers = (List<Map>) body.get("providers");
+    return providers.stream()
+        .filter(entry -> provider.equals(entry.get("provider")))
+        .findFirst()
+        .orElseThrow();
+  }
+
+  private String decrypted(Logged owner, ApiKeyEnvironment environment) {
+    byte[] plaintext =
+        credentials.decrypt(owner.store().id(), Provider.ITAU, environment).orElseThrow();
+    return new String(plaintext, StandardCharsets.UTF_8);
+  }
+
+  private Logged user(Role role) {
+    Merchant store = merchants.create("Loja");
+    // Globally unique: the e-mail is unique across merchants and the context outlives one test.
+    EmailAddress email = new EmailAddress(role + "-" + UUID.randomUUID() + "@loja.com");
+    User user = users.register(store.id(), "Ana", email, role, "senha-forte-1");
+    user = users.markEmailVerified(user.id());
+
+    String access = sessions.open(user.id(), null, null).accessToken().reveal();
+    return new Logged(access, user, store);
+  }
+
+  private Map get(String bearer, String environment) {
+    RestTestClient.RequestBodySpec request =
+        http()
+            .method(HttpMethod.GET)
+            .uri(PROVIDERS)
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + bearer);
+    if (environment != null) {
+      request.header("X-Environment", environment);
+    }
+
+    EntityExchangeResult<Map> result = request.exchange().expectBody(Map.class).returnResult();
+    assertThat(result.getStatus().value()).isEqualTo(200);
+    return result.getResponseBody();
+  }
+
+  private EntityExchangeResult<String> put(
+      String bearer, String path, String environment, Object body) {
+    return exchange(bearer, "PUT", path, environment, body);
+  }
+
+  private EntityExchangeResult<String> exchange(
+      String bearer, String method, String path, String environment, Object body) {
+    RestTestClient.RequestBodySpec request =
+        http()
+            .method(HttpMethod.valueOf(method))
+            .uri(path)
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + bearer)
+            .contentType(MediaType.APPLICATION_JSON);
+    if (environment != null) {
+      request.header("X-Environment", environment);
+    }
+    if (body != null) {
+      request.body(body);
+    }
+
+    return request.exchange().expectBody(String.class).returnResult();
+  }
+
+  private RestTestClient http() {
+    return RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build();
+  }
+}

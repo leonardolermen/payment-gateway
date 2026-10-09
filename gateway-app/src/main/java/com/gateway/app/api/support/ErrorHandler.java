@@ -5,6 +5,7 @@ import com.gateway.app.security.UnauthenticatedException;
 import com.gateway.billing.customer.CustomerExistsException;
 import com.gateway.billing.order.OrderHasActivePaymentException;
 import com.gateway.kernel.errors.DomainException;
+import com.gateway.kernel.errors.FieldDomainException;
 import com.gateway.kernel.errors.NotFoundException;
 import com.gateway.kernel.provider.ProviderException;
 import com.gateway.payments.payment.card.CardDeclinedException;
@@ -57,8 +58,11 @@ public class ErrorHandler {
    * EMAIL_NOT_VERIFIED is 403: the caller is who they say, but must confirm the e-mail first.
    * OWN_ACCOUNT is 400, as the IllegalArgumentException it replaced: the request names the caller's
    * own account on a team route. ORIGIN_NOT_ALLOWED is 403 (AuthOriginFilter writes it; listed here
-   * so the table is the one place to read). {@code Map.ofEntries}: {@code Map.of} stops at ten
-   * pairs.
+   * so the table is the one place to read). PROVIDER_CREDENTIALS_INVALID is listed although 422 is
+   * the default: the panel form keys on it, so the status is pinned rather than inherited.
+   * PROVIDER_CREDENTIALS_MISSING stays 422: a payment or checkout attempt without a credential is
+   * documented as 422 (README, "Dinheiro não perdoa"), and a code cannot be 404 on one route and
+   * 422 on another. {@code Map.ofEntries}: {@code Map.of} stops at ten pairs.
    */
   private static final Map<String, HttpStatus> STATUS_BY_CODE =
       Map.ofEntries(
@@ -88,12 +92,21 @@ public class ErrorHandler {
           Map.entry("AUTH_BUSY", HttpStatus.SERVICE_UNAVAILABLE),
           Map.entry("EMAIL_NOT_VERIFIED", HttpStatus.FORBIDDEN),
           Map.entry("OWN_ACCOUNT", HttpStatus.BAD_REQUEST),
-          Map.entry("ORIGIN_NOT_ALLOWED", HttpStatus.FORBIDDEN));
+          Map.entry("ORIGIN_NOT_ALLOWED", HttpStatus.FORBIDDEN),
+          Map.entry("PROVIDER_CREDENTIALS_INVALID", HttpStatus.UNPROCESSABLE_ENTITY));
 
   @ExceptionHandler(DomainException.class)
   public ProblemDetail domainError(DomainException e) {
     HttpStatus status = STATUS_BY_CODE.getOrDefault(e.code(), HttpStatus.UNPROCESSABLE_ENTITY);
     return problem(status, e.code(), e.getMessage());
+  }
+
+  /** The field in the client's spelling, so the panel marks that input and not the whole form. */
+  @ExceptionHandler(FieldDomainException.class)
+  public ProblemDetail fieldError(FieldDomainException e) {
+    ProblemDetail problem = domainError(e);
+    problem.setProperty("field", e.field());
+    return problem;
   }
 
   /**
