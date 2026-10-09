@@ -83,8 +83,7 @@ public class CardPaymentFlow implements PaymentFlow {
         InstallmentPlan.of(cardPayment.amount(), cardPayment.installments());
     SoftDescriptor softDescriptor = softDescriptorOf(cardPayment);
     CardCustomer customer = CardCustomerFactory.from(cardPayment.customer());
-    String documentHash =
-        CustomerDocumentHash.of(cardPayment.customer().document());
+    String documentHash = CustomerDocumentHash.of(cardPayment.customer().document());
 
     ChosenCard chosen = choose(cardPayment);
 
