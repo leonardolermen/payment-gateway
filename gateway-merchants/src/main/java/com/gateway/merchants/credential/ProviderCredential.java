@@ -5,6 +5,7 @@ import com.gateway.kernel.ids.Ulid;
 import com.gateway.merchants.apikey.ApiKeyEnvironment;
 import com.gateway.merchants.crypto.Encrypted;
 import java.time.Instant;
+import java.util.Map;
 
 /**
  * The merchant's credential at a provider (Itaú client_id/secret/certificate, for instance), always
@@ -17,24 +18,82 @@ public record ProviderCredential(
     Provider provider,
     ApiKeyEnvironment environment,
     Encrypted payload,
+    String fingerprint,
+    Map<String, Boolean> secretsSet,
+    ProbeOutcome lastTest,
     boolean active,
     Instant createdAt,
     Instant updatedAt) {
+  /** Result of the last "test connection"; {@code detail} is one of our fixed phrases. */
+  public record ProbeOutcome(boolean ok, String detail, Instant checkedAt) {}
+
   public static ProviderCredential create(
-      MerchantId merchantId, Provider provider, ApiKeyEnvironment environment, Encrypted payload) {
+      MerchantId merchantId,
+      Provider provider,
+      ApiKeyEnvironment environment,
+      Encrypted payload,
+      String fingerprint,
+      Map<String, Boolean> secretsSet) {
     Instant now = Instant.now();
     return new ProviderCredential(
-        Ulid.next(), merchantId, provider, environment, payload, true, now, now);
+        Ulid.next(),
+        merchantId,
+        provider,
+        environment,
+        payload,
+        fingerprint,
+        Map.copyOf(secretsSet),
+        null,
+        true,
+        now,
+        now);
   }
 
-  public ProviderCredential withPayload(Encrypted next) {
+  /** New secrets invalidate the previous test: it vouched for a different blob. */
+  public ProviderCredential withPayload(
+      Encrypted next, String nextFingerprint, Map<String, Boolean> nextSecretsSet) {
     return new ProviderCredential(
-        id, merchantId, provider, environment, next, active, createdAt, Instant.now());
+        id,
+        merchantId,
+        provider,
+        environment,
+        next,
+        nextFingerprint,
+        Map.copyOf(nextSecretsSet),
+        null,
+        active,
+        createdAt,
+        Instant.now());
+  }
+
+  public ProviderCredential withLastTest(ProbeOutcome outcome) {
+    return new ProviderCredential(
+        id,
+        merchantId,
+        provider,
+        environment,
+        payload,
+        fingerprint,
+        secretsSet,
+        outcome,
+        active,
+        createdAt,
+        updatedAt);
   }
 
   public ProviderCredential deactivate() {
     return new ProviderCredential(
-        id, merchantId, provider, environment, payload, false, createdAt, Instant.now());
+        id,
+        merchantId,
+        provider,
+        environment,
+        payload,
+        fingerprint,
+        secretsSet,
+        lastTest,
+        false,
+        createdAt,
+        Instant.now());
   }
 
   @Override

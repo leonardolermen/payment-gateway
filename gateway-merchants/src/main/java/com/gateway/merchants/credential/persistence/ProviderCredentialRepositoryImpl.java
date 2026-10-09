@@ -29,6 +29,11 @@ public class ProviderCredentialRepositoryImpl implements ProviderCredentialRepos
     entity.ciphertext = credential.payload().ciphertext();
     entity.encryptedDek = credential.payload().encryptedDek();
     entity.dekNonce = credential.payload().dekNonce();
+    entity.fingerprint = credential.fingerprint();
+    entity.secretsSet = credential.secretsSet();
+    entity.lastTestOk = credential.lastTest() == null ? null : credential.lastTest().ok();
+    entity.lastTestDetail = credential.lastTest() == null ? null : credential.lastTest().detail();
+    entity.lastTestAt = credential.lastTest() == null ? null : credential.lastTest().checkedAt();
     entity.active = credential.active();
     entity.createdAt = credential.createdAt();
     entity.updatedAt = credential.updatedAt();
@@ -52,12 +57,20 @@ public class ProviderCredentialRepositoryImpl implements ProviderCredentialRepos
 
   private static ProviderCredential toDomain(ProviderCredentialEntity e) {
     Encrypted payload = new Encrypted(e.nonce, e.ciphertext, e.encryptedDek, e.dekNonce);
+    ProviderCredential.ProbeOutcome lastTest =
+        e.lastTestAt == null
+            ? null
+            : new ProviderCredential.ProbeOutcome(e.lastTestOk, e.lastTestDetail, e.lastTestAt);
+
     return new ProviderCredential(
         e.id,
         new MerchantId(e.merchantId),
         Provider.valueOf(e.provider),
         ApiKeyEnvironment.valueOf(e.environment),
         payload,
+        e.fingerprint,
+        e.secretsSet,
+        lastTest,
         e.active,
         e.createdAt,
         e.updatedAt);

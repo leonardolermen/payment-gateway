@@ -1,11 +1,13 @@
 package com.gateway.merchants.credential;
 
 import com.gateway.kernel.ids.MerchantId;
+import com.gateway.kernel.security.Sha256;
 import com.gateway.merchants.apikey.ApiKeyEnvironment;
 import com.gateway.merchants.credential.persistence.ProviderCredentialRepository;
 import com.gateway.merchants.crypto.Encrypted;
 import com.gateway.merchants.crypto.EnvelopeCipher;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,12 +24,44 @@ public class ProviderCredentialService {
   @Transactional
   public ProviderCredential store(
       MerchantId merchantId, Provider provider, ApiKeyEnvironment environment, byte[] plaintext) {
+    return store(merchantId, provider, environment, plaintext, Sha256.hex(plaintext), Map.of());
+  }
+
+  @Transactional
+  public ProviderCredential store(
+      MerchantId merchantId,
+      Provider provider,
+      ApiKeyEnvironment environment,
+      byte[] plaintext,
+      String fingerprint,
+      Map<String, Boolean> secretsSet) {
     Encrypted enc = cipher.encrypt(plaintext, aad(merchantId, provider, environment));
+
     ProviderCredential credential =
         repo.find(merchantId, provider, environment)
-            .map(existing -> existing.withPayload(enc))
-            .orElseGet(() -> ProviderCredential.create(merchantId, provider, environment, enc));
+            .map(existing -> existing.withPayload(enc, fingerprint, secretsSet))
+            .orElseGet(
+                () ->
+                    ProviderCredential.create(
+                        merchantId, provider, environment, enc, fingerprint, secretsSet));
+
     return repo.save(credential);
+  }
+
+  @Transactional
+  public void recordTest(
+      MerchantId merchantId,
+      Provider provider,
+      ApiKeyEnvironment environment,
+      ProviderCredential.ProbeOutcome outcome) {
+    repo.find(merchantId, provider, environment)
+        .ifPresent(credential -> repo.save(credential.withLastTest(outcome)));
+  }
+
+  @Transactional(readOnly = true)
+  public Optional<ProviderCredential> find(
+      MerchantId merchantId, Provider provider, ApiKeyEnvironment environment) {
+    return repo.find(merchantId, provider, environment);
   }
 
   @Transactional(readOnly = true)
