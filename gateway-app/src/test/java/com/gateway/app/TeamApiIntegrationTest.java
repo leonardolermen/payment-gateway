@@ -86,7 +86,20 @@ class TeamApiIntegrationTest {
     // cris is the last owner now, and the only person who could demote or remove her is herself,
     // which the team routes refuse: through the API, LAST_OWNER stays behind these two doors.
     assertThat(deleteBody(ana.access(), "/v1/merchant/users/" + cris.userId())).startsWith("403");
-    assertThat(deleteBody(cris.access(), "/v1/merchant/users/" + cris.userId())).startsWith("400");
+    assertThat(deleteBody(cris.access(), "/v1/merchant/users/" + cris.userId()))
+        .startsWith("400")
+        .contains("urn:gateway:OWN_ACCOUNT");
+  }
+
+  @Test
+  void anUnverifiedOwnerCannotInvite() {
+    String access = signup("hugo@semverificar.com");
+
+    EntityExchangeResult<Map> refused =
+        post(access, "/v1/invites", Map.of("email", "ivo@semverificar.com", "role", "FINANCE"));
+
+    assertThat(refused.getStatus().value()).isEqualTo(403);
+    assertThat(refused.getResponseBody()).containsEntry("type", "urn:gateway:EMAIL_NOT_VERIFIED");
   }
 
   @Test

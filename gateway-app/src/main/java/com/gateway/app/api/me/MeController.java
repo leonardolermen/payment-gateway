@@ -1,5 +1,6 @@
 package com.gateway.app.api.me;
 
+import com.gateway.app.api.auth.AuthEvents;
 import com.gateway.app.api.auth.AuthMailService;
 import com.gateway.app.api.me.dto.ChangePasswordRequest;
 import com.gateway.app.api.me.dto.MeResponse;
@@ -80,6 +81,8 @@ public class MeController {
     users.changePassword(caller.userId(), request.current(), request.newPassword());
 
     sessions.revokeOthers(caller.userId(), caller.sessionId());
+    AuthEvents.passwordChanged(caller.userId());
+    AuthEvents.sessionsRevoked(caller.userId(), "others");
   }
 
   @PostMapping("/email/resend")
@@ -118,6 +121,7 @@ public class MeController {
     Actor.User caller = caller();
 
     sessions.revokeOthers(caller.userId(), caller.sessionId());
+    AuthEvents.sessionsRevoked(caller.userId(), "others");
   }
 
   private MeResponse describe(User user) {

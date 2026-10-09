@@ -1,6 +1,7 @@
 package com.gateway.app.api.team;
 
 import com.gateway.app.api.auth.AuthMailService;
+import com.gateway.app.security.Actor;
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.merchants.merchant.MerchantService;
@@ -34,9 +35,17 @@ public class TeamService {
     this.mail = mail;
   }
 
-  /** A resend replaces the earlier invite to the same address: only the newest link works. */
+  /**
+   * A resend replaces the earlier invite to the same address: only the newest link works. The
+   * inviter must have confirmed their own e-mail: otherwise anyone could sign up with a throwaway
+   * address and use the gateway's SMTP reputation to mail invites to strangers.
+   */
   @Transactional
-  public void invite(MerchantId merchantId, EmailAddress email, Role role) {
+  public void invite(MerchantId merchantId, Actor.User inviter, EmailAddress email, Role role) {
+    if (!inviter.emailVerified()) {
+      throw new DomainException("EMAIL_NOT_VERIFIED", "confirm your e-mail before inviting");
+    }
+
     if (users.findActiveByEmail(email).isPresent()) {
       throw new DomainException("EMAIL_TAKEN", "email is already in use");
     }

@@ -53,8 +53,12 @@ public class ErrorHandler {
    * without an owner, or the e-mail was confirmed already. TOKEN_EXPIRED is 410 for the same reason
    * as the checkout: the link in the e-mail is gone. INVALID_CREDENTIALS and SESSION_EXPIRED are
    * 401: sign in again. RESEND_TOO_SOON is 429: the caller should wait, not change anything.
-   * AUTH_BUSY is 503: the Argon2 cap is full, the same request succeeds in a moment. {@code
-   * Map.ofEntries}: {@code Map.of} stops at ten pairs.
+   * AUTH_BUSY is 503: the Argon2 cap is full, the same request succeeds in a moment.
+   * EMAIL_NOT_VERIFIED is 403: the caller is who they say, but must confirm the e-mail first.
+   * OWN_ACCOUNT is 400, as the IllegalArgumentException it replaced: the request names the caller's
+   * own account on a team route. ORIGIN_NOT_ALLOWED is 403 (AuthOriginFilter writes it; listed here
+   * so the table is the one place to read). {@code Map.ofEntries}: {@code Map.of} stops at ten
+   * pairs.
    */
   private static final Map<String, HttpStatus> STATUS_BY_CODE =
       Map.ofEntries(
@@ -81,7 +85,10 @@ public class ErrorHandler {
           Map.entry("INVALID_CREDENTIALS", HttpStatus.UNAUTHORIZED),
           Map.entry("SESSION_EXPIRED", HttpStatus.UNAUTHORIZED),
           Map.entry("RESEND_TOO_SOON", HttpStatus.TOO_MANY_REQUESTS),
-          Map.entry("AUTH_BUSY", HttpStatus.SERVICE_UNAVAILABLE));
+          Map.entry("AUTH_BUSY", HttpStatus.SERVICE_UNAVAILABLE),
+          Map.entry("EMAIL_NOT_VERIFIED", HttpStatus.FORBIDDEN),
+          Map.entry("OWN_ACCOUNT", HttpStatus.BAD_REQUEST),
+          Map.entry("ORIGIN_NOT_ALLOWED", HttpStatus.FORBIDDEN));
 
   @ExceptionHandler(DomainException.class)
   public ProblemDetail domainError(DomainException e) {

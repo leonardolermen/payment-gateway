@@ -39,6 +39,12 @@ class ErrorHandlerTest {
   void panelAuthCodesHaveTheirStatuses() {
     assertThat(handler.domainError(new DomainException("AUTH_BUSY", "x")).getStatus())
         .isEqualTo(503);
+    assertThat(handler.domainError(new DomainException("EMAIL_NOT_VERIFIED", "x")).getStatus())
+        .isEqualTo(403);
+    assertThat(handler.domainError(new DomainException("OWN_ACCOUNT", "x")).getStatus())
+        .isEqualTo(400);
+    assertThat(handler.domainError(new DomainException("ORIGIN_NOT_ALLOWED", "x")).getStatus())
+        .isEqualTo(403);
   }
 
   @Test

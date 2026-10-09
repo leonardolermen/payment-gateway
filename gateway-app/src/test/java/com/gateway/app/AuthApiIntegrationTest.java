@@ -2,6 +2,9 @@ package com.gateway.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.gateway.app.api.auth.AuthMailService;
 import com.gateway.merchants.merchant.Merchant;
 import com.gateway.merchants.merchant.MerchantService;
@@ -20,6 +23,7 @@ import java.util.regex.Pattern;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -44,7 +48,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
       "gateway.mail.host=127.0.0.1",
       "gateway.mail.port=3025",
       "gateway.mail.from=no-reply@test",
-      "gateway.checkout.auth-rate-limit-per-minute=1000"
+      "gateway.checkout.auth-rate-limit-per-minute=1000",
+      "gateway.checkout.cors-origins=http://panel.test"
     })
 @ActiveProfiles("test")
 @Testcontainers
@@ -61,6 +66,58 @@ class AuthApiIntegrationTest {
   @LocalServerPort int port;
   @Autowired MerchantService merchants;
   @Autowired AuthMailService mail;
+
+  @Test
+  void aForeignOriginCannotCallTheAuthRoutes() {
+    int foreign =
+        http()
+            .post()
+            .uri("/v1/auth/refresh")
+            .header("Origin", "http://evil.test")
+            .exchange()
+            .expectBody(String.class)
+            .returnResult()
+            .getStatus()
+            .value();
+    int listed =
+        http()
+            .post()
+            .uri("/v1/auth/refresh")
+            .header("Origin", "http://panel.test")
+            .exchange()
+            .expectBody(String.class)
+            .returnResult()
+            .getStatus()
+            .value();
+
+    assertThat(foreign).isEqualTo(403);
+    assertThat(listed).isEqualTo(401); // past the origin check: no cookie, so sign in again
+  }
+
+  @Test
+  void aFailedLoginIsAuditedWithoutTheEmailOrAnyToken() {
+    Logger audit = (Logger) LoggerFactory.getLogger("gateway.audit.account");
+    ListAppender<ILoggingEvent> lines = new ListAppender<>();
+    lines.start();
+    audit.addAppender(lines);
+
+    try {
+      post("/v1/auth/login", Map.of("email", "ninguem@audit.com", "password", "errada-errada"));
+    } finally {
+      audit.detachAppender(lines);
+    }
+
+    assertThat(lines.list)
+        .extracting(ILoggingEvent::getFormattedMessage)
+        .filteredOn(line -> line.contains("event=login_failed"))
+        .singleElement()
+        .satisfies(
+            line ->
+                assertThat(line)
+                    .contains("user=unknown")
+                    .contains("ip=")
+                    .doesNotContain("@", "gs_", "gr_", "gt_", "errada"));
+  }
 
   @Test
   void signupSendsVerificationAndLiveOpensAfterIt() {

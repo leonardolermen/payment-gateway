@@ -9,6 +9,7 @@ import com.gateway.app.api.auth.dto.SignupRequest;
 import com.gateway.app.api.auth.dto.VerifyEmailRequest;
 import com.gateway.app.security.ClientIp;
 import com.gateway.kernel.errors.DomainException;
+import com.gateway.merchants.MerchantsProperties;
 import com.gateway.merchants.session.SessionService;
 import com.gateway.merchants.user.EmailAddress;
 import com.gateway.merchants.user.User;
@@ -16,7 +17,7 @@ import com.gateway.merchants.user.UserService;
 import com.gateway.merchants.usertoken.UserToken;
 import com.gateway.merchants.usertoken.UserTokenService;
 import jakarta.servlet.http.HttpServletRequest;
-import java.time.Duration;
+import java.util.Optional;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -30,14 +31,14 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/v1/auth")
 public class AuthController {
-  private static final Duration REFRESH_COOKIE_AGE = Duration.ofDays(30);
-
   private final SignupService signup;
   private final UserService users;
   private final SessionService sessions;
   private final UserTokenService tokens;
   private final AuthMailService mail;
   private final InviteAcceptService invites;
+  private final PasswordResetService resets;
+  private final MerchantsProperties properties;
 
   public AuthController(
       SignupService signup,
@@ -45,13 +46,17 @@ public class AuthController {
       SessionService sessions,
       UserTokenService tokens,
       AuthMailService mail,
-      InviteAcceptService invites) {
+      InviteAcceptService invites,
+      PasswordResetService resets,
+      MerchantsProperties properties) {
     this.signup = signup;
     this.users = users;
     this.sessions = sessions;
     this.tokens = tokens;
     this.mail = mail;
     this.invites = invites;
+    this.resets = resets;
+    this.properties = properties;
   }
 
   @PostMapping("/signup")
@@ -70,11 +75,16 @@ public class AuthController {
       @RequestBody LoginRequest request, HttpServletRequest http) {
     request.validate();
 
-    User user =
-        users
-            .authenticate(new EmailAddress(request.email()), request.password())
-            .orElseThrow(
-                () -> new DomainException("INVALID_CREDENTIALS", "e-mail or password is wrong"));
+    String ip = ClientIp.of(http).value();
+    Optional<User> authenticated =
+        users.authenticate(new EmailAddress(request.email()), request.password());
+    if (authenticated.isEmpty()) {
+      AuthEvents.loginFailed(ip);
+      throw new DomainException("INVALID_CREDENTIALS", "e-mail or password is wrong");
+    }
+
+    User user = authenticated.get();
+    AuthEvents.loginSucceeded(user.id(), ip);
 
     return opened(open(user, http), HttpStatus.OK);
   }
@@ -89,9 +99,14 @@ public class AuthController {
 
   @PostMapping("/logout")
   public ResponseEntity<Void> logout(HttpServletRequest http) {
+    String ip = ClientIp.of(http).value();
     SessionCookies.read(http)
         .flatMap(sessions::findByRefresh)
-        .ifPresent(session -> sessions.revoke(session.id()));
+        .ifPresent(
+            session -> {
+              sessions.revoke(session.id());
+              AuthEvents.loggedOut(session.userId(), ip);
+            });
 
     return ResponseEntity.noContent()
         .header(HttpHeaders.SET_COOKIE, SessionCookies.cleared().toString())
@@ -111,13 +126,11 @@ public class AuthController {
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void reset(@RequestBody ResetPasswordRequest request) {
     request.validate();
-    // Checked before consume: a rejected password must not spend the one-time link.
-    users.requireStrongPassword(request.password());
 
-    UserToken token = consume(UserToken.Kind.RESET_PASSWORD, request.token());
+    String userId = resets.reset(request.token(), request.password());
 
-    users.resetPassword(token.userId(), request.password());
-    sessions.revokeAll(token.userId());
+    AuthEvents.passwordReset(userId);
+    AuthEvents.sessionsRevoked(userId, "all");
   }
 
   @PostMapping("/email/verify")
@@ -128,6 +141,7 @@ public class AuthController {
     UserToken token = consume(UserToken.Kind.VERIFY_EMAIL, request.token());
 
     users.markEmailVerified(token.userId());
+    AuthEvents.emailVerified(token.userId());
   }
 
   @PostMapping("/invite/accept")
@@ -136,6 +150,7 @@ public class AuthController {
     request.validate();
 
     User user = invites.accept(request.token(), request.name(), request.password());
+    AuthEvents.inviteAccepted(user.merchantId().value(), user.id());
 
     return opened(open(user, http), HttpStatus.CREATED);
   }
@@ -156,9 +171,11 @@ public class AuthController {
     return new DomainException("SESSION_EXPIRED", "sign in again");
   }
 
-  private static ResponseEntity<SessionResponse> opened(
-      SessionService.Issued issued, HttpStatus status) {
-    String cookie = SessionCookies.refresh(issued.refreshToken(), REFRESH_COOKIE_AGE).toString();
+  // The cookie lives as long as the refresh token it carries: shorter signs the browser out early,
+  // longer keeps sending a token the server already expired.
+  private ResponseEntity<SessionResponse> opened(SessionService.Issued issued, HttpStatus status) {
+    String cookie =
+        SessionCookies.refresh(issued.refreshToken(), properties.auth().refreshTtl()).toString();
     SessionResponse body =
         new SessionResponse(issued.accessToken().reveal(), issued.accessTtl().toSeconds());
 

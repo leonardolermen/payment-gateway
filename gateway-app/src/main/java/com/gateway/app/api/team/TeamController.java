@@ -1,5 +1,6 @@
 package com.gateway.app.api.team;
 
+import com.gateway.app.api.auth.AuthEvents;
 import com.gateway.app.api.team.dto.ChangeRoleRequest;
 import com.gateway.app.api.team.dto.InviteRequest;
 import com.gateway.app.api.team.dto.PendingInviteResponse;
@@ -7,6 +8,7 @@ import com.gateway.app.api.team.dto.TeamMemberResponse;
 import com.gateway.app.api.team.dto.TeamResponse;
 import com.gateway.app.security.Actor;
 import com.gateway.app.security.MerchantContext;
+import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.merchants.user.UserService;
 import com.gateway.merchants.usertoken.UserTokenService;
@@ -50,8 +52,11 @@ public class TeamController {
   public void invite(@RequestBody InviteRequest request) {
     request.validate();
 
-    team.invite(
-        MerchantContext.current().merchantId(), request.emailAddress(), request.parsedRole());
+    MerchantId merchantId = MerchantContext.current().merchantId();
+    Actor.User inviter = caller();
+
+    team.invite(merchantId, inviter, request.emailAddress(), request.parsedRole());
+    AuthEvents.inviteSent(merchantId.value(), inviter.userId(), request.parsedRole().name());
   }
 
   @PatchMapping("/v1/merchant/users/{id}")
@@ -62,7 +67,12 @@ public class TeamController {
 
     MerchantId merchantId = MerchantContext.current().merchantId();
 
-    return TeamMemberResponse.of(users.changeRole(merchantId, userId, request.parsedRole()));
+    TeamMemberResponse changed =
+        TeamMemberResponse.of(users.changeRole(merchantId, userId, request.parsedRole()));
+    AuthEvents.roleChanged(
+        merchantId.value(), caller().userId(), userId, request.parsedRole().name());
+
+    return changed;
   }
 
   @DeleteMapping("/v1/merchant/users/{id}")
@@ -70,12 +80,16 @@ public class TeamController {
   public void remove(@PathVariable("id") String userId) {
     refuseOwnAccount(userId);
 
-    team.remove(MerchantContext.current().merchantId(), userId);
+    MerchantId merchantId = MerchantContext.current().merchantId();
+
+    team.remove(merchantId, userId);
+    AuthEvents.userRemoved(merchantId.value(), caller().userId(), userId);
+    AuthEvents.sessionsRevoked(userId, "all");
   }
 
   private static void refuseOwnAccount(String userId) {
     if (caller().userId().equals(userId)) {
-      throw new IllegalArgumentException("use /v1/me for your own account");
+      throw new DomainException("OWN_ACCOUNT", "use /v1/me for your own account");
     }
   }
 
