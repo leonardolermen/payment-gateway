@@ -100,6 +100,15 @@ public class CustomerService {
     return customers.listActive(merchantId, environment, cursor, limit);
   }
 
+  public List<Customer> searchByName(
+      MerchantId merchantId,
+      ProviderEnvironment environment,
+      String query,
+      String cursor,
+      int limit) {
+    return customers.searchActiveByName(merchantId, environment, query, cursor, limit);
+  }
+
   /** Id to name of the active customers among {@code ids}; a deleted one has no name to show. */
   public Map<String, String> namesOf(MerchantId merchantId, Collection<String> ids) {
     return customers.activeNames(merchantId, ids);

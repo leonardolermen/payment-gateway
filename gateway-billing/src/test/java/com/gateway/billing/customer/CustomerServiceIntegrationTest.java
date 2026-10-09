@@ -184,6 +184,16 @@ class CustomerServiceIntegrationTest extends BillingIntegrationTestBase {
     }
 
     @Override
+    public List<Customer> searchActiveByName(
+        MerchantId merchantId,
+        ProviderEnvironment environment,
+        String query,
+        String cursorId,
+        int limit) {
+      return real.searchActiveByName(merchantId, environment, query, cursorId, limit);
+    }
+
+    @Override
     public Map<String, String> activeNames(MerchantId merchantId, Collection<String> ids) {
       return real.activeNames(merchantId, ids);
     }

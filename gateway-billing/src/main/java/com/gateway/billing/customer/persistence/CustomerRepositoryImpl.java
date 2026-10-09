@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -97,6 +98,26 @@ public class CustomerRepositoryImpl implements CustomerRepository {
       MerchantId merchantId, ProviderEnvironment environment, String cursorId, int limit) {
     return jpa
         .findActivePage(merchantId.value(), environment.name(), cursorId, Limit.of(limit))
+        .stream()
+        .map(this::toDomain)
+        .toList();
+  }
+
+  @Override
+  public List<Customer> searchActiveByName(
+      MerchantId merchantId,
+      ProviderEnvironment environment,
+      String query,
+      String cursorId,
+      int limit) {
+    // LIKE's own wildcards in the query would widen the search; the merchant typed a name, not a
+    // pattern.
+    String needle =
+        "%" + query.toLowerCase(Locale.ROOT).replace("%", "\\%").replace("_", "\\_") + "%";
+
+    return jpa
+        .findActivePageByName(
+            merchantId.value(), environment.name(), needle, cursorId, Limit.of(limit))
         .stream()
         .map(this::toDomain)
         .toList();

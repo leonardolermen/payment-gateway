@@ -10,6 +10,7 @@ import com.gateway.app.security.MerchantContext;
 import com.gateway.billing.customer.Customer;
 import com.gateway.billing.customer.CustomerService;
 import com.gateway.kernel.errors.InvalidValue;
+import com.gateway.kernel.provider.ProviderEnvironment;
 import java.time.Clock;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -72,7 +73,8 @@ public class CustomersController {
   public List<CustomerResponse> list(
       @RequestParam(defaultValue = "20") int limit,
       @RequestParam(required = false) String cursor,
-      @RequestParam(required = false) String document) {
+      @RequestParam(required = false) String document,
+      @RequestParam(required = false) String q) {
     if (limit <= 0 || limit > MAX_PAGE) {
       throw new IllegalArgumentException("limit must be between 1 and " + MAX_PAGE);
     }
@@ -80,15 +82,11 @@ public class CustomersController {
     MerchantContext.Current caller = MerchantContext.current();
 
     if (document == null) {
-      return customers
-          .list(caller.merchantId(), Environments.toProvider(caller.environment()), cursor, limit)
-          .stream()
-          .map(CustomerResponse::from)
-          .toList();
+      return listOrSearch(caller, q, cursor, limit).stream().map(CustomerResponse::from).toList();
     }
 
-    if (cursor != null) {
-      throw new IllegalArgumentException("document cannot be combined with cursor");
+    if (cursor != null || q != null) {
+      throw new IllegalArgumentException("document cannot be combined with cursor or q");
     }
 
     // Document.of throws InvalidValue, which no handler maps: unconverted it would be a 500.
@@ -102,6 +100,18 @@ public class CustomersController {
     } catch (InvalidValue invalid) {
       throw new IllegalArgumentException("document " + invalid.reason());
     }
+  }
+
+  /** The panel's search box: by part of the name, or the plain page when nothing was typed. */
+  private List<Customer> listOrSearch(
+      MerchantContext.Current caller, String q, String cursor, int limit) {
+    ProviderEnvironment environment = Environments.toProvider(caller.environment());
+
+    if (q == null || q.isBlank()) {
+      return customers.list(caller.merchantId(), environment, cursor, limit);
+    }
+
+    return customers.searchByName(caller.merchantId(), environment, q.trim(), cursor, limit);
   }
 
   @PatchMapping("/{id}")

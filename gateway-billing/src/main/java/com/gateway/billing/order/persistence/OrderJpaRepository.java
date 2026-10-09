@@ -30,6 +30,18 @@ interface OrderJpaRepository extends JpaRepository<OrderEntity, String> {
       @Param("cursorId") String cursorId,
       Limit limit);
 
+  /** The customer's history is cross-environment by nature: a customer lives in one environment. */
+  @Query(
+      "SELECT o FROM OrderEntity o WHERE o.merchantId = :merchantId"
+          + " AND o.customerId = :customerId AND (:status IS NULL OR o.status = :status)"
+          + " AND (:cursorId IS NULL OR o.id < :cursorId) ORDER BY o.id DESC")
+  List<OrderEntity> findPageByCustomer(
+      @Param("merchantId") String merchantId,
+      @Param("customerId") String customerId,
+      @Param("status") String status,
+      @Param("cursorId") String cursorId,
+      Limit limit);
+
   List<OrderEntity> findBySubscriptionIdOrderByInvoiceNumberDesc(
       String subscriptionId, Pageable page);
 

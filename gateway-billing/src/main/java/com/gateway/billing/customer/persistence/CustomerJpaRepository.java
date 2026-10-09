@@ -27,6 +27,23 @@ interface CustomerJpaRepository extends JpaRepository<CustomerEntity, String> {
       @Param("cursorId") String cursorId,
       Limit limit);
 
+  /**
+   * {@code needle} arrives already lower-cased and wrapped in {@code %}: a plain LIKE, with no
+   * index, because a merchant's customers are few and a trigram index would be an extension for one
+   * panel search (DECISOES 2026-10-08).
+   */
+  @Query(
+      "SELECT c FROM CustomerEntity c WHERE c.merchantId = :merchantId"
+          + " AND c.environment = :environment AND c.deletedAt IS NULL"
+          + " AND LOWER(c.name) LIKE :needle ESCAPE '\\'"
+          + " AND (:cursorId IS NULL OR c.id < :cursorId) ORDER BY c.id DESC")
+  List<CustomerEntity> findActivePageByName(
+      @Param("merchantId") String merchantId,
+      @Param("environment") String environment,
+      @Param("needle") String needle,
+      @Param("cursorId") String cursorId,
+      Limit limit);
+
   /** Only the two columns: a name never needs the sealed document opened. */
   @Query(
       "SELECT c.id AS id, c.name AS name FROM CustomerEntity c WHERE c.merchantId = :merchantId"

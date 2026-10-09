@@ -156,6 +156,21 @@ public class OrderRepositoryImpl implements OrderRepository {
   }
 
   @Override
+  public List<Order> listByCustomer(
+      MerchantId merchantId, String customerId, OrderStatus status, String cursorId, int limit) {
+    return jpa
+        .findPageByCustomer(
+            merchantId.value(),
+            customerId,
+            status == null ? null : status.name(),
+            cursorId,
+            Limit.of(limit))
+        .stream()
+        .map(this::toDomain)
+        .toList();
+  }
+
+  @Override
   public List<Order> findBySubscription(String subscriptionId, int limit) {
     return jpa
         .findBySubscriptionIdOrderByInvoiceNumberDesc(subscriptionId, PageRequest.of(0, limit))
