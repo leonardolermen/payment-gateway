@@ -131,8 +131,8 @@ public class MerchantsConfiguration {
   }
 
   @Bean
-  public PasswordService passwordService() {
-    return new PasswordService();
+  public PasswordService passwordService(MerchantsProperties properties) {
+    return new PasswordService(properties.auth().maxConcurrentHashes());
   }
 
   @Bean

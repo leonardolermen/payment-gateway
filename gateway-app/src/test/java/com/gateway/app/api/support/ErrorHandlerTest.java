@@ -36,6 +36,12 @@ class ErrorHandlerTest {
   }
 
   @Test
+  void panelAuthCodesHaveTheirStatuses() {
+    assertThat(handler.domainError(new DomainException("AUTH_BUSY", "x")).getStatus())
+        .isEqualTo(503);
+  }
+
+  @Test
   void cardCodesHaveTheirStatuses() {
     ErrorHandler handler = new ErrorHandler();
 

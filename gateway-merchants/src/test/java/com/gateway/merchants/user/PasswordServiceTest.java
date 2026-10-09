@@ -4,10 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.gateway.kernel.errors.DomainException;
+import java.util.concurrent.Semaphore;
 import org.junit.jupiter.api.Test;
 
 class PasswordServiceTest {
-  PasswordService passwords = new PasswordService();
+  PasswordService passwords = new PasswordService(8);
 
   @Test
   void hashesWithArgon2idAndMatchesOnlyTheSamePassword() {
@@ -25,5 +26,23 @@ class PasswordServiceTest {
     assertThatThrownBy(() -> passwords.requireStrong("abcdefghi"))
         .isInstanceOf(DomainException.class)
         .hasMessageContaining("10");
+  }
+
+  @Test
+  void answersAuthBusyInsteadOfQueueingAnotherSixtyFourMegabytes() {
+    Semaphore permits = new Semaphore(1);
+    PasswordService capped = new PasswordService(permits);
+    String hash = capped.hash("correct horse battery");
+    permits.acquireUninterruptibly();
+
+    assertThatThrownBy(() -> capped.hash("correct horse battery"))
+        .hasFieldOrPropertyWithValue("code", "AUTH_BUSY");
+    assertThatThrownBy(() -> capped.matches("correct horse battery", hash))
+        .hasFieldOrPropertyWithValue("code", "AUTH_BUSY");
+    assertThatThrownBy(() -> capped.burnTime("correct horse battery"))
+        .hasFieldOrPropertyWithValue("code", "AUTH_BUSY");
+
+    permits.release();
+    assertThat(capped.matches("correct horse battery", hash)).isTrue();
   }
 }

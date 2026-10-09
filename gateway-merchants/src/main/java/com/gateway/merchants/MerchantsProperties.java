@@ -14,13 +14,16 @@ public record MerchantsProperties(
       throw new IllegalArgumentException("gateway.api-key-pepper is missing");
     }
     if (auth == null) {
-      auth = new Auth(null, null);
+      auth = new Auth(null, null, null);
     }
   }
 
   /** Dashboard session lifetimes, bound from {@code gateway.auth.*}. */
-  public record Auth(Duration accessTtl, Duration refreshTtl) {
+  public record Auth(Duration accessTtl, Duration refreshTtl, Integer maxConcurrentHashes) {
     public Auth {
+      if (maxConcurrentHashes == null) {
+        maxConcurrentHashes = 8;
+      }
       if (accessTtl == null) {
         accessTtl = Duration.ofMinutes(15);
       }

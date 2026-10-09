@@ -52,7 +52,8 @@ public class ErrorHandler {
    * ALREADY_VERIFIED are 409: the address belongs to another user, the merchant would be left
    * without an owner, or the e-mail was confirmed already. TOKEN_EXPIRED is 410 for the same reason
    * as the checkout: the link in the e-mail is gone. INVALID_CREDENTIALS and SESSION_EXPIRED are
-   * 401: sign in again. RESEND_TOO_SOON is 429: the caller should wait, not change anything. {@code
+   * 401: sign in again. RESEND_TOO_SOON is 429: the caller should wait, not change anything.
+   * AUTH_BUSY is 503: the Argon2 cap is full, the same request succeeds in a moment. {@code
    * Map.ofEntries}: {@code Map.of} stops at ten pairs.
    */
   private static final Map<String, HttpStatus> STATUS_BY_CODE =
@@ -79,7 +80,8 @@ public class ErrorHandler {
           Map.entry("TOKEN_EXPIRED", HttpStatus.GONE),
           Map.entry("INVALID_CREDENTIALS", HttpStatus.UNAUTHORIZED),
           Map.entry("SESSION_EXPIRED", HttpStatus.UNAUTHORIZED),
-          Map.entry("RESEND_TOO_SOON", HttpStatus.TOO_MANY_REQUESTS));
+          Map.entry("RESEND_TOO_SOON", HttpStatus.TOO_MANY_REQUESTS),
+          Map.entry("AUTH_BUSY", HttpStatus.SERVICE_UNAVAILABLE));
 
   @ExceptionHandler(DomainException.class)
   public ProblemDetail domainError(DomainException e) {
