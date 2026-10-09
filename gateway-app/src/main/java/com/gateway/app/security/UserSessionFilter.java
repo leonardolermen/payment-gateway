@@ -67,7 +67,13 @@ public class UserSessionFilter extends OncePerRequestFilter {
     }
 
     User user = found.get();
-    Merchant merchant = merchants.get(user.merchantId());
+    Optional<Merchant> ownMerchant = merchants.findById(user.merchantId());
+    if (ownMerchant.isEmpty()) {
+      Problems.write(response, 401, "SESSION_EXPIRED", "sign in again");
+      return;
+    }
+
+    Merchant merchant = ownMerchant.get();
     if (!merchant.isActive()) {
       Problems.write(response, 401, "SESSION_EXPIRED", "merchant is suspended");
       return;

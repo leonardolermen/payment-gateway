@@ -24,6 +24,12 @@ public class MerchantService {
     return repo.findById(id).orElseThrow(() -> new NotFoundException("merchant", id.value()));
   }
 
+  /** For callers that cannot throw, such as a servlet filter. */
+  @Transactional(readOnly = true)
+  public Optional<Merchant> findById(MerchantId id) {
+    return repo.findById(id);
+  }
+
   @Transactional
   public Merchant suspend(MerchantId id) {
     return repo.save(get(id).suspend());
