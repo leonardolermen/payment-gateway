@@ -22,4 +22,17 @@ class MailTemplatesTest {
     assertThat(email.subject()).isEqualTo("Você foi convidado para Loja da Ana");
     assertThat(email.text()).contains("Loja da Ana").contains("/invite/gt_x");
   }
+
+  @Test
+  void aLongStoreNameIsCutToTheSubjectColumn() {
+    String storeName = "L".repeat(250);
+
+    Email email = MailTemplates.invite("bia@loja.com", storeName, "https://painel/invite/gt_x");
+
+    assertThat(email.subject())
+        .hasSize(200)
+        .startsWith("Você foi convidado para LLL")
+        .endsWith("…");
+    assertThat(email.text()).contains(storeName);
+  }
 }

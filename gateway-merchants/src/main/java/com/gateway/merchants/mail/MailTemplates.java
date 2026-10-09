@@ -2,6 +2,9 @@ package com.gateway.merchants.mail;
 
 /** The panel's e-mails, in pt-BR. The caller builds the link; the template only shows it. */
 public final class MailTemplates {
+  // outbound_emails.subject is VARCHAR(200): a longer subject fails the insert and the invite.
+  private static final int MAX_SUBJECT_LENGTH = 200;
+
   private MailTemplates() {}
 
   public static Email verifyEmail(String to, String name, String link) {
@@ -41,7 +44,7 @@ public final class MailTemplates {
   public static Email invite(String to, String storeName, String link) {
     return new Email(
         to,
-        "Você foi convidado para " + storeName,
+        subject("Você foi convidado para " + storeName),
         "Olá.\n\nVocê foi convidado para o painel de "
             + storeName
             + ". Para aceitar, abra:\n"
@@ -53,6 +56,14 @@ public final class MailTemplates {
             link,
             "Aceitar convite",
             "O convite vale por 7 dias."));
+  }
+
+  private static String subject(String text) {
+    if (text.length() <= MAX_SUBJECT_LENGTH) {
+      return text;
+    }
+
+    return text.substring(0, MAX_SUBJECT_LENGTH - 1) + "…";
   }
 
   /** {@code greeting} arrives escaped (it carries a name); the other texts are escaped here. */
