@@ -22,7 +22,12 @@ GATEWAY_ADMIN_KEY=dev-admin
 GATEWAY_API_KEY_PEPPER=dev-pepper
 GATEWAY_MASTER_KEY=<output of: openssl rand -base64 32>
 WEBHOOK_MTLS_PORT=0
+spring.profiles.active=local
 ```
+
+Outside the `local` and `test` profiles the app refuses to start with `GATEWAY_MAIL_HOST` empty or
+`GATEWAY_PANEL_BASE_URL` blank or on `http://localhost`: a production box would otherwise log the
+reset and invite links nobody reads. Hence `local` in the minimum above.
 
 Without `GATEWAY_MASTER_KEY` the app does not start (the master key encrypts merchant credentials).
 Keep the same key across runs: a new one cannot decrypt the credentials saved under the previous one.
@@ -109,7 +114,7 @@ The merchant panel signs people in; API keys (`gk_…`) keep working everywhere,
   session. TEST works at once; LIVE answers `403 EMAIL_NOT_VERIFIED` until the link sent by e-mail is used.
 - **Session**: the response carries a `gs_…` access token (15 min), sent as `Authorization: Bearer`; keep
   it in memory. The refresh token is the `gw_refresh` cookie (`HttpOnly`, `Secure`, `SameSite=None`,
-  `Path=/v1/auth`, 30 days), rotated on every `POST /v1/auth/refresh`; replaying an old cookie ends the
+  `Path=/v1/auth`, `gateway.auth.refresh-ttl`, 30 days by default), rotated on every `POST /v1/auth/refresh`; replaying an old cookie ends the
   session. Only hashes are stored.
 - **`X-Environment: TEST|LIVE`** picks the environment of a user session (an API key carries its own).
   Missing or invalid means `TEST`.
@@ -122,20 +127,28 @@ The merchant panel signs people in; API keys (`gk_…`) keep working everywhere,
 | `OWNER` | everything: webhook endpoints, `/v1/merchant`, providers, installment settings, the team and invites, deleting customers |
 
 - **E-mail** goes out through SMTP as a `SEND_EMAIL` job. With `GATEWAY_MAIL_HOST` empty the message is
-  logged instead (the link too, so only use that in dev). STARTTLS and authentication are on only when
-  `GATEWAY_MAIL_USERNAME` is set. Links (verify, reset, invite) start at `GATEWAY_PANEL_BASE_URL`.
+  logged instead (the link too, so only use that in dev; outside the `local` and `test` profiles an empty
+  host fails startup). STARTTLS (required, not just offered) and authentication are on only when
+  `GATEWAY_MAIL_USERNAME` is set. Connect, read and write time out after 10 s. Links (verify, reset,
+  invite) start at `GATEWAY_PANEL_BASE_URL`.
+- **Invites** need a verified e-mail: an owner who has not used the verification link gets
+  `403 EMAIL_NOT_VERIFIED` from `POST /v1/invites`.
+- **Audit**: every login (success or failure), logout, password change or reset, verification, invite sent
+  or accepted, role change, removal and session revoke is one INFO line on the `gateway.audit.account`
+  logger, `key=value`, with ids and the client IP only (never an e-mail, token or password).
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `GATEWAY_MAIL_HOST` / `GATEWAY_MAIL_PORT` | empty / `587` | SMTP relay |
 | `GATEWAY_MAIL_USERNAME` / `GATEWAY_MAIL_PASSWORD` | empty | set to turn on STARTTLS and auth |
 | `GATEWAY_MAIL_FROM` | `no-reply@localhost` | sender address |
-| `GATEWAY_PANEL_BASE_URL` | `http://localhost:5173` | where the panel is served |
+| `GATEWAY_PANEL_BASE_URL` | `http://localhost:5173` | where the panel is served (must not be localhost outside `local`/`test`) |
+| `GATEWAY_AUTH_MAX_CONCURRENT_HASHES` (`gateway.auth.max-concurrent-hashes`) | `8` | Argon2 hashes running at once (64 MB each); past it, `503 AUTH_BUSY` |
 
 | Route | Success | Errors |
 |---|---|---|
 | `POST /v1/auth/signup` | 201 session | 409 `EMAIL_TAKEN`; 400/422 on a weak password |
-| `POST /v1/auth/login` | 200 session | 401 `INVALID_CREDENTIALS` (same answer for a wrong password and an unknown e-mail) |
+| `POST /v1/auth/login` | 200 session | 401 `INVALID_CREDENTIALS` (same answer for a wrong password and an unknown e-mail); 503 `AUTH_BUSY` |
 | `POST /v1/auth/refresh` (cookie) | 200 session | 401 `SESSION_EXPIRED` |
 | `POST /v1/auth/logout` (cookie) | 204 | |
 | `POST /v1/auth/password/forgot` | 202, always | |
@@ -147,11 +160,16 @@ The merchant panel signs people in; API keys (`gk_…`) keep working everywhere,
 | `POST /v1/me/email/resend` | 202 | 409 `ALREADY_VERIFIED`; 429 `RESEND_TOO_SOON` |
 | `GET /v1/me/sessions`, `DELETE /v1/me/sessions/others` | 200 / 204 | |
 | `GET /v1/merchant/users` | 200 users and open invites | |
-| `POST /v1/invites` (`OWNER`) | 202 | 409 `EMAIL_TAKEN` |
-| `PATCH /v1/merchant/users/{id}` (`OWNER`) | 200 | 404 `NOT_FOUND`; 400 `INVALID_REQUEST` (own account) |
-| `DELETE /v1/merchant/users/{id}` (`OWNER`) | 204 | 404 `NOT_FOUND`; 400 `INVALID_REQUEST` (own account) |
+| `POST /v1/invites` (`OWNER`) | 202 | 409 `EMAIL_TAKEN`; 403 `EMAIL_NOT_VERIFIED` (the inviter's own e-mail) |
+| `PATCH /v1/merchant/users/{id}` (`OWNER`) | 200 | 404 `NOT_FOUND`; 400 `OWN_ACCOUNT` |
+| `DELETE /v1/merchant/users/{id}` (`OWNER`) | 204 | 404 `NOT_FOUND`; 400 `OWN_ACCOUNT` |
 
-`/v1/auth/*` is rate limited per client IP (`gateway.auth.rate-limit-per-minute`, default 10). The `/v1/me`,
+Any route that hashes a password (signup, login, reset, invite accept, password change) can answer
+`503 AUTH_BUSY` when `gateway.auth.max-concurrent-hashes` are already running; retry in a moment.
+
+`/v1/auth/*` is rate limited per client IP (`gateway.auth.rate-limit-per-minute`, default 10; an IPv6
+client is counted by its /64). With `GATEWAY_CORS_ORIGINS` set, a request to `/v1/auth/*` whose `Origin`
+is not in the list is refused with `403 ORIGIN_NOT_ALLOWED`; no `Origin` (curl, a server) passes. The `/v1/me`,
 `/v1/merchant/users` and `/v1/invites` routes need a user session: an API key has no person behind it.
 
 ## Modules

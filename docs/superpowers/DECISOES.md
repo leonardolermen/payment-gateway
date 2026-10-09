@@ -764,3 +764,39 @@ Custo se errado: uma indireção no yml.
 A regra de conta própria (`/v1/merchant/users/{id}` recusa o próprio usuário) mais o papel (só OWNER mexe no
 time) impedem tirar o último dono; o invariante mora no `UserService` mesmo assim. Rejeitado: confiar só na
 regra da borda. Custo se errado: nenhum.
+
+## 2026-10-08 — Último dono: trava as linhas de OWNER antes de contar
+`changeRole`/`remove` de um OWNER fazem `SELECT … FOR UPDATE` nas linhas de OWNER ativas do merchant e só
+então contam. Dois donos removendo um ao outro ao mesmo tempo contavam dois cada um e os dois commitavam,
+deixando a loja sem dono. Rejeitado: constraint ou trigger no banco (a regra "ao menos um" não cabe num
+índice) e isolamento `SERIALIZABLE` na transação inteira (retry espalhado por um caso raro). Custo se
+errado: duas remoções simultâneas na mesma loja esperam uma pela outra.
+
+## 2026-10-08 — Argon2 com teto de hashes simultâneos
+Cada hash segura 64 MB; `PasswordService` limita os hashes em paralelo (`gateway.auth.max-concurrent-hashes`,
+8) e, depois de esperar ~um hash por vaga, responde `503 AUTH_BUSY`. O teto vale para `hash`, `matches` e o
+`burnTime` do e-mail desconhecido — senão o caminho do e-mail inexistente seria o atalho para o ataque.
+Rejeitado: fila sem limite (a memória fica prometida do mesmo jeito) e baixar o custo do Argon2 (enfraquece
+todo hash para conter um pico). Custo se errado: num pico legítimo, alguns logins pedem para tentar de novo.
+
+## 2026-10-08 — `/v1/auth/*` confere o `Origin`
+O cookie de refresh é `SameSite=None`, então um formulário de outro site o leva junto. `AuthOriginFilter`
+recusa com `403 ORIGIN_NOT_ALLOWED` um `Origin` fora de `gateway.checkout.cors-origins`; sem `Origin`
+passa, porque o ataque precisa de navegador e o navegador sempre manda o cabeçalho. Para pedidos
+cross-origin o `CorsFilter` já recusa antes; o filtro é a regra explícita, com código estável, para o caso
+que ele não cobre. Rejeitado: token CSRF (estado a mais no painel) e confiar só no `CorsFilter`. Custo se
+errado: com a lista vazia não há o que comparar e a checagem não roda.
+
+## 2026-10-08 — Convite exige e-mail verificado de quem convida
+`POST /v1/invites` de um usuário sem e-mail verificado é `403 EMAIL_NOT_VERIFIED`. Sem isso, um cadastro com
+endereço descartável mandaria convites a estranhos pelo nosso SMTP, gastando a reputação do remetente.
+Rejeitado: só limitar a taxa de convites. Custo se errado: o dono recém-cadastrado confirma o e-mail antes de
+chamar o time.
+
+## 2026-10-08 — Fora de `local`/`test`, e-mail sem SMTP não sobe
+Com perfil diferente de `local` e `test`, `GATEWAY_MAIL_HOST` vazio ou `GATEWAY_PANEL_BASE_URL` em branco ou
+em `http://localhost` derrubam a inicialização com mensagem que nomeia as variáveis. O gateway de log e o
+WARN continuam em `local`/`test`. Hoje dev e produção sobem sem perfil, então o dev passa a declarar `local`
+(`.env.example`, README). Rejeitado: só o WARN (produção "funciona" e ninguém recebe e-mail) e checar só com
+um perfil `prod` (quem esquecer o perfil volta ao problema). Custo se errado: quem roda sem perfil precisa
+acrescentar uma linha no `.env`.
