@@ -73,14 +73,28 @@ public record ProviderCredential(
         Instant.now());
   }
 
+  /**
+   * Stored before V104/V105 (self-service): no fingerprint, and {@code secretsSet} and {@code
+   * publicFields} are the migration's empty defaults, not a summary of the payload. The next store
+   * recomputes all three; a test adopts the fingerprint it was obtained for.
+   */
+  public boolean isLegacy() {
+    return fingerprint == null;
+  }
+
   public ProviderCredential withLastTest(ProbeOutcome outcome) {
+    return withLastTest(fingerprint, outcome);
+  }
+
+  /** For a legacy row: the verdict and the fingerprint it vouches for, together. */
+  public ProviderCredential withLastTest(String testedFingerprint, ProbeOutcome outcome) {
     return new ProviderCredential(
         id,
         merchantId,
         provider,
         environment,
         payload,
-        fingerprint,
+        testedFingerprint,
         secretsSet,
         publicFields,
         outcome,

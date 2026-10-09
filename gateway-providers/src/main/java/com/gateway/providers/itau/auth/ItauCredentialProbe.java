@@ -9,6 +9,7 @@ import com.gateway.providers.ProbePhrases;
 import java.security.KeyStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.core.JacksonException;
 
 /**
  * "Test connection" for the Itaú: one token request at the STS and nothing else, so a probe can
@@ -42,6 +43,8 @@ public final class ItauCredentialProbe implements CredentialProbe {
     try {
       parsed = parse(credentials);
     } catch (IllegalArgumentException e) {
+      return ProbePhrases.incomplete(e);
+    } catch (JacksonException e) {
       return ProbePhrases.incomplete(e);
     }
 

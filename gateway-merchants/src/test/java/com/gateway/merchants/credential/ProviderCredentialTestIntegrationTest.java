@@ -126,6 +126,40 @@ class ProviderCredentialTestIntegrationTest {
         .isNull();
   }
 
+  /**
+   * A row stored before V104 has no fingerprint. There is nothing to compare the probe against, so
+   * the tested fingerprint is adopted with the verdict: the row stops being legacy on its first
+   * test, and the next probe compares as usual.
+   */
+  @Test
+  void aLegacyRowAdoptsTheTestedFingerprintWithItsVerdict() {
+    Merchant merchant = merchants.create("Probe Store F");
+    byte[] plaintext = "{\"legacy\":true}".getBytes(StandardCharsets.UTF_8);
+    credentials.store(
+        merchant.id(), Provider.ITAU, ApiKeyEnvironment.TEST, plaintext, null, Map.of(), Map.of());
+    assertThat(
+            credentials
+                .find(merchant.id(), Provider.ITAU, ApiKeyEnvironment.TEST)
+                .orElseThrow()
+                .isLegacy())
+        .isTrue();
+
+    boolean recorded =
+        credentials.recordTest(
+            merchant.id(),
+            Provider.ITAU,
+            ApiKeyEnvironment.TEST,
+            Sha256.hex(plaintext),
+            new ProviderCredential.ProbeOutcome(true, "authenticated", Instant.now()));
+
+    assertThat(recorded).isTrue();
+    ProviderCredential found =
+        credentials.find(merchant.id(), Provider.ITAU, ApiKeyEnvironment.TEST).orElseThrow();
+    assertThat(found.isLegacy()).isFalse();
+    assertThat(found.fingerprint()).isEqualTo(Sha256.hex(plaintext));
+    assertThat(found.lastTest().detail()).isEqualTo("authenticated");
+  }
+
   @Test
   void fourArgStoreKeepsWorkingWithDerivedFingerprint() {
     Merchant merchant = merchants.create("Probe Store C");

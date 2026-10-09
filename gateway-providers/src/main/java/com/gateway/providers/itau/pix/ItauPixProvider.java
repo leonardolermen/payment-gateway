@@ -14,6 +14,7 @@ import com.gateway.kernel.provider.pix.ReceivedPix;
 import com.gateway.kernel.provider.pix.RefundRequest;
 import com.gateway.kernel.provider.pix.RefundResult;
 import com.gateway.kernel.provider.pix.RefundStatus;
+import com.gateway.providers.CredentialField;
 import com.gateway.providers.itau.auth.ItauCredentials;
 import com.gateway.providers.itau.auth.ItauEndpoints;
 import com.gateway.providers.itau.auth.ItauTokenClient;
@@ -106,7 +107,7 @@ public class ItauPixProvider implements PixMethodProvider {
     try {
       return creds(providerCredentials);
     } catch (IllegalArgumentException e) {
-      String field = e.getMessage() == null ? null : e.getMessage().split("\\s+", 2)[0];
+      String field = CredentialField.of(e.getMessage());
       throw new ProviderException(
           ProviderException.Code.CREDENTIALS_INCOMPLETE, 0, field, e.getMessage());
     }

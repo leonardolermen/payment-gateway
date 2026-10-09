@@ -53,6 +53,11 @@ public final class ProviderCatalog {
 
   private ProviderCatalog() {}
 
+  /** The guard for a route that needs no entry, only the refusal of an unlisted provider. */
+  public static void requireListed(Provider provider) {
+    of(provider);
+  }
+
   public static Entry of(Provider provider) {
     Entry entry = ENTRIES.get(provider);
 

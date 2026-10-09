@@ -129,6 +129,16 @@ class ItauCredentialProbeTest {
     assertThat(server.findAll(anyRequestedFor(anyUrl()))).isEmpty();
   }
 
+  /** An admin-seeded payload with a secret as an object: a verdict with the field, never a 500. */
+  @Test
+  void aSecretOfTheWrongTypeIsIncompleteWithoutGoingToTheNetwork() {
+    ProbeResult result =
+        probe.probe(test("{\"client_id\":\"c\",\"client_secret\":{\"x\":1},\"pix_key\":\"k\"}"));
+
+    assertThat(result).isEqualTo(new ProbeResult(false, "Credencial incompleta: client_secret"));
+    assertThat(server.findAll(anyRequestedFor(anyUrl()))).isEmpty();
+  }
+
   @Test
   void aBrokenKeyOnLiveIsAnInvalidCertificateWithoutGoingToTheNetwork() {
     String payload =

@@ -885,3 +885,14 @@ Decifrar, chamar o banco, gravar o resultado e auditar ficam num serviço própr
 conexão e lock por 30 s. `recordTest` abre a sua própria transação curta depois da chamada. Rejeitado:
 o método de teste dentro do `MerchantProviderService`, que é transacional. Custo se errado: um serviço a
 mais no pacote `api/provider`.
+
+## 2026-10-09 — Linha legada (sem fingerprint) se cura no `PUT` e grava o teste
+Credencial guardada antes de V104/V105 tem `fingerprint` nulo e `secrets_set`/`public_fields` vazios
+por default da migração — não por resumo do payload. `fingerprint` nulo é a marca de linha legada: o
+`GET` devolve `legacy: true` com `secrets_set` e `fields` em `{}` (não afirma que os segredos faltam);
+`recordTest` adota o fingerprint testado junto com o veredito em vez de comparar com nulo (senão linha
+legada nunca gravaria um teste); o próximo `PUT` recomputa os três sobre o payload decifrado e a linha
+deixa de ser legada. Rejeitado: backfill em Java na migração, decifrando toda linha para calcular
+fingerprint e resumo — a migração passaria a precisar da master key e a decifrar em massa fora do
+serviço, que é o único lugar que abre credencial. Custo se errado: um lojista com credencial legada vê o
+formulário vazio até reentrar a credencial uma vez; o teste continua funcionando antes disso.

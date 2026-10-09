@@ -1,6 +1,7 @@
 package com.gateway.app.providers;
 
 import com.gateway.app.api.provider.CredentialProbes;
+import com.gateway.app.api.support.Environments;
 import com.gateway.billing.BillingConfiguration;
 import com.gateway.kernel.provider.CredentialLookup;
 import com.gateway.kernel.provider.CredentialProbe;
@@ -44,10 +45,8 @@ public class ProviderWiring {
       } catch (IllegalArgumentException e) {
         return Optional.empty();
       }
-      ApiKeyEnvironment keyEnv =
-          env == ProviderEnvironment.LIVE ? ApiKeyEnvironment.LIVE : ApiKeyEnvironment.TEST;
       return credentials
-          .decrypt(merchantId, p, keyEnv)
+          .decrypt(merchantId, p, Environments.toApiKey(env))
           .map(bytes -> new ProviderCredentials(bytes, env));
     };
   }

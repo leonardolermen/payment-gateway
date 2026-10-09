@@ -230,6 +230,52 @@ class ProvidersApiIntegrationTest {
                     .doesNotContain("sbx-secret", "sbx-id", "tok"));
   }
 
+  /**
+   * A credential stored before self-service (V104/V105) has no fingerprint and nothing summarised.
+   * The GET says so with {@code legacy} instead of claiming the secrets are absent; a test still
+   * lands on it; the next PUT recomputes everything over the decrypted payload and the row heals.
+   */
+  @Test
+  void aLegacyRowIsFlaggedRecordsItsTestAndHealsOnPut() {
+    Logged owner = user(Role.OWNER);
+    byte[] storedBeforeSelfService =
+        "{\"client_id\":\"sbx-id\",\"client_secret\":\"sbx-secret\",\"pix_key\":\"60701190000104\"}"
+            .getBytes(StandardCharsets.UTF_8);
+    credentials.store(
+        owner.store().id(),
+        Provider.ITAU,
+        ApiKeyEnvironment.TEST,
+        storedBeforeSelfService,
+        null,
+        Map.of(),
+        Map.of());
+
+    Map legacy = providerIn(get(owner.access(), null), "ITAU");
+    assertThat(legacy.get("configured")).isEqualTo(true);
+    assertThat(legacy.get("legacy")).isEqualTo(true);
+    assertThat(legacy.get("fingerprint")).isNull();
+    assertThat((Map) legacy.get("secrets_set")).isEmpty();
+    assertThat((Map) legacy.get("fields")).isEmpty();
+
+    ITAU.stubFor(post(ITAU_TOKEN).willReturn(okJson(A_TOKEN)));
+    EntityExchangeResult<String> tested = exchange(owner.access(), "POST", ITAU_TEST, null, null);
+    assertThat(tested.getStatus().value()).isEqualTo(200);
+    Map afterTest = providerIn(get(owner.access(), null), "ITAU");
+    assertThat((Map) afterTest.get("last_test")).containsEntry("detail", "Conectado");
+    assertThat(afterTest.get("legacy")).isEqualTo(false);
+    assertThat((String) afterTest.get("fingerprint")).hasSize(8);
+
+    // The secret is omitted: the merge must find it in the legacy row's decrypted payload.
+    Map<String, Object> edited = Map.of("client_id", "sbx-id", "pix_key", "60701190000105");
+    put(owner.access(), ITAU_CREDENTIALS, null, Map.of("payload", edited));
+
+    Map healed = providerIn(get(owner.access(), null), "ITAU");
+    assertThat(healed.get("legacy")).isEqualTo(false);
+    assertThat((String) healed.get("fingerprint")).hasSize(8);
+    assertThat((Map) healed.get("secrets_set")).containsEntry("client_secret", true);
+    assertThat((Map) healed.get("fields")).containsEntry("pix_key", "60701190000105");
+  }
+
   @Test
   void anOwnerStoresItauTestCredentialsAndTheGetShowsStateNotSecrets() {
     Logged owner = user(Role.OWNER);

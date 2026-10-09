@@ -139,6 +139,18 @@ class CieloCredentialProbeTest {
     assertThat(server.findAll(anyRequestedFor(anyUrl()))).isEmpty();
   }
 
+  /** An admin-seeded payload with a secret as an object: a verdict with the field, never a 500. */
+  @Test
+  void aSecretOfTheWrongTypeIsIncompleteWithoutGoingToTheNetwork() {
+    ProbeResult result =
+        probe.probe(
+            test(
+                "{\"merchant_id\":\"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\",\"merchant_key\":[1]}"));
+
+    assertThat(result).isEqualTo(new ProbeResult(false, "Credencial incompleta: merchant_key"));
+    assertThat(server.findAll(anyRequestedFor(anyUrl()))).isEmpty();
+  }
+
   private static CieloEndpoints endpointsUnder(String prefix) {
     return new CieloEndpoints(
         URI.create(server.baseUrl() + prefix + "/api"),

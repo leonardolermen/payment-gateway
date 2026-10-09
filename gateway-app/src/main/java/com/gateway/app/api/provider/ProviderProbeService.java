@@ -1,10 +1,10 @@
 package com.gateway.app.api.provider;
 
+import com.gateway.app.api.support.Environments;
 import com.gateway.kernel.errors.DomainException;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.provider.ProbeResult;
 import com.gateway.kernel.provider.ProviderCredentials;
-import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.security.Sha256;
 import com.gateway.merchants.apikey.ApiKeyEnvironment;
 import com.gateway.merchants.credential.Provider;
@@ -43,7 +43,7 @@ public class ProviderProbeService {
    */
   public ProviderCredential.ProbeOutcome test(
       MerchantId merchantId, Provider provider, ApiKeyEnvironment environment) {
-    ProviderCatalog.of(provider);
+    ProviderCatalog.requireListed(provider);
 
     byte[] plaintext =
         credentials
@@ -60,7 +60,7 @@ public class ProviderProbeService {
       result =
           probes
               .forProvider(provider.name())
-              .probe(new ProviderCredentials(plaintext, toProviderEnvironment(environment)));
+              .probe(new ProviderCredentials(plaintext, Environments.toProvider(environment)));
     } finally {
       Arrays.fill(plaintext, (byte) 0);
     }
@@ -72,11 +72,5 @@ public class ProviderProbeService {
     ProviderEvents.tested(merchantId.value(), provider.name(), environment.name(), outcome.ok());
 
     return outcome;
-  }
-
-  private static ProviderEnvironment toProviderEnvironment(ApiKeyEnvironment environment) {
-    return environment == ApiKeyEnvironment.LIVE
-        ? ProviderEnvironment.LIVE
-        : ProviderEnvironment.TEST;
   }
 }

@@ -1,7 +1,7 @@
 package com.gateway.app.api.provider;
 
+import com.gateway.app.api.support.Environments;
 import com.gateway.kernel.ids.MerchantId;
-import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.security.Secret;
 import com.gateway.kernel.security.Sha256;
 import com.gateway.merchants.apikey.ApiKeyEnvironment;
@@ -73,7 +73,7 @@ public class MerchantProviderService {
             submitted,
             credentials.decrypt(merchantId, provider, environment),
             entry.secretFields());
-    CredentialShape.validate(provider, toProviderEnvironment(environment), merged);
+    CredentialShape.validate(provider, Environments.toProvider(environment), merged);
 
     CredentialSummary summary = CredentialSummary.of(merged, entry);
     credentials.store(
@@ -100,11 +100,5 @@ public class MerchantProviderService {
     notificationKeys.set(merchantId, provider.name(), Secret.of(key));
 
     ProviderEvents.notificationKeySet(merchantId.value(), provider.name());
-  }
-
-  private static ProviderEnvironment toProviderEnvironment(ApiKeyEnvironment environment) {
-    return environment == ApiKeyEnvironment.LIVE
-        ? ProviderEnvironment.LIVE
-        : ProviderEnvironment.TEST;
   }
 }

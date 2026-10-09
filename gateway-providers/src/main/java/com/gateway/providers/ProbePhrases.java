@@ -2,6 +2,7 @@ package com.gateway.providers;
 
 import com.gateway.kernel.provider.ProbeResult;
 import com.gateway.kernel.provider.ProviderException;
+import tools.jackson.core.JacksonException;
 
 /**
  * The fixed phrases a "test connection" may answer with (spec 2026-10-09, section 3). They are the
@@ -25,9 +26,23 @@ public final class ProbePhrases {
    * token travels, so a message that one day quoted a value would still not reach the panel.
    */
   public static ProbeResult incomplete(IllegalArgumentException cause) {
-    String message = cause.getMessage() == null ? "" : cause.getMessage().trim();
-    String field = message.isEmpty() ? "?" : message.split("\\s+", 2)[0];
+    String field = CredentialField.of(cause.getMessage());
 
+    return incomplete(field == null ? "?" : field);
+  }
+
+  /**
+   * A stored payload the parser cannot bind — a secret seeded as {@code {}} by an operator — is
+   * still a verdict, never a 500 from the test route. With a field on the path it is incomplete
+   * like a missing one; without a path nothing can be named and the answer is "unexpected".
+   */
+  public static ProbeResult incomplete(JacksonException cause) {
+    String field = CredentialField.of(cause);
+
+    return field == null ? UNEXPECTED : incomplete(field);
+  }
+
+  private static ProbeResult incomplete(String field) {
     return new ProbeResult(false, "Credencial incompleta: " + field);
   }
 

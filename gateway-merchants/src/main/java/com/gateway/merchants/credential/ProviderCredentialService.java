@@ -78,7 +78,19 @@ public class ProviderCredentialService {
                         "PROVIDER_CREDENTIALS_MISSING",
                         "no credential stored for " + provider + " in " + environment));
 
-    if (!credential.active() || !testedFingerprint.equals(credential.fingerprint())) {
+    if (!credential.active()) {
+      return false;
+    }
+
+    // A legacy row (stored before V104, fingerprint null) has nothing to compare against: the
+    // tested fingerprint is adopted with the verdict, and from then on the row compares like any
+    // other. Without this, no legacy credential could ever record a test.
+    if (credential.isLegacy()) {
+      repo.save(credential.withLastTest(testedFingerprint, outcome));
+      return true;
+    }
+
+    if (!testedFingerprint.equals(credential.fingerprint())) {
       return false;
     }
 

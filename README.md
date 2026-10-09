@@ -220,6 +220,11 @@ curl -s -XPUT localhost:8080/v1/merchant/providers/ITAU/credentials \
   public values; `{}` with no credential), `last_test` (`{ok, detail, checked_at}` or `null`) and, for
   Cielo, `notification_key_set`. Never a secret: `fingerprint`, `secrets_set` and `fields` are written
   at store time, so the `GET` decrypts nothing.
+- **`legacy: true`** marks a credential stored before self-service (an operator's `PUT` from before
+  V104/V105): nothing was summarised for it, so `fingerprint` is `null` and `secrets_set` and `fields`
+  are `{}` — not a claim that the secrets are absent. Re-enter it with a `PUT` to see its fields: the
+  merge reads the stored payload, so the secrets may be omitted and the row heals. A test connection
+  still works on it and records `last_test` (the row adopts the tested fingerprint).
 - **`inbound_webhook_url`** is the URL the merchant registers at the bank (the Itaú webhook, the Cielo
   notification URL). It carries the merchant's webhook token, which is not a secret.
 - **Test connection.** `POST /v1/merchant/providers/{provider}/test` makes one authentication call to

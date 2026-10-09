@@ -10,6 +10,7 @@ import com.gateway.providers.cielo.CieloHttp;
 import java.net.http.HttpResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.core.JacksonException;
 
 /**
  * "Test connection" for the Cielo, which has no token endpoint: one GET on the query host for a
@@ -41,6 +42,8 @@ public final class CieloCredentialProbe implements CredentialProbe {
     try {
       parsed = CieloCredentials.parse(credentials.payload());
     } catch (IllegalArgumentException e) {
+      return ProbePhrases.incomplete(e);
+    } catch (JacksonException e) {
       return ProbePhrases.incomplete(e);
     }
 

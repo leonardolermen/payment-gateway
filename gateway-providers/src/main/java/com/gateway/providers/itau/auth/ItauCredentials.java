@@ -107,7 +107,7 @@ public record ItauCredentials(
    */
   public void requireBoletoShape() {
     if (!hasBeneficiary()) {
-      throw new IllegalArgumentException("beneficiary_id");
+      throw new IllegalArgumentException("beneficiary_id is required to issue a boleto");
     }
   }
 

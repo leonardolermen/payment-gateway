@@ -3,9 +3,9 @@ package com.gateway.app.api.provider;
 import com.gateway.kernel.errors.FieldDomainException;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.merchants.credential.Provider;
+import com.gateway.providers.CredentialField;
 import com.gateway.providers.cielo.auth.CieloCredentials;
 import com.gateway.providers.itau.auth.ItauCredentials;
-import java.util.Objects;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -29,12 +29,14 @@ final class CredentialShape {
       parse(provider, environment, json);
     } catch (IllegalArgumentException e) {
       throw new FieldDomainException(
-          "PROVIDER_CREDENTIALS_INVALID", e.getMessage(), fieldOf(e.getMessage()));
+          "PROVIDER_CREDENTIALS_INVALID", e.getMessage(), CredentialField.of(e.getMessage()));
     } catch (JacksonException e) {
       // A secret sent as {} or []: the parsers' Raw record cannot bind it. Jackson's own message
       // quotes a slice of the body, so a fixed detail goes out and only the field name travels.
       throw new FieldDomainException(
-          "PROVIDER_CREDENTIALS_INVALID", "payload has a field of the wrong type", fieldOf(e));
+          "PROVIDER_CREDENTIALS_INVALID",
+          "payload has a field of the wrong type",
+          CredentialField.of(e));
     }
   }
 
@@ -74,21 +76,5 @@ final class CredentialShape {
             "PROVIDER_CREDENTIALS_INVALID", key + " is not a field of " + provider, key);
       }
     }
-  }
-
-  private static String fieldOf(String message) {
-    return message.split("\\s+", 2)[0];
-  }
-
-  private static String fieldOf(JacksonException e) {
-    if (e.getPath() == null) {
-      return null;
-    }
-
-    return e.getPath().stream()
-        .map(JacksonException.Reference::getPropertyName)
-        .filter(Objects::nonNull)
-        .findFirst()
-        .orElse(null);
   }
 }
