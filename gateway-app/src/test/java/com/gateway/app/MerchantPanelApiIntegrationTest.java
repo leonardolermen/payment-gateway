@@ -248,6 +248,34 @@ class MerchantPanelApiIntegrationTest {
   }
 
   @Test
+  void customersSearchPagesByCursorLikeThePlainList() {
+    Keys keys = newMerchant();
+    String maria = customer(keys.test(), "Maria Souza", "52998224725");
+    String mariana = customer(keys.test(), "Mariana Lima", "11144477735");
+    customer(keys.test(), "Joao Pedro", "16899535009");
+
+    assertThat(ids(list(keys.test(), "/v1/customers?q=mari&limit=1"))).containsExactly(mariana);
+    assertThat(ids(list(keys.test(), "/v1/customers?q=MARI&limit=1&cursor=" + mariana)))
+        .containsExactly(maria);
+    assertThat(ids(list(keys.test(), "/v1/customers?q=mari&limit=10")))
+        .containsExactly(mariana, maria);
+  }
+
+  /** The merchant typed a name, not a pattern: LIKE's wildcards and its escape are literal. */
+  @Test
+  void customersSearchTreatsWildcardsAsLiteralText() {
+    Keys keys = newMerchant();
+    String percent = customer(keys.test(), "Ana 100% Silva", "52998224725");
+    String underscore = customer(keys.test(), "Joao_Souza", "11144477735");
+    String backslash = customer(keys.test(), "Maria \\ Lima", "16899535009");
+
+    assertThat(ids(list(keys.test(), "/v1/customers?q=%"))).containsExactly(percent);
+    assertThat(ids(list(keys.test(), "/v1/customers?q=_"))).containsExactly(underscore);
+    assertThat(ids(list(keys.test(), "/v1/customers?q=\\"))).containsExactly(backslash);
+    assertThat(list(keys.test(), "/v1/customers?q=%%%")).isEmpty();
+  }
+
+  @Test
   void contradictoryListFiltersAre400() {
     Keys keys = newMerchant();
 
