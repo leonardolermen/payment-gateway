@@ -1248,7 +1248,7 @@ opening one order per cycle (the invoice), so everything below is the same five 
 | `GET /v1/customers?limit=&cursor=` | 200, active customers of the key's environment, newest first | 400 on a `limit` outside 1–100 |
 | `GET /v1/customers?q=&limit=&cursor=` | 200, the active customers whose name contains `q` (case-insensitive, literal: `%`, `_` and `\` are text, not wildcards), newest first | 400 with `document` |
 | `GET /v1/customers?document=` | 200, a list of 0 or 1 | 400 on an invalid document, or with `cursor` or `q` |
-| `PATCH /v1/customers/{id}` (`name`, `email`, `address`) | 200; `"email": ""` (or only spaces) clears the e-mail, like on create | 400 on an empty body or an unknown field (`document` is immutable) |
+| `PATCH /v1/customers/{id}` (`name`, `email`, `address`) | 200; `"email": ""` (or only spaces) clears the e-mail and surrounding spaces are trimmed, like on create | 400 on an empty body or an unknown field (`document` is immutable) |
 | `DELETE /v1/customers/{id}` | 204 | 409 `CUSTOMER_HAS_ACTIVE_SUBSCRIPTION` |
 | `GET /v1/customers/{id}/cards` | 200 | |
 | `POST /v1/orders` * | 201 `OPEN` | 400 when both or neither of `customer_id`/`customer` are sent |
