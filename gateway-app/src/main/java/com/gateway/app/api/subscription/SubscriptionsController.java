@@ -25,6 +25,9 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -138,7 +141,16 @@ public class SubscriptionsController {
               limit);
     }
 
-    return page.stream().map(subscription -> response(merchantId, subscription)).toList();
+    // One query for the page's names, not one per row.
+    Set<String> customerIds =
+        page.stream().map(Subscription::customerId).collect(Collectors.toSet());
+    Map<String, String> names = customers.namesOf(merchantId, customerIds);
+
+    return page.stream()
+        .map(
+            subscription ->
+                response(merchantId, subscription, names.get(subscription.customerId())))
+        .toList();
   }
 
   private static SubscriptionStatus statusFilter(String status) {
@@ -194,14 +206,30 @@ public class SubscriptionsController {
   }
 
   private SubscriptionResponse response(MerchantId merchantId, Subscription subscription) {
+    String customerName =
+        customers
+            .namesOf(merchantId, List.of(subscription.customerId()))
+            .get(subscription.customerId());
+
+    return response(merchantId, subscription, customerName);
+  }
+
+  /**
+   * The latest invoice is the subscription's customer's, so it reuses the name already looked up.
+   */
+  private SubscriptionResponse response(
+      MerchantId merchantId, Subscription subscription, String customerName) {
     OrderResponse latestOrder =
         queries.invoicesOf(merchantId, subscription.id()).stream()
             .findFirst()
-            .map(order -> orderResponse(merchantId, order))
+            .map(
+                order ->
+                    OrderResponse.from(
+                        order, orders.attemptsOf(merchantId, order.id()), customerName))
             .orElse(null);
 
     return SubscriptionResponse.from(
-        subscription, latestOrder, queries.dunningOf(merchantId, subscription.id()));
+        subscription, customerName, latestOrder, queries.dunningOf(merchantId, subscription.id()));
   }
 
   private OrderResponse orderResponse(MerchantId merchantId, Order order) {

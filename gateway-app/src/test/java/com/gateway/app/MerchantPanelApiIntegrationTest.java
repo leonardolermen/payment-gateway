@@ -248,6 +248,107 @@ class MerchantPanelApiIntegrationTest {
   }
 
   @Test
+  void everySubscriptionResponseCarriesTheCustomersName() {
+    Keys keys = newMerchant();
+    String plan = plan(keys.test());
+    String ana = customer(keys.test(), "Ana Silva", "52998224725");
+    String joao = customer(keys.test(), "Joao Souza", "11144477735");
+    Map<String, Object> created =
+        post(
+            keys.test(),
+            "s-ana",
+            "/v1/subscriptions",
+            Map.of("customer_id", ana, "plan_id", plan, "method", "PIX"));
+    String anaSubscription = (String) created.get("id");
+    String joaoSubscription = subscription(keys.test(), "s-joao", joao, plan);
+
+    assertThat(created).containsEntry("customer_name", "Ana Silva");
+    assertThat(list(keys.test(), "/v1/subscriptions?limit=10"))
+        .extracting(row -> row.get("customer_name"))
+        .containsExactly("Joao Souza", "Ana Silva");
+    assertThat(list(keys.test(), "/v1/subscriptions?customer_id=" + ana))
+        .extracting(row -> row.get("customer_name"))
+        .containsExactly("Ana Silva");
+    assertThat(get(keys.test(), "/v1/subscriptions/" + anaSubscription))
+        .containsEntry("customer_name", "Ana Silva");
+
+    Map<String, Object> canceled =
+        post(
+            keys.test(),
+            "s-joao-cancel",
+            "/v1/subscriptions/" + joaoSubscription + "/cancel",
+            Map.of("at_period_end", false));
+    assertThat(canceled).containsEntry("customer_name", "Joao Souza");
+  }
+
+  @Test
+  void aBlankEmailOnPatchClearsIt() {
+    Keys keys = newMerchant();
+    String withEmail =
+        (String)
+            post(
+                    keys.test(),
+                    "cust-email-1",
+                    "/v1/customers",
+                    Map.of("name", "Ana Silva", "document", "52998224725", "email", "a@x.com"))
+                .get("id");
+    String withSpaces =
+        (String)
+            post(
+                    keys.test(),
+                    "cust-email-2",
+                    "/v1/customers",
+                    Map.of("name", "Joao Souza", "document", "11144477735", "email", "j@x.com"))
+                .get("id");
+
+    patchCustomer(keys.test(), withEmail, Map.of("email", ""));
+    patchCustomer(keys.test(), withSpaces, Map.of("email", "   "));
+
+    assertThat(get(keys.test(), "/v1/customers/" + withEmail)).containsEntry("email", null);
+    assertThat(get(keys.test(), "/v1/customers/" + withSpaces)).containsEntry("email", null);
+  }
+
+  private void patchCustomer(String key, String id, Object body) {
+    http()
+        .patch()
+        .uri("/v1/customers/" + id)
+        .header("Authorization", "Bearer " + key)
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(body)
+        .exchange()
+        .expectStatus()
+        .isOk();
+  }
+
+  @Test
+  void customersSearchPagesByCursorLikeThePlainList() {
+    Keys keys = newMerchant();
+    String maria = customer(keys.test(), "Maria Souza", "52998224725");
+    String mariana = customer(keys.test(), "Mariana Lima", "11144477735");
+    customer(keys.test(), "Joao Pedro", "16899535009");
+
+    assertThat(ids(list(keys.test(), "/v1/customers?q=mari&limit=1"))).containsExactly(mariana);
+    assertThat(ids(list(keys.test(), "/v1/customers?q=MARI&limit=1&cursor=" + mariana)))
+        .containsExactly(maria);
+    assertThat(ids(list(keys.test(), "/v1/customers?q=mari&limit=10")))
+        .containsExactly(mariana, maria);
+  }
+
+  /** The merchant typed a name, not a pattern: LIKE's wildcards and its escape are literal. */
+  @Test
+  void customersSearchTreatsWildcardsAsLiteralText() {
+    Keys keys = newMerchant();
+    String percent = customer(keys.test(), "Ana 100% Silva", "52998224725");
+    String underscore = customer(keys.test(), "Joao_Souza", "11144477735");
+    String backslash = customer(keys.test(), "Maria \\ Lima", "16899535009");
+
+    assertThat(ids(list(keys.test(), "/v1/customers?q=%"))).containsExactly(percent);
+    assertThat(ids(list(keys.test(), "/v1/customers?q=_"))).containsExactly(underscore);
+    assertThat(ids(list(keys.test(), "/v1/customers?q=\\"))).containsExactly(backslash);
+    assertThat(list(keys.test(), "/v1/customers?q=%%%")).isEmpty();
+  }
+
+  @Test
   void contradictoryListFiltersAre400() {
     Keys keys = newMerchant();
 

@@ -111,9 +111,16 @@ public class CustomerRepositoryImpl implements CustomerRepository {
       String cursorId,
       int limit) {
     // LIKE's own wildcards in the query would widen the search; the merchant typed a name, not a
-    // pattern.
+    // pattern. The escape goes first: a typed backslash would otherwise swallow the wildcard the
+    // next replace adds, and a trailing one would turn the closing '%' literal.
     String needle =
-        "%" + query.toLowerCase(Locale.ROOT).replace("%", "\\%").replace("_", "\\_") + "%";
+        "%"
+            + query
+                .toLowerCase(Locale.ROOT)
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_")
+            + "%";
 
     return jpa
         .findActivePageByName(

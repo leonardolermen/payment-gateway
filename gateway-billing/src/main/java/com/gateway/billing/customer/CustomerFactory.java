@@ -49,7 +49,7 @@ public final class CustomerFactory {
     }
   }
 
-  private static String blankToNull(String value) {
+  static String blankToNull(String value) {
     return value == null || value.isBlank() ? null : value.trim();
   }
 }

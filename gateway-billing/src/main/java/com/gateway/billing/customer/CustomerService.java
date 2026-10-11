@@ -121,7 +121,8 @@ public class CustomerService {
     PersonName newName =
         name == null ? current.name() : CustomerFactory.field("name", () -> PersonName.of(name));
     CustomerAddress newAddress = address == null ? current.address() : CustomerAddress.of(address);
-    String newEmail = email == null ? current.email() : email;
+    // The same rule as create: "" is how a JSON client says "no e-mail", and null means untouched.
+    String newEmail = email == null ? current.email() : CustomerFactory.blankToNull(email);
     Customer changed = current.withChanges(newName, newEmail, newAddress, clock.instant());
 
     return unitOfWork.inTransaction(
