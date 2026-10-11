@@ -10,6 +10,7 @@ import com.gateway.kernel.provider.ProviderException;
 import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
 import com.gateway.kernel.provider.card.CardMethodProvider;
 import com.gateway.kernel.provider.pix.PixMethodProvider;
+import com.gateway.payments.LogContext;
 import com.gateway.payments.provider.persistence.ProviderRequestRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -152,28 +153,32 @@ public class ProviderGateway {
       String operation,
       ResolvedProvider<P> resolved,
       Function<ResolvedProvider<P>, T> fn) {
-    long start = System.nanoTime();
+    try (var _ = LogContext.with("provider", resolved.provider().id()).and("op", operation)) {
+      long start = System.nanoTime();
 
-    try {
-      T result = fn.apply(resolved);
+      try {
+        T result = fn.apply(resolved);
 
-      record(paymentId, resolved, operation, null, CREATING.contains(operation) ? 201 : 200, start);
-      time(resolved, operation, "ok", start);
-      return result;
-    } catch (ProviderException e) {
-      record(paymentId, resolved, operation, e.code() + ": " + e.getMessage(), statusOf(e), start);
-      time(resolved, operation, outcomeOf(e), start);
-      throw e;
-    } catch (RuntimeException e) {
-      time(resolved, operation, "unexpected", start);
-      record(
-          paymentId,
-          resolved,
-          operation,
-          e.getClass().getSimpleName() + ": " + e.getMessage(),
-          0,
-          start);
-      throw e;
+        record(
+            paymentId, resolved, operation, null, CREATING.contains(operation) ? 201 : 200, start);
+        time(resolved, operation, "ok", start);
+        return result;
+      } catch (ProviderException e) {
+        record(
+            paymentId, resolved, operation, e.code() + ": " + e.getMessage(), statusOf(e), start);
+        time(resolved, operation, outcomeOf(e), start);
+        throw e;
+      } catch (RuntimeException e) {
+        time(resolved, operation, "unexpected", start);
+        record(
+            paymentId,
+            resolved,
+            operation,
+            e.getClass().getSimpleName() + ": " + e.getMessage(),
+            0,
+            start);
+        throw e;
+      }
     }
   }
 

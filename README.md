@@ -14,6 +14,10 @@ cp .env.example .env                # then fill in the values below
 ./mvnw -pl gateway-app spring-boot:run
 ```
 
+Logs are masked JSON by default (what production ships). For a readable console in dev set
+`LOG_FORMAT=pretty`: one colored line per event, `[cid=… job=… merchant=… provider=… op=…]` when
+that context exists, and a bank that is down or slow on one line instead of a stack trace.
+
 The app reads the repo root's `.env` on startup, so the IDE's run configuration needs no environment
 variables. The minimum for a local run:
 
@@ -1313,7 +1317,8 @@ opening one order per cycle (the invoice), so everything below is the same five 
 | `POST /v1/customers` * | 201 | 409 `CUSTOMER_EXISTS` (+`customer_id`); 422 `CUSTOMER_INVALID` |
 | `GET /v1/customers/{id}` | 200 | 404 `NOT_FOUND` |
 | `GET /v1/customers?limit=&cursor=` | 200, active customers of the key's environment, newest first | 400 on a `limit` outside 1–100 |
-| `GET /v1/customers?document=` | 200, a list of 0 or 1 | 400 on an invalid document, or with `cursor` |
+| `GET /v1/customers?q=&limit=&cursor=` | 200, the active customers whose name contains `q`, case-insensitively, newest first | |
+| `GET /v1/customers?document=` | 200, a list of 0 or 1 | 400 on an invalid document, or with `cursor` or `q` |
 | `PATCH /v1/customers/{id}` (`name`, `email`, `address`) | 200 | 400 on an empty body or an unknown field (`document` is immutable) |
 | `DELETE /v1/customers/{id}` | 204 | 409 `CUSTOMER_HAS_ACTIVE_SUBSCRIPTION` |
 | `GET /v1/customers/{id}/cards` | 200 | |
@@ -1322,12 +1327,14 @@ opening one order per cycle (the invoice), so everything below is the same five 
 | `POST /v1/orders/{id}/cancel` * | 200 `CANCELED` | 409 `ORDER_CLOSED`; 409 `ALREADY_PAID` |
 | `POST /v1/orders/{id}/checkout-token/rotate` * | 200 with a new `checkout_url` | 409 `ORDER_CLOSED` |
 | `GET /v1/orders?limit=&cursor=&status=` | 200, orders of the key's environment, newest first | 400 on an unknown `status` |
-| `GET /v1/orders/{id}`, `GET /v1/orders?reference=&limit=`, `GET /v1/orders/{id}/payments` | 200 | 400 when `reference` comes with `cursor` or `status` |
+| `GET /v1/orders?customer_id=&limit=&cursor=&status=` | 200, one customer's orders, newest first | 400 with `reference` |
+| `GET /v1/orders/{id}`, `GET /v1/orders?reference=&limit=`, `GET /v1/orders/{id}/payments` | 200 | 400 when `reference` comes with `cursor`, `status` or `customer_id` |
 | `POST /v1/plans` * | 201 | 400 on a range error |
 | `GET /v1/plans/{id}`, `GET /v1/plans?active=` | 200 | |
 | `PATCH /v1/plans/{id}` (`name`, `active`) | 200 | 422 `PLAN_IMMUTABLE` naming the field |
 | `POST /v1/subscriptions` * | 201 `ACTIVE` | 404; 422 `PLAN_INACTIVE`, `CARD_REQUIRED`, `CARD_NOT_OWNED_BY_CUSTOMER`, `CUSTOMER_ADDRESS_REQUIRED` |
-| `GET /v1/subscriptions/{id}`, `GET /v1/subscriptions?customer_id=` | 200 | |
+| `GET /v1/subscriptions?limit=&cursor=&status=` | 200, subscriptions of the key's environment, newest first | 400 on an unknown `status` or a `limit` outside 1–100 |
+| `GET /v1/subscriptions/{id}`, `GET /v1/subscriptions?customer_id=` | 200 (`customer_id`: all of that customer's, unpaged) | 400 when `customer_id` comes with `cursor` or `status` |
 | `POST /v1/subscriptions/{id}/cancel` * `{"at_period_end": true}` (default) | 200 | 409 `SUBSCRIPTION_NOT_ACTIVE` |
 | `PATCH /v1/subscriptions/{id}` (`method`, `card_id`) | 200 | the 422s of create; 409 `SUBSCRIPTION_NOT_ACTIVE` |
 | `GET /v1/subscriptions/{id}/orders` | 200, newest first | |

@@ -1,6 +1,7 @@
 package com.gateway.providers.itau.auth;
 
 import com.gateway.kernel.provider.ProviderException;
+import com.gateway.providers.TransportFailure;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -100,7 +101,9 @@ public class ItauTokenClient {
         Thread.currentThread().interrupt();
       }
       throw new ProviderException(
-          ProviderException.Code.UNAVAILABLE, "token request failed: " + e.getMessage(), e);
+          ProviderException.Code.UNAVAILABLE,
+          TransportFailure.describe("token request", tokenUrl, e),
+          e);
     }
     if (response.statusCode() == 401 || response.statusCode() == 403) {
       throw new ProviderException(

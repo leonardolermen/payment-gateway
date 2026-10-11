@@ -101,6 +101,11 @@ public class OrderService {
     return orders.list(merchantId, environment, status, cursor, limit);
   }
 
+  public List<Order> listByCustomer(
+      MerchantId merchantId, String customerId, OrderStatus status, String cursor, int limit) {
+    return orders.listByCustomer(merchantId, customerId, status, cursor, limit);
+  }
+
   public List<Payment> attemptsOf(MerchantId merchantId, String id) {
     get(merchantId, id);
 

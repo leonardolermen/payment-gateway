@@ -1,6 +1,7 @@
 package com.gateway.app;
 
 import com.gateway.app.api.checkout.CheckoutProperties;
+import com.gateway.app.observability.LoggingProperties;
 import java.time.Clock;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -22,7 +23,11 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
  * "Task 6 note".
  */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties({AppConfiguration.AppProperties.class, CheckoutProperties.class})
+@EnableConfigurationProperties({
+  AppConfiguration.AppProperties.class,
+  CheckoutProperties.class,
+  LoggingProperties.class
+})
 @EntityScan("com.barrier.webhookdelivery.repository")
 @EnableJpaRepositories("com.barrier.webhookdelivery.repository")
 public class AppConfiguration {

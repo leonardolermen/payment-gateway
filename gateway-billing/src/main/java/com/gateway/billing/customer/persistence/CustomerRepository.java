@@ -24,6 +24,14 @@ public interface CustomerRepository {
   List<Customer> listActive(
       MerchantId merchantId, ProviderEnvironment environment, String cursorId, int limit);
 
+  /** Like {@link #listActive}, narrowed to names containing {@code query}, case-insensitively. */
+  List<Customer> searchActiveByName(
+      MerchantId merchantId,
+      ProviderEnvironment environment,
+      String query,
+      String cursorId,
+      int limit);
+
   /** Id to name of the active ones among {@code ids}; a deleted or foreign id is simply absent. */
   Map<String, String> activeNames(MerchantId merchantId, Collection<String> ids);
 }

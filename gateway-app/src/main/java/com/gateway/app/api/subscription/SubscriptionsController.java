@@ -19,9 +19,11 @@ import com.gateway.billing.subscription.Subscription;
 import com.gateway.billing.subscription.SubscriptionFactory;
 import com.gateway.billing.subscription.SubscriptionQueries;
 import com.gateway.billing.subscription.SubscriptionService;
+import com.gateway.billing.subscription.SubscriptionStatus;
 import com.gateway.kernel.ids.MerchantId;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -41,6 +43,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/v1/subscriptions")
 public class SubscriptionsController {
+  private static final int MAX_PAGE = 100;
+
   private final SubscriptionService subscriptions;
   private final SubscriptionQueries queries;
   private final CustomerService customers;
@@ -100,13 +104,54 @@ public class SubscriptionsController {
     return response(merchantId, queries.get(merchantId, id));
   }
 
+  /**
+   * Without {@code customer_id}: the key's environment, newest first, by cursor (the last id of the
+   * previous page), optionally one status. With it: that customer's subscriptions, all of them —
+   * the customer detail wants the whole history, so it takes neither cursor nor status.
+   */
   @GetMapping
-  public List<SubscriptionResponse> listByCustomer(@RequestParam("customer_id") String customerId) {
-    MerchantId merchantId = MerchantContext.current().merchantId();
+  public List<SubscriptionResponse> list(
+      @RequestParam(defaultValue = "20") int limit,
+      @RequestParam(required = false) String cursor,
+      @RequestParam(required = false) String status,
+      @RequestParam(name = "customer_id", required = false) String customerId) {
+    if (limit <= 0 || limit > MAX_PAGE) {
+      throw new IllegalArgumentException("limit must be between 1 and " + MAX_PAGE);
+    }
 
-    return queries.listByCustomer(merchantId, customerId).stream()
-        .map(subscription -> response(merchantId, subscription))
-        .toList();
+    MerchantContext.Current caller = MerchantContext.current();
+    MerchantId merchantId = caller.merchantId();
+
+    List<Subscription> page;
+    if (customerId != null) {
+      if (cursor != null || status != null) {
+        throw new IllegalArgumentException("customer_id cannot be combined with cursor or status");
+      }
+      page = queries.listByCustomer(merchantId, customerId);
+    } else {
+      page =
+          queries.list(
+              merchantId,
+              Environments.toProvider(caller.environment()),
+              statusFilter(status),
+              cursor,
+              limit);
+    }
+
+    return page.stream().map(subscription -> response(merchantId, subscription)).toList();
+  }
+
+  private static SubscriptionStatus statusFilter(String status) {
+    if (status == null) {
+      return null;
+    }
+
+    try {
+      return SubscriptionStatus.valueOf(status);
+    } catch (IllegalArgumentException unknown) {
+      throw new IllegalArgumentException(
+          "status must be one of " + Arrays.toString(SubscriptionStatus.values()));
+    }
   }
 
   @PostMapping("/{id}/cancel")

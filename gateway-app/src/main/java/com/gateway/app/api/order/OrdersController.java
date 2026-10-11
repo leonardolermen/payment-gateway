@@ -145,7 +145,8 @@ public class OrdersController {
       @RequestParam(defaultValue = "20") int limit,
       @RequestParam(required = false) String cursor,
       @RequestParam(required = false) String status,
-      @RequestParam(required = false) String reference) {
+      @RequestParam(required = false) String reference,
+      @RequestParam(name = "customer_id", required = false) String customerId) {
     if (limit <= 0 || limit > MAX_PAGE) {
       throw new IllegalArgumentException("limit must be between 1 and " + MAX_PAGE);
     }
@@ -155,10 +156,14 @@ public class OrdersController {
 
     List<Order> page;
     if (reference != null) {
-      if (cursor != null || status != null) {
-        throw new IllegalArgumentException("reference cannot be combined with cursor or status");
+      if (cursor != null || status != null || customerId != null) {
+        throw new IllegalArgumentException(
+            "reference cannot be combined with cursor, status or customer_id");
       }
       page = orders.listByReference(merchantId, reference, limit);
+    } else if (customerId != null) {
+      // The customer's history (panel detail): status and cursor narrow it like the main list.
+      page = orders.listByCustomer(merchantId, customerId, statusFilter(status), cursor, limit);
     } else {
       page =
           orders.list(
