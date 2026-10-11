@@ -1,12 +1,15 @@
 package com.gateway.providers;
 
+import com.gateway.kernel.provider.CredentialProbe;
 import com.gateway.kernel.provider.ProviderEnvironment;
 import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
 import com.gateway.kernel.provider.card.CardMethodProvider;
 import com.gateway.kernel.provider.pix.PixMethodProvider;
 import com.gateway.providers.cielo.CieloCardProvider;
 import com.gateway.providers.cielo.CieloHttp;
+import com.gateway.providers.cielo.auth.CieloCredentialProbe;
 import com.gateway.providers.cielo.auth.CieloEndpoints;
+import com.gateway.providers.itau.auth.ItauCredentialProbe;
 import com.gateway.providers.itau.auth.ItauEndpoints;
 import com.gateway.providers.itau.auth.ItauTokenClient;
 import com.gateway.providers.itau.boleto.ItauBoletoEndpoints;
@@ -172,6 +175,13 @@ public class ProvidersConfiguration {
         properties.boletoTest());
   }
 
+  /** The same token client, trust store and endpoints as the payments: a test proves that path. */
+  @Bean
+  CredentialProbe itauCredentialProbe(ItauTokenClient tokens, ProvidersProperties properties) {
+    return new ItauCredentialProbe(
+        tokens, trustStore(properties), properties.live(), properties.test());
+  }
+
   private static KeyStore trustStore(ProvidersProperties properties) {
     return properties.trustStorePem() == null || properties.trustStorePem().isBlank()
         ? null
@@ -216,6 +226,14 @@ public class ProvidersConfiguration {
   @Bean
   CardMethodProvider cieloCardProvider(CieloProperties properties) {
     return new CieloCardProvider(
+        new CieloHttp(Duration.ofSeconds(3), properties.readTimeout()),
+        properties.live(),
+        properties.test());
+  }
+
+  @Bean
+  CredentialProbe cieloCredentialProbe(CieloProperties properties) {
+    return new CieloCredentialProbe(
         new CieloHttp(Duration.ofSeconds(3), properties.readTimeout()),
         properties.live(),
         properties.test());

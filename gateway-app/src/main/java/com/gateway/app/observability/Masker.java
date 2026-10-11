@@ -14,7 +14,8 @@ public final class Masker {
   private static final Pattern BEARER = Pattern.compile("(?i)(Bearer\\s+)\\S+");
   private static final Pattern FIELDS =
       Pattern.compile(
-          "(\"(?:client_secret|secret|previous_secret|pix_copia_e_cola|password|token|access_token|certificate)\"\\s*:\\s*\")[^\"]*(\")");
+          "(\"(?:client_secret|secret|previous_secret|pix_copia_e_cola|password|token|access_token|certificate"
+              + "|merchant_key|x_itau_apikey|private_key_pem|certificate_pem|key)\"\\s*:\\s*\")[^\"]*(\")");
 
   /** 13–19 digits, grouped by spaces or hyphens or not; only those that pass Luhn are masked. */
   private static final Pattern CARD_NUMBER =

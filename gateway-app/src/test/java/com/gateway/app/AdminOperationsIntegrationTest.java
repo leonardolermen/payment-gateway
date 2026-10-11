@@ -239,6 +239,25 @@ class AdminOperationsIntegrationTest {
     http().get().uri("/v1/admin/divergences").exchange().expectStatus().isForbidden();
   }
 
+  /**
+   * The operator may still seed a FAKE credential: that provider is not in the merchant catalog.
+   */
+  @Test
+  void theAdminRouteStoresAFakeCredentialWithoutASummary() {
+    String merchantId =
+        (String) adminPost("/v1/admin/merchants", Map.of("name", "Fake Store"), 201).get("id");
+
+    http()
+        .put()
+        .uri("/v1/admin/merchants/" + merchantId + "/providers/FAKE/credentials")
+        .header("X-Admin-Key", "test-admin")
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(Map.of("environment", "TEST", "payload", Map.of("anything", "goes")))
+        .exchange()
+        .expectStatus()
+        .isNoContent();
+  }
+
   private RestTestClient http() {
     return RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build();
   }

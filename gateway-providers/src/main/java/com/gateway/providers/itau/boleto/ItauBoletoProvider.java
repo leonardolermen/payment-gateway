@@ -8,6 +8,7 @@ import com.gateway.kernel.provider.boleto.BoletoIssueRequest;
 import com.gateway.kernel.provider.boleto.BoletoMethodProvider;
 import com.gateway.kernel.provider.boleto.BoletoStatus;
 import com.gateway.kernel.provider.boleto.IssuedBoleto;
+import com.gateway.providers.CredentialField;
 import com.gateway.providers.itau.auth.ItauCredentials;
 import com.gateway.providers.itau.auth.ItauTokenClient;
 import com.gateway.providers.itau.boleto.dto.BoletoPixRequest;
@@ -71,11 +72,13 @@ public class ItauBoletoProvider implements BoletoMethodProvider {
     try {
       credentials.requireBoletoShape();
     } catch (IllegalArgumentException e) {
+      String field = CredentialField.of(e.getMessage());
+
       throw new ProviderException(
           ProviderException.Code.CREDENTIALS_INCOMPLETE,
           0,
-          e.getMessage(),
-          "ITAU credential is missing " + e.getMessage());
+          field,
+          "ITAU credential is missing " + field);
     }
     return credentials;
   }

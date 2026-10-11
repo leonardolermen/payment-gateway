@@ -23,6 +23,14 @@ class RoleRoutesTest {
   }
 
   @Test
+  void theProviderConfigurationIsTheOwnersEvenToRead() {
+    assertThat(RoleRoutes.required("GET", "/v1/merchant/providers")).contains(Role.OWNER);
+    assertThat(RoleRoutes.required("PUT", "/v1/merchant/providers/ITAU/credentials"))
+        .contains(Role.OWNER);
+    assertThat(RoleRoutes.required("GET", "/v1/merchant/users")).contains(Role.READONLY);
+  }
+
+  @Test
   void prefixesMatchWholeSegments() {
     assertThat(RoleRoutes.required("GET", "/v1/merchant")).contains(Role.READONLY);
     assertThat(RoleRoutes.required("PATCH", "/v1/merchant")).contains(Role.OWNER);
@@ -36,6 +44,9 @@ class RoleRoutesTest {
     assertThat(RoleRoutes.userOnly("/v1/me")).isTrue();
     assertThat(RoleRoutes.userOnly("/v1/merchant/users/01X")).isTrue();
     assertThat(RoleRoutes.userOnly("/v1/invites")).isTrue();
+    assertThat(RoleRoutes.userOnly("/v1/merchant/providers")).isTrue();
+    assertThat(RoleRoutes.userOnly("/v1/merchant/providers/ITAU/credentials")).isTrue();
+    assertThat(RoleRoutes.userOnly("/v1/providers/itau/webhooks/tok")).isFalse();
     assertThat(RoleRoutes.userOnly("/v1/orders")).isFalse();
   }
 }

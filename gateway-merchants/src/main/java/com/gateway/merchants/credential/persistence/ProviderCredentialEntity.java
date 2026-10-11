@@ -2,6 +2,7 @@ package com.gateway.merchants.credential.persistence;
 
 import jakarta.persistence.*;
 import java.time.Instant;
+import java.util.Map;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -37,6 +38,27 @@ class ProviderCredentialEntity {
 
   @Column(name = "dek_nonce", nullable = false)
   byte[] dekNonce;
+
+  @Column(name = "fingerprint", length = 64)
+  @JdbcTypeCode(SqlTypes.CHAR)
+  String fingerprint;
+
+  @JdbcTypeCode(SqlTypes.JSON)
+  @Column(name = "secrets_set", nullable = false)
+  Map<String, Boolean> secretsSet;
+
+  @JdbcTypeCode(SqlTypes.JSON)
+  @Column(name = "public_fields", nullable = false)
+  Map<String, String> publicFields;
+
+  @Column(name = "last_test_ok")
+  Boolean lastTestOk;
+
+  @Column(name = "last_test_detail", length = 120)
+  String lastTestDetail;
+
+  @Column(name = "last_test_at")
+  Instant lastTestAt;
 
   @Column(name = "active", nullable = false)
   boolean active;

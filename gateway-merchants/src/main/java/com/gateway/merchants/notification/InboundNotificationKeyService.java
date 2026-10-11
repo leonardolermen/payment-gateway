@@ -24,6 +24,11 @@ public class InboundNotificationKeyService {
     keys.upsert(merchantId, provider, Sha256.hex(key.reveal()));
   }
 
+  /** Whether a key was ever set: the panel says "defined" and never sees the value. */
+  public boolean isSet(MerchantId merchantId, String provider) {
+    return keys.findHash(merchantId, provider).isPresent();
+  }
+
   public boolean matches(MerchantId merchantId, String provider, String presented) {
     if (presented == null || presented.isEmpty()) {
       return false;

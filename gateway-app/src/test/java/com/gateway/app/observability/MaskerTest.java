@@ -27,6 +27,24 @@ class MaskerTest {
             "{\"client_secret\":\"***\",\"secret\":\"***\",\"pix_copia_e_cola\":\"***\",\"name\":\"ok\"}");
   }
 
+  /**
+   * The self-service credential fields and the Cielo notification key, as they would land in a
+   * DTO's toString.
+   */
+  @Test
+  void masksTheProviderSecretsAndTheNotificationKey() {
+    assertThat(
+            Masker.mask(
+                "{\"merchant_key\":\"ABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890123\","
+                    + "\"x_itau_apikey\":\"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\","
+                    + "\"private_key_pem\":\"-----BEGIN PRIVATE KEY-----\","
+                    + "\"certificate_pem\":\"-----BEGIN CERTIFICATE-----\","
+                    + "\"key\":\"notif-secret\",\"merchant_id\":\"m\"}"))
+        .isEqualTo(
+            "{\"merchant_key\":\"***\",\"x_itau_apikey\":\"***\",\"private_key_pem\":\"***\","
+                + "\"certificate_pem\":\"***\",\"key\":\"***\",\"merchant_id\":\"m\"}");
+  }
+
   /** The checkout token travels in the path, so request-URI logging would otherwise record it. */
   @Test
   void masksCheckoutToken() {

@@ -6,9 +6,12 @@ import com.gateway.app.api.admin.dto.MerchantRequest;
 import com.gateway.app.api.admin.dto.MerchantResponse;
 import com.gateway.app.api.admin.dto.NotificationKeyRequest;
 import com.gateway.app.api.admin.dto.ProviderCredentialRequest;
+import com.gateway.app.api.provider.CredentialSummary;
+import com.gateway.app.api.provider.ProviderCatalog;
 import com.gateway.app.inbound.mtls.WebhookMtlsProperties;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.kernel.security.Secret;
+import com.gateway.kernel.security.Sha256;
 import com.gateway.merchants.apikey.ApiKeyService;
 import com.gateway.merchants.credential.Provider;
 import com.gateway.merchants.credential.ProviderCredentialService;
@@ -103,7 +106,20 @@ public class MerchantsAdminController {
       @PathVariable Provider provider,
       @RequestBody ProviderCredentialRequest request) {
     byte[] payload = objectMapper.writeValueAsBytes(request.payload());
-    credentials.store(new MerchantId(id), provider, request.environment(), payload);
+    // FAKE is not in the merchant catalog but the operator may still seed it: no summary then.
+    CredentialSummary summary =
+        ProviderCatalog.find(provider)
+            .map(entry -> CredentialSummary.of(payload, entry))
+            .orElseGet(CredentialSummary::none);
+
+    credentials.store(
+        new MerchantId(id),
+        provider,
+        request.environment(),
+        payload,
+        Sha256.hex(payload),
+        summary.secretsSet(),
+        summary.publicFields());
   }
 
   /**
