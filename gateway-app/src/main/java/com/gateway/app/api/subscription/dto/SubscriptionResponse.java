@@ -10,12 +10,14 @@ import java.util.List;
 
 /**
  * {@code current_period} is null until the first cycle opens one; {@code latest_order} is the
- * newest invoice, null before the first.
+ * newest invoice, null before the first. {@code customer_name} is null once the customer is
+ * deleted.
  */
 public record SubscriptionResponse(
     String id,
     String status,
     String customerId,
+    String customerName,
     String planId,
     String method,
     String cardId,
@@ -29,13 +31,17 @@ public record SubscriptionResponse(
   public record Period(LocalDate start, LocalDate end) {}
 
   public static SubscriptionResponse from(
-      Subscription subscription, OrderResponse latestOrder, List<DunningAttempt> dunning) {
+      Subscription subscription,
+      String customerName,
+      OrderResponse latestOrder,
+      List<DunningAttempt> dunning) {
     BillingPeriod period = subscription.currentPeriod();
 
     return new SubscriptionResponse(
         subscription.id(),
         subscription.status().name(),
         subscription.customerId(),
+        customerName,
         subscription.planId(),
         subscription.method().name(),
         subscription.cardId(),

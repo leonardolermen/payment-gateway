@@ -1,5 +1,12 @@
 # Listagens, parte 2 (B1b) — Implementation Plan
 
+> **Nota (2026-10-11, reescopo):** as Tasks 2 e 3, e quase toda a Task 1, já tinham saído no #30
+> (`ec9f00e`: busca por nome, lista de assinaturas com `status`/cursor, `GET /v1/orders?customer_id=`,
+> índices no `V309`). O B1b ficou só com o que faltava: o escape da barra invertida na busca
+> (`3e99ca4`), `customer_name` em toda resposta de assinatura e o e-mail em branco no PATCH limpando
+> o campo. A migração `pg_trgm` não entra (DECISOES 2026-10-08). O resto do plano fica como foi
+> escrito, como registro.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** The three listings the panel's Clientes and Assinaturas screens assume and the gateway does not have yet: customers searched by name, subscriptions listed across customers with a status filter and the customer's name, and orders filtered by customer.
