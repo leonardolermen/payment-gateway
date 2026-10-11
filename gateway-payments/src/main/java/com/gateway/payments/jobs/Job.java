@@ -104,6 +104,12 @@ public record Job(
         clock.instant());
   }
 
+  public static Job sendEmail(String outboundEmailId, Clock clock) {
+    Instant now = clock.instant();
+    return new Job(
+        Ulid.next(), JobType.SEND_EMAIL, outboundEmailId, now, 0, "PENDING", null, null, now);
+  }
+
   public static Job reconcile(Clock clock) {
     Instant now = clock.instant();
     return new Job(Ulid.next(), JobType.RECONCILE, "all", now, 0, "PENDING", null, null, now);

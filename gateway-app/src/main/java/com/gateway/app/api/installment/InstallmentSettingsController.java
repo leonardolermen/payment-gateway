@@ -45,6 +45,6 @@ public class InstallmentSettingsController {
             request.maxInstallments(),
             request.interestFreeUpTo(),
             request.monthlyRateBps(),
-            caller.apiKeyId()));
+            caller.actor().id()));
   }
 }

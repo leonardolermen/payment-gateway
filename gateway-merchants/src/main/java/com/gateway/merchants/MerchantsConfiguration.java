@@ -10,18 +10,41 @@ import com.gateway.merchants.credential.persistence.ProviderCredentialRepository
 import com.gateway.merchants.crypto.EnvelopeCipher;
 import com.gateway.merchants.crypto.EnvelopeSealer;
 import com.gateway.merchants.crypto.MasterKey;
+import com.gateway.merchants.mail.LoggingMailGateway;
+import com.gateway.merchants.mail.MailGateway;
+import com.gateway.merchants.mail.OutboundEmailService;
+import com.gateway.merchants.mail.SmtpMailGateway;
+import com.gateway.merchants.mail.persistence.OutboundEmailRepository;
+import com.gateway.merchants.mail.persistence.OutboundEmailRepositoryImpl;
 import com.gateway.merchants.merchant.MerchantService;
 import com.gateway.merchants.merchant.persistence.MerchantRepository;
 import com.gateway.merchants.merchant.persistence.MerchantRepositoryImpl;
 import com.gateway.merchants.notification.InboundNotificationKeyService;
 import com.gateway.merchants.notification.persistence.InboundNotificationKeyRepository;
 import com.gateway.merchants.notification.persistence.InboundNotificationKeyRepositoryImpl;
+import com.gateway.merchants.session.SessionService;
+import com.gateway.merchants.session.persistence.SessionRepository;
+import com.gateway.merchants.session.persistence.SessionRepositoryImpl;
+import com.gateway.merchants.user.PasswordService;
+import com.gateway.merchants.user.UserService;
+import com.gateway.merchants.user.persistence.UserRepository;
+import com.gateway.merchants.user.persistence.UserRepositoryImpl;
+import com.gateway.merchants.usertoken.UserTokenService;
+import com.gateway.merchants.usertoken.persistence.UserTokenRepository;
+import com.gateway.merchants.usertoken.persistence.UserTokenRepositoryImpl;
+import java.time.Clock;
+import java.util.Properties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.mail.javamail.JavaMailSenderImpl;
 
 /**
  * What the module exposes, chosen one by one. No component scan: the app imports this class and
@@ -35,26 +58,43 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
  * TestApp} then declares them locally so this module's tests keep working standalone.
  */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(MerchantsProperties.class)
+@EnableConfigurationProperties({MerchantsProperties.class, MailProperties.class})
 @EntityScan({
   "com.gateway.merchants.merchant.persistence",
   "com.gateway.merchants.apikey.persistence",
   "com.gateway.merchants.credential.persistence",
-  "com.gateway.merchants.notification.persistence"
+  "com.gateway.merchants.notification.persistence",
+  "com.gateway.merchants.user.persistence",
+  "com.gateway.merchants.session.persistence",
+  "com.gateway.merchants.usertoken.persistence",
+  "com.gateway.merchants.mail.persistence"
 })
 @EnableJpaRepositories({
   "com.gateway.merchants.merchant.persistence",
   "com.gateway.merchants.apikey.persistence",
   "com.gateway.merchants.credential.persistence",
-  "com.gateway.merchants.notification.persistence"
+  "com.gateway.merchants.notification.persistence",
+  "com.gateway.merchants.user.persistence",
+  "com.gateway.merchants.session.persistence",
+  "com.gateway.merchants.usertoken.persistence",
+  "com.gateway.merchants.mail.persistence"
 })
 @Import({
   MerchantRepositoryImpl.class,
   ApiKeyRepositoryImpl.class,
   ProviderCredentialRepositoryImpl.class,
-  InboundNotificationKeyRepositoryImpl.class
+  InboundNotificationKeyRepositoryImpl.class,
+  UserRepositoryImpl.class,
+  SessionRepositoryImpl.class,
+  UserTokenRepositoryImpl.class,
+  OutboundEmailRepositoryImpl.class
 })
 public class MerchantsConfiguration {
+  private static final Logger log = LoggerFactory.getLogger(MerchantsConfiguration.class);
+  // JavaMail's defaults are infinite: a relay that accepts the connection and then hangs would
+  // stall the e-mail jobs batch forever. Ten seconds is generous for one SMTP exchange.
+  private static final String SMTP_TIMEOUT_MILLIS = "10000";
+
   @Bean
   public MasterKey masterKey(MerchantsProperties p) {
     return MasterKey.fromBase64(p.masterKey());
@@ -92,5 +132,84 @@ public class MerchantsConfiguration {
   public InboundNotificationKeyService inboundNotificationKeyService(
       InboundNotificationKeyRepository keys) {
     return new InboundNotificationKeyService(keys);
+  }
+
+  @Bean
+  public PasswordService passwordService(MerchantsProperties properties) {
+    return new PasswordService(properties.auth().maxConcurrentHashes());
+  }
+
+  @Bean
+  public UserService userService(UserRepository users, PasswordService passwords, Clock clock) {
+    return new UserService(users, passwords, clock);
+  }
+
+  @Bean
+  public SessionService sessionService(
+      SessionRepository sessions, MerchantsProperties properties, Clock clock) {
+    return new SessionService(sessions, properties, clock);
+  }
+
+  @Bean
+  public UserTokenService userTokenService(
+      UserTokenRepository tokens, MerchantsProperties properties, Clock clock) {
+    return new UserTokenService(tokens, properties, clock);
+  }
+
+  @Bean
+  public OutboundEmailService outboundEmailService(OutboundEmailRepository emails, Clock clock) {
+    return new OutboundEmailService(emails, clock);
+  }
+
+  /**
+   * No host = the logging gateway, so a dev box needs no SMTP; links reach the log only in local
+   * and test, where they are how a developer clicks through. The prod profile refuses to start
+   * without a host and a public panel URL ({@link MailProperties#requireProductionReady}); a run
+   * with no profile is a dev box and keeps the WARN.
+   */
+  @Bean
+  public MailGateway mailGateway(MailProperties mail, Environment env) {
+    if (env.acceptsProfiles(Profiles.of("prod"))) {
+      mail.requireProductionReady();
+    }
+
+    if (!mail.isConfigured()) {
+      log.warn("e-mail is off: GATEWAY_MAIL_HOST is empty");
+      boolean revealLinks = env.acceptsProfiles(Profiles.of("local", "test"));
+      return new LoggingMailGateway(revealLinks);
+    }
+
+    JavaMailSenderImpl sender = new JavaMailSenderImpl();
+    sender.setHost(mail.host());
+    sender.setPort(mail.port());
+    sender.setJavaMailProperties(smtpProperties(mail));
+
+    if (mail.hasCredentials()) {
+      sender.setUsername(mail.username());
+      sender.setPassword(mail.password());
+    }
+
+    return new SmtpMailGateway(sender, mail.from());
+  }
+
+  /**
+   * STARTTLS and auth only when a username is set: a local relay (GreenMail, MailHog) offers
+   * neither. With credentials STARTTLS is required, not just enabled: "enable" silently falls back
+   * to plaintext when the server (or a man in the middle) does not offer it, sending the password
+   * in the clear.
+   */
+  static Properties smtpProperties(MailProperties mail) {
+    Properties properties = new Properties();
+    properties.put("mail.smtp.connectiontimeout", SMTP_TIMEOUT_MILLIS);
+    properties.put("mail.smtp.timeout", SMTP_TIMEOUT_MILLIS);
+    properties.put("mail.smtp.writetimeout", SMTP_TIMEOUT_MILLIS);
+
+    if (mail.hasCredentials()) {
+      properties.put("mail.smtp.auth", "true");
+      properties.put("mail.smtp.starttls.enable", "true");
+      properties.put("mail.smtp.starttls.required", "true");
+    }
+
+    return properties;
   }
 }

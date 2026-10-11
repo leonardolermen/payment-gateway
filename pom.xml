@@ -34,6 +34,7 @@
         <wiremock.version>3.13.0</wiremock.version>
         <json-schema-validator.version>1.5.6</json-schema-validator.version>
         <bcpkix.version>1.80</bcpkix.version>
+        <greenmail.version>2.1.3</greenmail.version>
         <spotless.version>3.10.3</spotless.version>
     </properties>
 
@@ -108,10 +109,12 @@
             <dependency><groupId>org.wiremock</groupId><artifactId>wiremock-standalone</artifactId><version>${wiremock.version}</version></dependency>
             <dependency><groupId>com.networknt</groupId><artifactId>json-schema-validator</artifactId><version>${json-schema-validator.version}</version></dependency>
             <dependency><groupId>org.bouncycastle</groupId><artifactId>bcpkix-jdk18on</artifactId><version>${bcpkix.version}</version></dependency>
+            <dependency><groupId>org.bouncycastle</groupId><artifactId>bcprov-jdk18on</artifactId><version>1.80.2</version></dependency>
             <dependency><groupId>com.github.f4b6a3</groupId><artifactId>ulid-creator</artifactId><version>${ulid-creator.version}</version></dependency>
             <dependency><groupId>com.bucket4j</groupId><artifactId>bucket4j_jdk17-core</artifactId><version>${bucket4j.version}</version></dependency>
             <dependency><groupId>net.logstash.logback</groupId><artifactId>logstash-logback-encoder</artifactId><version>${logstash-encoder.version}</version></dependency>
             <dependency><groupId>com.tngtech.archunit</groupId><artifactId>archunit-junit5</artifactId><version>${archunit.version}</version><scope>test</scope></dependency>
+            <dependency><groupId>com.icegreen</groupId><artifactId>greenmail-junit5</artifactId><version>${greenmail.version}</version><scope>test</scope></dependency>
         </dependencies>
     </dependencyManagement>
 

@@ -32,6 +32,12 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
+    // UserSessionFilter (order 19) already authenticated a panel session on this request.
+    if (request.getAttribute(MerchantContext.ATTRIBUTE) != null) {
+      chain.doFilter(request, response);
+      return;
+    }
+
     String auth = request.getHeader("Authorization");
     if (auth == null || !auth.startsWith("Bearer ")) {
       Problems.write(response, 401, "UNAUTHENTICATED", "send Authorization: Bearer gk_…");
@@ -46,7 +52,19 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     MerchantContext.set(
         request,
         new MerchantContext.Current(
-            current.get().merchantId(), current.get().environment(), current.get().apiKeyId()));
+            current.get().merchantId(),
+            current.get().environment(),
+            new Actor.ApiKey(current.get().apiKeyId())));
+
+    if (RoleRoutes.userOnly(RequestPath.of(request).normalized())) {
+      Problems.write(
+          response,
+          403,
+          "USER_SESSION_REQUIRED",
+          "this route is for a signed-in user, not an api key");
+      return;
+    }
+
     chain.doFilter(request, response);
   }
 }

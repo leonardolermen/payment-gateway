@@ -11,7 +11,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 
 class CheckoutRateLimitFilterTest {
   private final CheckoutRateLimitFilter filter =
-      new CheckoutRateLimitFilter(new CheckoutProperties(null, List.of(), 3));
+      new CheckoutRateLimitFilter(new CheckoutProperties(null, List.of(), 3, 10));
 
   private MockHttpServletResponse call(String path, String remoteAddress) throws Exception {
     MockHttpServletRequest request = new MockHttpServletRequest("GET", path);
@@ -40,5 +40,28 @@ class CheckoutRateLimitFilterTest {
     for (int i = 0; i < 10; i++) {
       assertThat(call("/v1/orders", "198.51.100.7").getStatus()).isEqualTo(200);
     }
+  }
+
+  @Test
+  void ipv6AddressesInOneSlash64ShareABucket() throws Exception {
+    for (int i = 0; i < 3; i++) {
+      assertThat(call("/v1/checkout/chk_x", "2001:db8:1:2::" + (i + 1)).getStatus()).isEqualTo(200);
+    }
+
+    assertThat(call("/v1/checkout/chk_x", "2001:db8:1:2:ffff::9").getStatus()).isEqualTo(429);
+    assertThat(call("/v1/checkout/chk_x", "2001:db8:1:3::1").getStatus()).isEqualTo(200);
+  }
+
+  @Test
+  void aCheckoutFloodDoesNotResetTheLoginCounters() throws Exception {
+    for (int i = 0; i < 10; i++) {
+      assertThat(call("/v1/auth/login", "198.51.100.7").getStatus()).isEqualTo(200);
+    }
+
+    for (int i = 0; i < 10_050; i++) {
+      call("/v1/checkout/chk_x", "10." + (i / 65536) + "." + (i / 256 % 256) + "." + (i % 256));
+    }
+
+    assertThat(call("/v1/auth/login", "198.51.100.7").getStatus()).isEqualTo(429);
   }
 }

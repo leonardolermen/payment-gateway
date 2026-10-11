@@ -25,13 +25,19 @@ public class CorsFilterConfiguration {
     cors.setAllowedOrigins(properties.corsOrigins());
     // PUT for /v1/installment-settings, which the merchant panel writes from the browser.
     cors.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-    cors.setAllowedHeaders(List.of("Content-Type", "Authorization", "Idempotency-Key"));
+    cors.setAllowedHeaders(
+        List.of("Content-Type", "Authorization", "Idempotency-Key", "X-Environment"));
     cors.setExposedHeaders(List.of("X-Next-Cursor", "Retry-After"));
     cors.setAllowCredentials(false);
     cors.setMaxAge(3600L);
 
     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
     if (!properties.corsOrigins().isEmpty()) {
+      // The auth routes carry the refresh cookie, so they allow credentials; the exact-origin list
+      // above is what makes that safe. Registered first: the source matches in insertion order.
+      CorsConfiguration auth = new CorsConfiguration(cors);
+      auth.setAllowCredentials(true);
+      source.registerCorsConfiguration("/v1/auth/**", auth);
       source.registerCorsConfiguration("/v1/**", cors);
     }
 

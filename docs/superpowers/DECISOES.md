@@ -688,21 +688,132 @@ Rejeitado: um campo `payer_name` separado — o painel teria de escolher entre d
 coluna. Custo se errado: quem usava `customer_name` nulo para saber que a ordem não tem cliente passa a
 olhar `customer_id`, que sempre foi o sinal certo.
 
+## 2026-10-08 — Tokens opacos com hash no banco, não JWT
+Sessão do painel: access `gs_…` e refresh `gr_…` são aleatórios, e só o hash fica no banco. Rejeitado: JWT
+assinado — lib nova, revogação exige lista negra, e "encerrar outras sessões" vira um problema. Custo se
+errado: uma consulta por request, a mesma que a chave de API já faz.
 
-## 2026-10-08 — Busca de cliente por nome com `LIKE`, sem índice
-`GET /v1/customers?q=` faz `LOWER(name) LIKE '%q%'` na tabela, filtrada por merchant e ambiente, sem
-índice de texto. Rejeitado: `pg_trgm` com índice GIN — uma extensão nova no banco por uma caixa de busca
-do painel, numa tabela que é pequena por merchant. Custo se errado: um merchant com dezenas de milhares
-de clientes sente a busca lenta, e aí a extensão entra como decisão nova.
+## 2026-10-08 — Refresh em cookie `HttpOnly`, access em memória no front
+Rejeitado: tudo em `localStorage`, que qualquer script da página lê. Custo se errado: CORS com credentials em
+`/v1/auth/*` e `SameSite=None`.
 
-## 2026-10-08 — `GET /v1/subscriptions?customer_id=` continua sem página
-A listagem geral (`status`, `limit`, `cursor`) é nova e pagina pelo ambiente da chave; a de um cliente
-devolve todas as assinaturas dele, como antes. Rejeitado: paginar as duas — o detalhe do cliente quer o
-histórico inteiro, e um cliente com mais de cem assinaturas não é um caso real. Custo se errado: a
-tela do cliente cresce sem "carregar mais" até alguém paginar.
+## 2026-10-08 — Argon2id via `spring-security-crypto`, sem Spring Security
+Rejeitado: Spring Security inteiro — reescreveria a cadeia de filtros que já existe e funciona. Custo se
+errado: um jar a mais; a política de senha é nossa.
 
-## 2026-10-08 — Pedidos por cliente sem filtro de ambiente
-`GET /v1/orders?customer_id=` filtra por merchant e cliente, não pelo ambiente da chave: um cliente vive
-num ambiente só, então o filtro seria redundante. Rejeitado: exigir o ambiente também — uma condição a
-mais no índice por nada. Custo se errado: se um dia um cliente puder existir nos dois ambientes, a
-chave TEST veria os pedidos LIVE dele até o filtro entrar.
+## 2026-10-08 — E-mail único no sistema
+Rejeitado: e-mail único por loja — "a mesma pessoa em duas lojas" exigiria seletor de loja no login, que o
+produto ainda não pediu. Custo se errado: quem precisar disso usa dois e-mails até existir.
+
+## 2026-10-08 — SMTP com fallback de log, envio por job
+Rejeitado: API HTTP de um provedor (lock-in e mais um WireMock); envio síncrono na transação (um SMTP lento
+seguraria o signup). Custo se errado: um `JobType` novo e o link no log em dev.
+
+## 2026-10-08 — Papel por tabela de rotas no filtro, não por anotação
+Rejeitado: `@PreAuthorize` — traria o Spring Security. Custo se errado: rota nova precisa de linha na tabela
+(`RoleRoutes`); o teste dela cobra.
+
+## 2026-10-08 — Chave de API segue sem papel nem escopo no B3
+Rejeitado: aplicar a tabela de papéis às chaves — mudaria contrato de quem integra hoje. Custo se errado:
+escopos ficam para o B4.
+
+## 2026-10-08 — `previous_refresh_hash` na sessão
+Detectar replay de um refresh exige o hash recém-substituído: o cookie antigo reaparecendo derruba a sessão.
+Rejeitado: uma tabela separada de refresh tokens. Custo se errado: uma coluna nula em `sessions`.
+
+## 2026-10-08 — E-mail renderizado espera em `outbound_emails` e some ao ser enviado
+A tabela de jobs guarda só uma referência; o corpo com o link vive em `outbound_emails` até o `SEND_EMAIL`
+entregar, e a linha é apagada. Rejeitado: o link na linha do job, que ficaria no histórico de jobs `DONE`.
+Custo se errado: uma tabela, e uma linha que guarda um link por alguns segundos.
+
+## 2026-10-08 — `email/resend` vive em `/v1/me`, não em `/v1/auth`
+Reenviar a verificação precisa de sessão; `/v1/auth/*` é a superfície sem autenticação (e a que tem rate limit
+por IP). Rejeitado: manter a rota junto das outras de e-mail em `/v1/auth`. Custo se errado: o front chama
+`/v1/me/email/resend` em vez de achar o par de `verify` ao lado.
+
+## 2026-10-08 — Header `X-Environment` inválido é `TEST`, não 400
+Um header errado nunca pode alargar o alcance: na dúvida o usuário fica no ambiente sem dinheiro. Rejeitado:
+responder 400, que obrigaria todo cliente a tratar o erro e ainda deixaria um bug do front parecer falha do
+gateway. Custo se errado: um erro de digitação em `LIVE` mostra dados TEST em vez de reclamar.
+
+## 2026-10-08 — Escritas de sessão são `UPDATE` condicionais
+Revogar é `UPDATE … WHERE revoked_at IS NULL`; rotacionar é `UPDATE … WHERE refresh_hash = antigo`. Revogação é
+final e a rotação é compare-and-set: dois refreshes concorrentes com o mesmo cookie não geram duas sessões
+válidas. Rejeitado: `save` da linha inteira, que reescreveria uma revogação feita no meio. Custo se errado:
+alguns JPQL a manter.
+
+## 2026-10-08 — `RoleRoutes` casa segmentos inteiros de caminho
+Rejeitado: `startsWith` puro, que fazia `/v1/me` capturar `/v1/merchant` — rota que o login do painel chama
+com chave. Custo se errado: uma linha por prefixo novo na tabela.
+
+## 2026-10-08 — Token de uso único é validado antes de consumido
+`peek` e depois `consume`: um pedido que falha na validação (senha fraca no reset, convite de e-mail já
+cadastrado) não pode queimar o link. A aceitação de convite é uma transação só. Rejeitado: consumir primeiro e
+validar depois. Custo se errado: uma leitura a mais por link.
+
+## 2026-10-08 — STARTTLS e autenticação SMTP só com usuário configurado
+Rejeitado: sempre ligado — GreenMail e relays locais não têm nenhum dos dois. Custo se errado: um relay sem
+autenticação fala em claro, escolha de quem configura.
+
+## 2026-10-08 — `gateway.auth.rate-limit-per-minute` chega a `CheckoutProperties` por alias no yml
+O record só liga `gateway.checkout`, onde o filtro de rate limit lê; o yml aponta `auth-rate-limit-per-minute`
+para `gateway.auth.rate-limit-per-minute`. Rejeitado: um segundo record de properties só para esse número.
+Custo se errado: uma indireção no yml.
+
+## 2026-10-08 — `LAST_OWNER` não é alcançável pela API
+A regra de conta própria (`/v1/merchant/users/{id}` recusa o próprio usuário) mais o papel (só OWNER mexe no
+time) impedem tirar o último dono; o invariante mora no `UserService` mesmo assim. Rejeitado: confiar só na
+regra da borda. Custo se errado: nenhum.
+
+## 2026-10-08 — Último dono: trava as linhas de OWNER antes de contar
+`changeRole`/`remove` de um OWNER fazem `SELECT … FOR UPDATE` nas linhas de OWNER ativas do merchant e só
+então contam. Dois donos removendo um ao outro ao mesmo tempo contavam dois cada um e os dois commitavam,
+deixando a loja sem dono. Rejeitado: constraint ou trigger no banco (a regra "ao menos um" não cabe num
+índice) e isolamento `SERIALIZABLE` na transação inteira (retry espalhado por um caso raro). Custo se
+errado: duas remoções simultâneas na mesma loja esperam uma pela outra.
+
+## 2026-10-08 — Argon2 com teto de hashes simultâneos
+Cada hash segura 64 MB; `PasswordService` limita os hashes em paralelo (`gateway.auth.max-concurrent-hashes`,
+8) e, depois de esperar ~um hash por vaga, responde `503 AUTH_BUSY`. O teto vale para `hash`, `matches` e o
+`burnTime` do e-mail desconhecido — senão o caminho do e-mail inexistente seria o atalho para o ataque.
+Rejeitado: fila sem limite (a memória fica prometida do mesmo jeito) e baixar o custo do Argon2 (enfraquece
+todo hash para conter um pico). Custo se errado: num pico legítimo, alguns logins pedem para tentar de novo.
+
+## 2026-10-08 — `/v1/auth/*` confere o `Origin`
+O cookie de refresh é `SameSite=None`, então um formulário de outro site o leva junto. `AuthOriginFilter`
+recusa com `403 ORIGIN_NOT_ALLOWED` um `Origin` fora de `gateway.checkout.cors-origins`; sem `Origin`
+passa, porque o ataque precisa de navegador e o navegador sempre manda o cabeçalho. Para pedidos
+cross-origin o `CorsFilter` já recusa antes; o filtro é a regra explícita, com código estável, para o caso
+que ele não cobre. Rejeitado: token CSRF (estado a mais no painel) e confiar só no `CorsFilter`. Custo se
+errado: com a lista vazia não há o que comparar e a checagem não roda.
+
+## 2026-10-08 — Convite exige e-mail verificado de quem convida
+`POST /v1/invites` de um usuário sem e-mail verificado é `403 EMAIL_NOT_VERIFIED`. Sem isso, um cadastro com
+endereço descartável mandaria convites a estranhos pelo nosso SMTP, gastando a reputação do remetente.
+Rejeitado: só limitar a taxa de convites. Custo se errado: o dono recém-cadastrado confirma o e-mail antes de
+chamar o time.
+
+## 2026-10-08 — Fora de `local`/`test`, e-mail sem SMTP não sobe
+Com perfil diferente de `local` e `test`, `GATEWAY_MAIL_HOST` vazio ou `GATEWAY_PANEL_BASE_URL` em branco ou
+em `http://localhost` derrubam a inicialização com mensagem que nomeia as variáveis. O gateway de log e o
+WARN continuam em `local`/`test`. Hoje dev e produção sobem sem perfil, então o dev passa a declarar `local`
+(`.env.example`, README). Rejeitado: só o WARN (produção "funciona" e ninguém recebe e-mail) e checar só com
+um perfil `prod` (quem esquecer o perfil volta ao problema). Custo se errado: quem roda sem perfil precisa
+acrescentar uma linha no `.env`.
+
+## 2026-10-08 — A checagem de e-mail de produção depende do perfil `prod` (substitui "Fora de `local`/`test`, e-mail sem SMTP não sobe")
+O projeto nunca usou perfis e o dev roda sem nenhum (`./mvnw -pl gateway-app spring-boot:run`). A checagem
+de host SMTP e URL do painel roda só com `prod` ativo; produção sobe com `SPRING_PROFILES_ACTIVE=prod`. Sem
+perfil, ou em `local`/`test`, fica o gateway de log com o WARN; o link só aparece no log em `local`/`test`.
+Rejeitado: exigir `local` no dev (quebra o comando documentado). Custo se errado: um deploy sem `prod` volta
+a subir sem e-mail, só com o WARN.
+
+## 2026-10-09 — Flyway com `out-of-order` por causa do prefixo por módulo
+As versões são prefixadas por módulo (1xx merchants, 2xx payments, 3xx billing) numa única tabela de
+histórico, então toda migração nova de merchants (V103) é "mais antiga" que as de billing já aplicadas
+e o Flyway a recusa em qualquer banco existente — o CI nunca viu isso porque seus bancos nascem vazios.
+`spring.flyway.out-of-order: true` resolve: os schemas são independentes e a ordem entre módulos não
+significa nada; o que precisa ser monotônico é a sequência de cada módulo. Rejeitado: renumerar V103
+como V310 — quebra a convenção e a próxima migração de merchants tropeça de novo; uma tabela de
+histórico por módulo — o Flyway do Spring Boot configura uma só. Custo se errado: uma migração fora de
+ordem dentro do mesmo módulo também passaria; a revisão de PR é o que a pega.

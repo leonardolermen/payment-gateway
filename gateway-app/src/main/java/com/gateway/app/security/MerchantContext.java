@@ -11,7 +11,7 @@ import org.springframework.web.context.request.ServletRequestAttributes;
  * request is what matters.
  */
 public final class MerchantContext {
-  public record Current(MerchantId merchantId, ApiKeyEnvironment environment, String apiKeyId) {}
+  public record Current(MerchantId merchantId, ApiKeyEnvironment environment, Actor actor) {}
 
   static final String ATTRIBUTE = MerchantContext.class.getName();
 

@@ -9,13 +9,14 @@ import org.junit.jupiter.api.Test;
 class CheckoutPropertiesTest {
   @Test
   void aBlankEnvVariableMeansNoOrigins() {
-    assertThat(new CheckoutProperties(null, Arrays.asList(""), 60).corsOrigins()).isEmpty();
+    assertThat(new CheckoutProperties(null, Arrays.asList(""), 60, 10).corsOrigins()).isEmpty();
   }
 
   @Test
   void entriesAreStrippedAndBlanksDropped() {
     CheckoutProperties properties =
-        new CheckoutProperties(null, List.of("https://a.test", " ", " https://b.test ", ""), 60);
+        new CheckoutProperties(
+            null, List.of("https://a.test", " ", " https://b.test ", ""), 60, 10);
 
     assertThat(properties.corsOrigins()).containsExactly("https://a.test", "https://b.test");
   }

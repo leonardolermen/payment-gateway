@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.gateway.app.security.Actor;
 import com.gateway.app.security.MerchantContext;
 import com.gateway.kernel.ids.MerchantId;
 import com.gateway.merchants.apikey.ApiKeyEnvironment;
@@ -39,7 +40,8 @@ class IdempotencyFilterInProgressTest {
     request.setContent("{}".getBytes());
     request.setAttribute(
         MerchantContext.class.getName(),
-        new MerchantContext.Current(MerchantId.next(), ApiKeyEnvironment.TEST, "key-1"));
+        new MerchantContext.Current(
+            MerchantId.next(), ApiKeyEnvironment.TEST, new Actor.ApiKey("key-1")));
     RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
     MockHttpServletResponse response = new MockHttpServletResponse();
 
